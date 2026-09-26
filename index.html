@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>404 — Sahifada nosozlik yuz berdi</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background: #f8fafc;
+      color: #681b33;
+      font-family: Geist, Arial, sans-serif;
+    }
+
+    .error-viewport {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .error-canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 1440px;
+      height: 1000px;
+      transform: translate(-50%, -50%) scale(var(--page-scale, 1));
+      transform-origin: center;
+    }
+
+    .message,
+    .error-label,
+    .digit {
+      position: absolute;
+      margin: 0;
+      font-weight: 600;
+      line-height: normal;
+      white-space: nowrap;
+    }
+
+    .message {
+      top: 617.5px;
+      left: 392px;
+      font-size: 30px;
+      transform: translateY(-50%);
+    }
+
+    .error-label {
+      top: 483px;
+      left: 389px;
+      font-size: 300px;
+      transform: translateY(-50%);
+    }
+
+    .digit {
+      left: 858px;
+      font-size: 300px;
+      transform: translateY(-50%);
+    }
+
+    .digit-top {
+      top: 297px;
+    }
+
+    .digit-bottom {
+      top: 726px;
+    }
+
+    .construction {
+      position: absolute;
+      top: 314px;
+      left: 739px;
+      width: 90px;
+      height: 90px;
+    }
+
+    .construction img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      transform: rotate(180deg) scaleY(-1);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <main class="error-viewport" aria-labelledby="page-title">
+    <h1 id="page-title" class="sr-only">404 — Sahifada nosozlik yuz berdi</h1>
+
+    <div class="error-canvas" aria-hidden="true">
+      <p class="message">Sahifada nosozlik yuz berdi</p>
+      <p class="error-label">Xato</p>
+      <p class="digit digit-top">4</p>
+      <p class="digit digit-bottom">4</p>
+
+      <div class="construction">
+        <img
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFoAAABaCAYAAAA4qEECAAAACXBIWXMAAAsTAAALEwEAmpwYAAACt0lEQVR4nO2cMW4UMRSGTcMVImyCKKjSoPVrQoe4w1whfsAB4ATs5hScI1VyDuqQFIiSgmrQCCkiaDaxx57nt/b/Se6sGfvbt563b9Y2BgAAAABAPcPJyVN2/pwt3bCjMaL9Ykvf2NFXdv6dMeZJ7TkcBMH6XaTgca4F668+PN+8qj0P9QRL33NE89Ss/8nOn9aei2qyJbu79iMcvX5Zez49iB6Do4va8+lCNDsaz+zmjemNBRnFXdt3zY/HG/ve0Se29Lv0hyTdpufTlAxMnqplFI9dmx19ri2qoPBtluglkRwr+uwFPastqFizdJMnOuPma1+flTWIdhBtastRIzrnV19Xoi1d54reQjTFiP6SJXrKDyfZSyK7C9GWrifJ2Xl0LVmm0piNZiBaCIg+pHq0u7/urT3mAxWd94aFS9cNWhX9NzPxu9zIDqUqYa2K3ofkWjxklHM1B4Q60aHw8hUn3O9Mb6JZIJJnRN+a/iKaymY+SrKjKNpfOmj17Eid6KFQ5hMpuN+HYddAtBAQLQRECwHRQkB0R6KHf2ogMWlZan8VaBAdZn7IPFSjSO2vAg2ieaYG8lCNIrW/ClSIdmn3PchnCUQLAdENih4S37AER29Txmw0o7pMav1lypiNZrS/YQkzUQ3Rj5AqeV9UQ/QaomeiGqJXEv1/VEP0WqKXfAu01UBaFc3aaiAdiL41GmhdNGtZuyFaCIjuSLSp1F8UiBYCooWAaCEgWgiI7kg0r9yMBiBaCIguTKmtZyGj/NiF6PI7Z31y+bEL0aW3noUF5cc+RCuYACdeZ+3+qwDRQkB0YSQ3tnNiNtKU6Bq7UzkyG2lKdI2N7Rz7B/KmRFeUzAtF1BoPRDuIHiG65pkYLu58jKbO66ifddC2i/M6JM/E4PsTitqI2e15HQAAAAAAAABgCvAHlF1Do1YdzikAAAAASUVORK5CYII="
+        >
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const viewport = document.querySelector('.error-viewport');
+
+      function fitPage() {
+        const scale = Math.min(
+          viewport.clientWidth / 1440,
+          viewport.clientHeight / 1000,
+          1
+        );
+
+        document.documentElement.style.setProperty('--page-scale', scale);
+      }
+
+      fitPage();
+      window.addEventListener('resize', fitPage, { passive: true });
+    })();
+  </script>
+</body>
+</html>
