@@ -33,6 +33,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
       reviewer_id: uuid,
       priority: z.enum(['low', 'normal', 'high', 'urgent']),
       deadline: timestamp.optional(),
+      description: z.string().trim().max(4000).optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
@@ -42,7 +43,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
       invariant(body.assignee_id !== body.reviewer_id, 'SELF_REVIEW_FORBIDDEN');
       const row = await one(
         db,
-        'INSERT INTO tasks(tenant_id,project_id,zone_id,title,assignee_id,reviewer_id,priority,deadline,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+        'INSERT INTO tasks(tenant_id,project_id,zone_id,title,assignee_id,reviewer_id,priority,deadline,created_by,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [
           actor.tenant_id,
           body.project_id,
@@ -53,6 +54,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
           body.priority,
           body.deadline ?? null,
           actor.id,
+          body.description || null,
         ],
       );
       await audit(db, actor, 'task.create', row.id);
@@ -73,15 +75,27 @@ export function workRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/tasks',
-    summary: 'Faqat ruxsatli vazifalar',
+    summary: 'Faqat ruxsatli vazifalar; ishtirokchi nomlari, zona va muddati o‘tganlik bilan',
     permission: 'tasks.read',
-    query: pageQuery.extend({ project_id: uuid }),
+    query: pageQuery.extend({
+      project_id: uuid,
+      status: z
+        .enum(['todo', 'in_progress', 'submitted', 'returned', 'accepted', 'open'])
+        .optional(),
+      mine: z.coerce.boolean().optional(),
+    }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       return {
         items: (
           await db.query(
-            'SELECT * FROM tasks WHERE tenant_id=$1 AND project_id=$2 AND archived_at IS NULL AND ($3 OR assignee_id=$4 OR reviewer_id=$4) ORDER BY deadline NULLS LAST,id LIMIT $5 OFFSET $6',
+            `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,z.name zone_name,
+                    (t.deadline IS NOT NULL AND t.deadline<now() AND t.status<>'accepted') overdue,
+                    (SELECT count(*)::int FROM files f WHERE f.tenant_id=t.tenant_id AND f.task_id=t.id AND f.archived_at IS NULL) file_count
+             FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id LEFT JOIN zones z ON z.id=t.zone_id
+             WHERE t.tenant_id=$1 AND t.project_id=$2 AND t.archived_at IS NULL AND (($3 AND NOT $7::boolean) OR t.assignee_id=$4 OR t.reviewer_id=$4)
+               AND ($8::text IS NULL OR ($8='open' AND t.status<>'accepted') OR t.status=$8)
+             ORDER BY CASE t.status WHEN 'accepted' THEN 1 ELSE 0 END,t.deadline NULLS LAST,t.created_at LIMIT $5 OFFSET $6`,
             [
               actor.tenant_id,
               query.project_id,
@@ -89,6 +103,8 @@ export function workRoutes(add: (r: Endpoint) => void) {
               actor.id,
               query.limit,
               query.offset,
+              query.mine ?? false,
+              query.status ?? null,
             ],
           )
         ).rows,
@@ -229,15 +245,25 @@ export function workRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/reports',
-    summary: 'Obyekt hisobotlari; xodim faqat o‘z hisobotini ko‘radi',
+    summary:
+      'Obyekt hisobotlari; xodim faqat o‘z hisobotini ko‘radi; muallif, zona, smeta qatori va foto soni bilan',
     permission: 'reports.read',
-    query: pageQuery.extend({ project_id: uuid }),
+    query: pageQuery.extend({
+      project_id: uuid,
+      status: z.enum(['submitted', 'returned', 'accepted']).optional(),
+      kind: z.enum(['daily', 'weekly']).optional(),
+    }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       return {
         items: (
           await db.query(
-            'SELECT * FROM reports WHERE tenant_id=$1 AND project_id=$2 AND archived_at IS NULL AND ($3 OR author_id=$4) ORDER BY report_date DESC,id LIMIT $5 OFFSET $6',
+            `SELECT r.*,r.progress_quantity::text,u.display_name author_name,rb.display_name reviewed_by_name,z.name zone_name,l.description estimate_line_name,l.unit_id estimate_unit,
+                    (SELECT count(*)::int FROM files f WHERE f.tenant_id=r.tenant_id AND f.report_id=r.id AND f.archived_at IS NULL) file_count
+             FROM reports r JOIN users u ON u.id=r.author_id LEFT JOIN users rb ON rb.id=r.reviewed_by LEFT JOIN zones z ON z.id=r.zone_id LEFT JOIN estimate_lines l ON l.id=r.estimate_line_id
+             WHERE r.tenant_id=$1 AND r.project_id=$2 AND r.archived_at IS NULL AND ($3 OR r.author_id=$4)
+               AND ($7::text IS NULL OR r.status=$7) AND ($8::text IS NULL OR r.kind=$8)
+             ORDER BY r.report_date DESC,r.created_at DESC,r.id LIMIT $5 OFFSET $6`,
             [
               actor.tenant_id,
               query.project_id,
@@ -245,6 +271,8 @@ export function workRoutes(add: (r: Endpoint) => void) {
               actor.id,
               query.limit,
               query.offset,
+              query.status ?? null,
+              query.kind ?? null,
             ],
           )
         ).rows,
@@ -337,6 +365,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
     body: z.strictObject({
       project_id: uuid,
       report_id: uuid.optional(),
+      task_id: uuid.optional(),
       name: text,
       mime_type: z.enum(['image/jpeg', 'image/png']),
       base64: z.string().max(7000000),
@@ -344,6 +373,20 @@ export function workRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     handler: async ({ db, actor, body }) => {
       await projectScope(db, actor, body.project_id);
+      if (body.task_id) {
+        const task = await one(
+          db,
+          'SELECT * FROM tasks WHERE tenant_id=$1 AND id=$2 AND project_id=$3',
+          [actor.tenant_id, body.task_id, body.project_id],
+        );
+        invariant(
+          task.assignee_id === actor.id ||
+            task.reviewer_id === actor.id ||
+            (await allowed(db, actor, 'tasks.manage')),
+          'FORBIDDEN',
+          403,
+        );
+      }
       if (body.report_id) {
         const report = await one(
           db,
@@ -370,7 +413,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
       await writeFile(resolve(storage, key), bytes, { flag: 'wx' });
       return one(
         db,
-        'INSERT INTO files(tenant_id,project_id,report_id,name,mime_type,size,sha256,storage_key,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,name,mime_type,size,sha256',
+        'INSERT INTO files(tenant_id,project_id,report_id,name,mime_type,size,sha256,storage_key,uploaded_by,task_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,name,mime_type,size,sha256',
         [
           actor.tenant_id,
           body.project_id,
@@ -381,6 +424,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
           createHash('sha256').update(bytes).digest('hex'),
           key,
           actor.id,
+          body.task_id ?? null,
         ],
       );
     },

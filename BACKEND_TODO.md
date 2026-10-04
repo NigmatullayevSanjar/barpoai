@@ -154,9 +154,9 @@ Bog‘liqlik: 05–06. Qabul mezoni: kirim, haqiqiy xarajat, qarz va pul to‘lo
 **08 — Vazifalar, hisobotlar va fotosuratlar**
 
 - [x] Vazifa holatlari, kunlik/haftalik hisobotlar, tekshirish/qayta yuborish va private foto endpointlari mavjud.
-- [ ] Qabul qilingan progressni sabab bilan tuzatish yoki bekor qilish oqimini yozish.
-- [ ] Vazifa/hisobot yaratish, tekshirish, qaytarish va foto yuklashni frontendga ulash.
-- [ ] Hisobotga biriktirilgan smeta qatori, zona va bajarilgan miqdorni real ma’lumotdan tanlatish.
+- [x] 2026-10-04: qabul qilingan progressni tuzatish — `progress_corrections` o‘zgarmas yozuvi (ishorali farq + sabab), fakt hisoblarida (smeta kartasi, reja–fakt, ish qatorlari) tuzatishlar qo‘shiladi; migratsiya 011 (vazifa tavsifi, vazifaga fayl, tuzatishlar).
+- [x] 2026-10-04: Vazifalar sahifasi (kanban/jadval, yaratish/tahrirlash, bajaruvchi boshlash→yuborish, tekshiruvchi qabul/qaytarish izoh bilan, fayllar, tarix, arxiv) va Hisobotlar sahifasi (kunlik/haftalik, ish qatori va miqdor, prognoz sanasi, foto yuklash JPEG/PNG ≤5 MB, tekshirish/qaytarish/qayta yuborish, progress tuzatish, tarix). Telegram «📊 Progress yuborish» oqimi (obyekt → ish qatori → miqdor → matn → rasm) kunlik hisobot yaratadi. E2e 29/29, integration 24/24.
+- [x] Hisobotdagi smeta qatori va zona real ma’lumotdan (`GET /v1/projects/:id/work-lines`, narxsiz), reja va hozirgi fakt ko‘rsatiladi.
 - [ ] Faylni tekshirish, rasmni qayta kodlash va ishlatilmay qolgan fayllarni tozalashni yakunlash.
 
 Bog‘liqlik: 04–06; miqdorlar va tannarx mosligi uchun 07 bilan birga tekshiriladi. Qabul mezoni: hisobotni qayta tasdiqlash progressni takror yozmaydi, ruxsatsiz odam fotosuratni yuklab ololmaydi.

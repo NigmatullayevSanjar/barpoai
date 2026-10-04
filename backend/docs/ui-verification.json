@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T10:38:45.061Z",
+  "executed_at": "2026-10-04T10:59:59.665Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -23,6 +23,10 @@
     "Supplier invoice matched to the receipt clears GR/IR; payment settles the debt and reduces cash",
     "Payment request → approve → pay settles a service act; expense is booked once",
     "Payroll period posts labor expense per employee and payment clears it through the cash account",
+    "Task created from the kanban page with assignee, reviewer and priority",
+    "Assignee starts and submits the task; reviewer accepts it with a note",
+    "Brigadier submits a daily report with work progress and uploads a photo",
+    "Report acceptance posts progress once; a signed correction adjusts the effective fact without editing history",
     "Profile issues one-time Telegram deep link; UI switches between UZ and RU",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
     "Logout clears the session cookie and protected routes redirect to login",

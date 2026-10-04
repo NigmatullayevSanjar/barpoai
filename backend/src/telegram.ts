@@ -6,10 +6,12 @@ import { tenantAccess, accessState } from './auth.js';
 import { allowed } from './permissions.js';
 import {
   continueFlow,
+  continueProgressFlow,
   hasFlow,
   listMaterialRequests,
   loadState,
   startMaterialRequest,
+  startProgressReport,
 } from './telegram-flows.js';
 export type TelegramUser = {
   id: string;
@@ -354,15 +356,23 @@ const fmtDate = (v: string | Date | null, lang: Lang) =>
 // ---------------------------------------------------------------- Update handling
 type Update = {
   update_id: number;
-  message?: { chat: { id: number }; from?: TelegramUser & { id: number }; text?: string };
+  message?: {
+    chat: { id: number };
+    from?: TelegramUser & { id: number };
+    text?: string;
+    caption?: string;
+    photo?: { file_id: string; file_size?: number }[];
+  };
 };
 export async function handleUpdate(pool: pg.Pool, update: Update) {
   const message = update.message;
-  if (!message?.from || !message.text || message.from.id === undefined) return;
+  if (!message?.from || (!message.text && !message.photo?.length) || message.from.id === undefined)
+    return;
   const from: TelegramUser = { ...message.from, id: String(message.from.id) };
   const chat = String(message.chat.id);
   const lang = langOf(from);
-  const text = message.text.trim();
+  const text = (message.text ?? message.caption ?? '').trim();
+  const photo = message.photo?.length ? message.photo[message.photo.length - 1] : undefined;
   // 1) /start TOKEN — ulash. Alohida tranzaksiya; tenant konteksti token egasidan olinadi.
   if (text.startsWith('/start')) {
     const raw = text.split(/\s+/)[1];
@@ -397,14 +407,19 @@ export async function handleUpdate(pool: pg.Pool, update: Update) {
   const action = actionFor(user.role, text);
   if (
     hasFlow(state) &&
-    !(action && action !== 'material_request' && COMMANDS[text.split(' ')[0]!])
+    !(
+      action &&
+      action !== 'material_request' &&
+      action !== 'progress' &&
+      COMMANDS[text.split(' ')[0]!]
+    )
   ) {
     try {
-      return reply(
-        chat,
-        await continueFlow(pool, user, state, text, lang),
-        keyboard(user.role, lang),
-      );
+      const answer =
+        (state as { flow?: string }).flow === 'progress'
+          ? await continueProgressFlow(pool, user, state, text, lang, photo)
+          : await continueFlow(pool, user, state, text, lang);
+      return reply(chat, answer, keyboard(user.role, lang));
     } catch (error: any) {
       const key = error?.code as Key;
       return reply(
@@ -415,9 +430,10 @@ export async function handleUpdate(pool: pg.Pool, update: Update) {
     }
   }
   if (!action) return reply(chat, t(lang, 'unknown'), keyboard(user.role, lang));
-  if (action === 'material_request') {
+  if (action === 'material_request' || action === 'progress') {
     try {
-      return reply(chat, await startMaterialRequest(pool, user, lang), keyboard(user.role, lang));
+      const start = action === 'progress' ? startProgressReport : startMaterialRequest;
+      return reply(chat, await start(pool, user, lang), keyboard(user.role, lang));
     } catch (error: any) {
       const key = error?.code as Key;
       return reply(

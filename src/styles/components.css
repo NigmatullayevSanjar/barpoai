@@ -882,3 +882,45 @@
 .grid-editor .mode-toggle button {
   white-space: nowrap;
 }
+
+/* ---------- Kanban (vazifalar) ---------- */
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.kanban-col {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+.kanban-col > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+.kanban-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.kanban-card:hover {
+  border-color: var(--brand-500);
+}
+.kanban-card b {
+  font-size: var(--fs-sm);
+}

@@ -1,4 +1,11 @@
-import { startMaterialRequest, continueFlow, loadState, hasFlow } from '../src/telegram-flows.js';
+import {
+  startMaterialRequest,
+  continueFlow,
+  loadState,
+  hasFlow,
+  startProgressReport,
+  continueProgressFlow,
+} from '../src/telegram-flows.js';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -895,6 +902,52 @@ try {
   passed.push(
     'Telegram multi-step material request creates a pending request; admin resolves it via API',
   );
+  // Telegram progress oqimi: obyekt bitta → ish qatori → miqdor → matn → rasmsiz → kunlik hisobot
+  const p1 = await startProgressReport(appPool!, brigadierUser, 'uz');
+  assert.match(p1, /Qaysi ish/);
+  const p2 = await continueProgressFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    '1',
+    'uz',
+  );
+  assert.match(p2, /Bajarilgan miqdorni/);
+  const p3 = await continueProgressFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    '7.5',
+    'uz',
+  );
+  assert.match(p3, /Bajarilgan ishlarni/);
+  const p4 = await continueProgressFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    'Devor terish davom etdi',
+    'uz',
+  );
+  assert.match(p4, /Rasm yuboring/);
+  const p5 = await continueProgressFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    '-',
+    'uz',
+  );
+  assert.match(p5, /hisobot yuborildi/);
+  assert.equal(hasFlow(await loadState(appPool!, '515151')), false);
+  const tgReport = (
+    await admin.query(
+      "SELECT status,kind,progress_quantity::text FROM reports WHERE content='Devor terish davom etdi'",
+    )
+  ).rows[0];
+  assert.deepEqual(
+    [tgReport.status, tgReport.kind, tgReport.progress_quantity],
+    ['submitted', 'daily', '7.500000'],
+  );
+  passed.push('Telegram multi-step progress flow creates a daily report linked to a work line');
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

@@ -54,6 +54,9 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
       assignee_id: uuid,
       reviewer_id: uuid,
       deadline: timestamp.nullable(),
+      description: z.string().trim().max(4000).nullable().optional(),
+      zone_id: uuid.nullable().optional(),
+      priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
@@ -70,8 +73,19 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
       invariant(body.assignee_id !== body.reviewer_id, 'SELF_REVIEW_FORBIDDEN');
       const row = await one(
         db,
-        'UPDATE tasks SET title=$2,assignee_id=$3,reviewer_id=$4,deadline=$5,version=version+1 WHERE id=$1 RETURNING *',
-        [params.id, body.title, body.assignee_id, body.reviewer_id, body.deadline],
+        'UPDATE tasks SET title=$2,assignee_id=$3,reviewer_id=$4,deadline=$5,description=CASE WHEN $6::boolean THEN $7 ELSE description END,zone_id=CASE WHEN $8::boolean THEN $9 ELSE zone_id END,priority=coalesce($10,priority),version=version+1 WHERE id=$1 RETURNING *',
+        [
+          params.id,
+          body.title,
+          body.assignee_id,
+          body.reviewer_id,
+          body.deadline,
+          body.description !== undefined,
+          body.description || null,
+          body.zone_id !== undefined,
+          body.zone_id ?? null,
+          body.priority ?? null,
+        ],
       );
       await audit(db, actor, 'task.update', params.id);
       return row;

@@ -599,6 +599,139 @@ try {
   checks.push(
     'Payroll period posts labor expense per employee and payment clears it through the cash account',
   );
+  // 5f. Vazifa va hisobot: yaratish → bajaruvchi → tekshiruv; hisobot + foto + progress tuzatish (stage 08)
+  await adminPage.goto(webURL + '/app/tasks?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Vazifa qo‘shish' }).first().click();
+  await dialog()
+    .getByLabel(/^Vazifa/)
+    .fill('Poydevor armaturasini bog‘lash');
+  const assigneeOption = await dialog()
+    .getByLabel(/^Bajaruvchi/)
+    .locator('option', { hasText: 'Sinov brigadiri' })
+    .getAttribute('value');
+  await dialog()
+    .getByLabel(/^Bajaruvchi/)
+    .selectOption(assigneeOption!);
+  const reviewerOption = await dialog()
+    .getByLabel(/^Tekshiruvchi/)
+    .locator('option', { hasText: 'Sinov Admini' })
+    .getAttribute('value');
+  await dialog()
+    .getByLabel(/^Tekshiruvchi/)
+    .selectOption(reviewerOption!);
+  await dialog().getByLabel('Muhimlik').selectOption('high');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByText('Poydevor armaturasini bog‘lash').first().waitFor();
+  checks.push('Task created from the kanban page with assignee, reviewer and priority');
+  await brigadierPage.goto(webURL + '/app/tasks?project=' + projectUrl.split('/').pop());
+  await brigadierPage.getByText('Poydevor armaturasini bog‘lash').first().click();
+  await brigadierPage.getByRole('button', { name: 'Boshlash' }).click();
+  await brigadierPage.getByRole('button', { name: 'Tekshiruvga yuborish' }).waitFor();
+  await brigadierPage.getByRole('button', { name: 'Tekshiruvga yuborish' }).click();
+  await brigadierPage
+    .getByRole('dialog')
+    .getByText('Tekshiruvda', { exact: true })
+    .first()
+    .waitFor();
+  await adminPage.reload();
+  await adminPage.getByText('Poydevor armaturasini bog‘lash').first().click();
+  await adminPage.getByRole('dialog').getByLabel('Izoh').fill('Sifat talabga javob beradi');
+  await adminPage.getByRole('button', { name: 'Qabul qilish', exact: true }).click();
+  await adminPage.getByRole('dialog').getByText('Qabul qilingan').first().waitFor();
+  let taskStatus = '';
+  for (let i = 0; i < 40 && taskStatus !== 'accepted'; i++) {
+    taskStatus =
+      (await owner.query("SELECT status FROM tasks WHERE title='Poydevor armaturasini bog‘lash'"))
+        .rows[0]?.status ?? '';
+    if (taskStatus !== 'accepted') await delay(250);
+  }
+  assert.equal(taskStatus, 'accepted');
+  checks.push('Assignee starts and submits the task; reviewer accepts it with a note');
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'close' }).click();
+  await brigadierPage.goto(webURL + '/app/reports?project=' + projectUrl.split('/').pop());
+  await brigadierPage.getByRole('button', { name: 'Hisobot yaratish' }).first().click();
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel('Bajarilgan ishlar')
+    .fill('Beton quyish ishlari bajarildi, 40 m3');
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel(/Smeta qatori/)
+    .selectOption({ index: 1 });
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel(/Bajarilgan miqdor/)
+    .fill('40');
+  await brigadierPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Saqlash', exact: true })
+    .click();
+  await brigadierPage
+    .getByRole('dialog')
+    .getByRole('heading', { name: /Kunlik/ })
+    .waitFor();
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await brigadierPage
+    .getByRole('dialog')
+    .locator('input[type=file]')
+    .setInputFiles({ name: 'foto.png', mimeType: 'image/png', buffer: png });
+  await brigadierPage.getByRole('status').filter({ hasText: 'Foto yuklandi' }).first().waitFor();
+  await brigadierPage.getByRole('dialog').getByRole('button', { name: 'foto.png' }).waitFor();
+  checks.push('Brigadier submits a daily report with work progress and uploads a photo');
+  await adminPage.goto(webURL + '/app/reports?project=' + projectUrl.split('/').pop());
+  await adminPage.getByText('Beton quyish ishlari bajarildi').first().click();
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel(/Izoh \(sabab\)/)
+    .fill('Hajm tasdiqlandi');
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Qabul qilish', exact: true })
+    .click();
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Progressni tuzatish' })
+    .waitFor();
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Progressni tuzatish' }).click();
+  await adminPage.getByRole('dialog').last().getByLabel(/^Farq/).fill('-5');
+  await adminPage
+    .getByRole('dialog')
+    .last()
+    .getByLabel('Sabab')
+    .fill('Qayta o‘lchashda 35 m3 chiqdi');
+  await adminPage
+    .getByRole('dialog')
+    .last()
+    .getByRole('button', { name: 'Saqlash', exact: true })
+    .click();
+  await adminPage.getByRole('dialog').getByText('Qayta o‘lchashda 35 m3 chiqdi').waitFor();
+  let prog: any = {};
+  for (let i = 0; i < 40 && prog.corrected !== '-5.000000'; i++) {
+    prog = (
+      await owner.query(
+        'SELECT (SELECT sum(quantity)::text FROM progress_entries) entered,(SELECT sum(quantity_delta)::text FROM progress_corrections) corrected',
+      )
+    ).rows[0];
+    if (prog.corrected !== '-5.000000') await delay(250);
+  }
+  assert.deepEqual([prog.entered, prog.corrected], ['40.000000', '-5.000000']);
+  const estLine = await adminPage.request
+    .get(webURL + '/v1/estimates?project_id=' + projectUrl.split('/').pop())
+    .then((r) => r.json());
+  const estDetail = await adminPage.request
+    .get(webURL + '/v1/estimates/' + estLine.items.find((e: any) => e.name === 'Asosiy smeta').id)
+    .then((r) => r.json());
+  assert.equal(
+    estDetail.lines.find((l: any) => l.description === 'Beton quyish').fact_quantity,
+    '35.000000',
+  );
+  checks.push(
+    'Report acceptance posts progress once; a signed correction adjusts the effective fact without editing history',
+  );
   // 6. Profil va Telegram havolasi, til almashtirish
   await adminPage.goto(webURL + '/profile');
   await adminPage.getByRole('button', { name: 'Telegramni ulash' }).click();

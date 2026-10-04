@@ -791,7 +791,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
           `SELECT l.id,l.kind,l.category,l.description,l.unit_id,l.effective_quantity::text plan_qty,l.total::text plan_value,z.name zone_name,e.name estimate_name,
                   CASE WHEN l.kind='material'
                     THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
-                    ELSE (SELECT coalesce(sum(p.quantity),0)::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_qty,
+                    ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_qty,
                   CASE WHEN l.kind='material'
                     THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
                     ELSE NULL END fact_value

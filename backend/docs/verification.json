@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T10:18:36.145Z",
+  "executed_at": "2026-10-04T11:02:52.372Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -24,6 +24,7 @@
     "Telegram deep-link token is single-use, hashed, race-safe; account ownership and unlink enforced",
     "Task assignment creates in-app notification and durable Telegram outbox job",
     "Telegram multi-step material request creates a pending request; admin resolves it via API",
+    "Telegram multi-step progress flow creates a daily report linked to a work line",
     "OpenAPI generated from registered API routes"
   ]
 }

@@ -75,6 +75,10 @@ const Fin = {
     import('@/features/finance/workflow').then((m) => ({ default: m.FinancialReportsPage })),
   ),
 };
+const TasksPage = lazy(() => import('@/features/work/TasksPage').then((m) => ({ default: m.TasksPage })));
+const ReportsPage = lazy(() =>
+  import('@/features/work/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+);
 const EmployeesPage = lazy(() =>
   import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })),
 );
@@ -135,6 +139,8 @@ const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
   employees: <EmployeesPage />,
   estimates: <EstimatesPage />,
   stock: <StockPage />,
+  tasks: <TasksPage />,
+  reports: <ReportsPage />,
   finance: <Fin.Hub />,
   accounting_documents: <Fin.Docs page="accounting_documents" />,
   invoices: <Fin.Docs page="invoices" />,
