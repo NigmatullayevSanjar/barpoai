@@ -98,3 +98,10 @@ test('trial end is reported, never auto-blocked', () => {
     'blocked',
   );
 });
+import { handleUpdate } from '../src/telegram.js';
+test('Telegram bot ignores updates without text or sender', async () => {
+  // Pool ishlatilmaydi: matn bo'lmagan yangilanish erta qaytadi.
+  await handleUpdate({} as never, { update_id: 1, message: { chat: { id: 1 } } } as never);
+  await handleUpdate({} as never, { update_id: 2 } as never);
+  assert.ok(true);
+});

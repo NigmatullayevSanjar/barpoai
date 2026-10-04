@@ -203,12 +203,10 @@ export async function baseApp(logging = false) {
     const mapped = mapDatabaseError(error);
     if (mapped.status === 500)
       request.log.error({ code: error.code, name: error.name }, 'Request failed');
-    return reply
-      .code(mapped.status)
-      .send({
-        error: { code: mapped.code, details: (mapped as any).details ?? undefined },
-        request_id: request.id,
-      });
+    return reply.code(mapped.status).send({
+      error: { code: mapped.code, details: (mapped as any).details ?? undefined },
+      request_id: request.id,
+    });
   });
   return app;
 }

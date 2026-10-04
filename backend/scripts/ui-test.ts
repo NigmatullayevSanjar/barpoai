@@ -243,6 +243,7 @@ try {
   await dlg.getByLabel('Navoiy 28 turar-joy').check();
   await dlg.getByRole('button', { name: 'Yaratish', exact: true }).click();
   await dlg.getByText('Login: ui.brigadier').waitFor();
+  const brigadierPassword = (await dlg.locator('code').textContent())!.split('Parol: ')[1]!.trim();
   await dlg.getByRole('button', { name: 'Yopish' }).click();
   await adminPage.getByRole('cell', { name: /Sinov brigadiri/ }).waitFor();
   await adminPage.getByRole('cell', { name: /Sinov brigadiri/ }).click();
@@ -333,6 +334,131 @@ try {
   await adminPage.getByText('G‘isht terish').waitFor();
   checks.push(
     'Excel import: inspect headers, auto-map columns, resolve material by name, preview then commit',
+  );
+  // 5d. Ombor: kirim → jo‘natish → qisman qabul → sarf taklifi → tasdiqlash → so‘rov (stage 06)
+  await adminPage.goto(projectUrl);
+  await adminPage.getByRole('tab', { name: /Omborlar/ }).click();
+  await adminPage.getByRole('button', { name: 'Ombor qo‘shish' }).click();
+  await adminPage.getByRole('dialog').getByLabel('Ombor nomi').fill('Asosiy ombor');
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Qo‘shish', exact: true })
+    .click();
+  await adminPage.getByText('Asosiy ombor').first().waitFor();
+  const stockUrl = webURL + '/app/stock?project=' + projectUrl.split('/').pop();
+  await adminPage.goto(stockUrl);
+  await adminPage.getByRole('button', { name: 'Kirim', exact: true }).click();
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel('Material', { exact: true })
+    .selectOption({ label: 'Sement M500 (kg)' });
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel(/^Miqdor/)
+    .fill('1000');
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel(/Birlik tannarxi/)
+    .fill('1200');
+  await adminPage.getByRole('dialog').getByLabel(/Sabab/).fill('Yetkazib beruvchidan kirim');
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
+  await adminPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  await adminPage
+    .getByRole('cell', { name: /Sement M500/ })
+    .first()
+    .waitFor();
+  checks.push('Warehouse receipt posts stock and inventory value from the UI');
+  await adminPage.getByRole('button', { name: 'Jo‘natish', exact: true }).first().click();
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel('Qayerga')
+    .selectOption({ label: 'Sinov brigadiri' });
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel('Material', { exact: true })
+    .selectOption({ index: 1 });
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel(/^Miqdor/)
+    .fill('300');
+  await adminPage.getByRole('dialog').getByLabel(/Sabab/).fill('Brigadirga jo‘natish');
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
+  await adminPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  const brigadierPage = await newPage();
+  await login(brigadierPage, 'ui.brigadier', brigadierPassword);
+  await brigadierPage.locator('input[name=current_password]').fill(brigadierPassword);
+  await brigadierPage.locator('input[name=new_password]').fill(password + '3');
+  await brigadierPage.locator('input[name=repeat]').fill(password + '3');
+  await brigadierPage.getByRole('button', { name: 'Saqlash' }).click();
+  await brigadierPage.getByText('Parol yangilandi').waitFor();
+  await login(brigadierPage, 'ui.brigadier', password + '3');
+  await brigadierPage.getByRole('link', { name: 'Bosh sahifa' }).waitFor();
+  await brigadierPage.goto(stockUrl);
+  await brigadierPage.getByRole('tab', { name: /Harakatlar/ }).click();
+  await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().click();
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel(/Qabul miqdori/)
+    .fill('200');
+  await brigadierPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Tasdiqlash', exact: true })
+    .click();
+  await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  await brigadierPage.getByRole('button', { name: 'Sarf', exact: true }).click();
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel('Material', { exact: true })
+    .selectOption({ index: 1 });
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel(/^Miqdor/)
+    .fill('150');
+  await brigadierPage.getByRole('dialog').getByLabel(/Sabab/).fill('Poydevor betoni uchun sarf');
+  await brigadierPage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
+  await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  checks.push('Brigadier accepts a transfer partially and submits a consumption proposal');
+  await adminPage.reload();
+  await adminPage.getByRole('tab', { name: /Harakatlar/ }).click();
+  await adminPage.getByRole('button', { name: 'Tasdiqlash', exact: true }).first().click();
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Tasdiqlash', exact: true })
+    .click();
+  await adminPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  const stockState = (
+    await owner.query(
+      "SELECT (SELECT coalesce(sum(amount),0)::text FROM journal_entries WHERE account='expense') expense,(SELECT quantity::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.warehouse_id IS NOT NULL) warehouse_qty,(SELECT (quantity-reserved)::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.custodian_id IS NOT NULL) custody_available",
+    )
+  ).rows[0];
+  assert.equal(stockState.expense, '180000.00');
+  assert.equal(stockState.warehouse_qty, '800.000000');
+  assert.equal(stockState.custody_available, '50.000000');
+  checks.push(
+    'Consumption review posts expense 150 x 1200 and leaves warehouse 800 (100 still reserved) and custody 50',
+  );
+  await brigadierPage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  await brigadierPage.getByRole('button', { name: 'Material so‘rash' }).click();
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel('Material', { exact: true })
+    .selectOption({ index: 1 });
+  await brigadierPage.getByRole('dialog').getByLabel('Miqdor', { exact: true }).fill('100');
+  await brigadierPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Tasdiqlash', exact: true })
+    .click();
+  await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  await adminPage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  await adminPage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().click();
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Tasdiqlash', exact: true })
+    .click();
+  await adminPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  await adminPage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
+  checks.push(
+    'Material request from brigadier is fulfilled by a transfer created from the request',
   );
   // 6. Profil va Telegram havolasi, til almashtirish
   await adminPage.goto(webURL + '/profile');

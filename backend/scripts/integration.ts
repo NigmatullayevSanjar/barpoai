@@ -1,3 +1,4 @@
+import { startMaterialRequest, continueFlow, loadState, hasFlow } from '../src/telegram-flows.js';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -811,6 +812,89 @@ try {
   ).rows;
   assert(queued.length >= 1);
   passed.push('Task assignment creates in-app notification and durable Telegram outbox job');
+  // Telegram material so'rovi oqimi (chat_state): obyekt bitta → material → miqdor → izoh → so'rov
+  const brigadierAgain2 = (
+    await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })
+  ).access_token;
+  const brigadierLink = await call(
+    'POST',
+    '/v1/integrations/telegram/link',
+    undefined,
+    brigadierAgain2,
+  );
+  const tgBrigadier = {
+    id: '515151',
+    username: 'brig_tg',
+    first_name: 'Brigadir',
+    language_code: 'uz',
+  };
+  const brigadierUser = await transaction(appPool!, null, (db) =>
+    consumeLinkToken(db, brigadierLink.url.split('start=')[1], tgBrigadier),
+  );
+  await call('POST', '/v1/materials', { name: 'Armatura 12', unit_id: 'kg' }, adminAgain);
+  const step1 = await startMaterialRequest(appPool!, brigadierUser, 'uz');
+  assert.match(step1, /Materialni tanlang/);
+  assert.equal(hasFlow(await loadState(appPool!, '515151')), true);
+  const step2 = await continueFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    '1',
+    'uz',
+  );
+  assert.match(step2, /Miqdorni kiriting/);
+  const bad = await continueFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    'abc',
+    'uz',
+  );
+  assert.match(bad, /musbat son/);
+  const step3 = await continueFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    '25.5',
+    'uz',
+  );
+  assert.match(step3, /Izoh/);
+  const done = await continueFlow(
+    appPool!,
+    brigadierUser,
+    await loadState(appPool!, '515151'),
+    'Poydevor uchun',
+    'uz',
+  );
+  assert.match(done, /so‘rovi yuborildi/);
+  assert.equal(hasFlow(await loadState(appPool!, '515151')), false);
+  const requestRow = (
+    await admin.query(
+      'SELECT quantity::text,status,note FROM material_requests WHERE requested_by=$1',
+      [brigadierUser.id],
+    )
+  ).rows[0];
+  assert.deepEqual(
+    [requestRow.quantity, requestRow.status, requestRow.note],
+    ['25.500000', 'pending', 'Poydevor uchun'],
+  );
+  const requests = await call(
+    'GET',
+    `/v1/stock/requests?project_id=${project.id}`,
+    undefined,
+    adminAgain,
+  );
+  assert.equal(requests.items.length, 1);
+  const fulfilled = await call(
+    'POST',
+    `/v1/stock/requests/${requests.items[0].id}/actions`,
+    { version: 1, action: 'reject', note: 'Sinov: rad etish' },
+    adminAgain,
+  );
+  assert.equal(fulfilled.status, 'rejected');
+  passed.push(
+    'Telegram multi-step material request creates a pending request; admin resolves it via API',
+  );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

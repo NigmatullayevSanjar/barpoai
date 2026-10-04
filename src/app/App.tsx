@@ -51,6 +51,7 @@ const EstimateDetailPage = lazy(() =>
 const EstimateEditorPage = lazy(() =>
   import('@/features/estimates/EstimateEditor').then((m) => ({ default: m.EstimateEditorPage })),
 );
+const StockPage = lazy(() => import('@/features/stock/StockPage').then((m) => ({ default: m.StockPage })));
 const EmployeesPage = lazy(() =>
   import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })),
 );
@@ -110,6 +111,7 @@ const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
   projects: <ProjectsPage />,
   employees: <EmployeesPage />,
   estimates: <EstimatesPage />,
+  stock: <StockPage />,
   permissions: <RolePermissionsPage />,
   billing: <TenantBillingPage />,
 };

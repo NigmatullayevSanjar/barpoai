@@ -133,9 +133,9 @@ Bog‘liqlik: 04. Qabul mezoni: smeta o‘zgarsa, oldingi sarf va progress bog�
 **06 — Ombor va brigadir materiallari**
 
 - [x] Kirim, rezerv, jo‘natish, qisman qabul, sarfni tekshirish, qaytarish, inventarizatsiya va tuzatish yozuvlari mavjud.
-- [ ] Frontendda jo‘natilgan, qabul qilingan, sarflangan va qaytarilgan miqdorlarni alohida ko‘rsatish.
-- [ ] Ombor mudiri → brigadir → prorab oqimini haqiqiy APIga ulash.
-- [ ] Qisman qabul, kelishmovchilik, qoldiqni bekor qilish va sabab yozish boshqaruvlarini ulash.
+- [x] 2026-10-04: Ombor sahifasi (qoldiqlar: hisobdagi/rezerv/mavjud/qiymat/minimal, kam qolgan belgisi, ledger tarixi; harakatlar ro‘yxati filtr bilan; material so‘rovlari; materiallar katalogi). Kirim, boshlang‘ich qoldiq, jo‘natish, sarf, qaytarish, inventarizatsiya, minimal qoldiq modal oynalari; qisman qabul, tasdiqlash, qoldiqni bekor qilish, kelishmovchilik, reversal amallari rolga qarab. Migratsiya 009: material so‘rovlari (so‘rov → bajarish jo‘natish yaratadi → bildirishnoma). Brigadir biriktirilganda custody hisobi avtomatik. E2e 21/21 (kirim → jo‘natish → qisman qabul → sarf → tasdiq → so‘rov → bajarish, jurnal summalari tekshirilgan).
+- [x] Ombor mudiri → brigadir → prorab oqimi real API bilan ishlaydi.
+- [x] Qisman qabul, kelishmovchilik, qoldiqni bekor qilish va sabab yozish boshqaruvlari ulangan.
 - [ ] Takror bosish/qayta urinishda bitta biznes amal uchun bir xil idempotency kalitini saqlash.
 
 Bog‘liqlik: 04–05. Qabul mezoni: parallel jo‘natish mavjud qoldiqdan oshmaydi; sarf tasdiqlanmaguncha xarajat yozilmaydi.
@@ -177,7 +177,7 @@ Bog‘liqlik: 05–08. Qabul mezoni: har bir ko‘rsatkichni bazadagi manba yozu
 
 - [x] Tarif versiyalari, SaaS invoyslari, qo‘lda to‘lov/kredit/refund yozuvlari va integratsiya holati kodi mavjud.
 - [x] Telegram identity tekshiruvi va kam qolgan material haqida xabar yuboruvchi worker kodi mavjud; real ulanish tasdiqlanmagan.
-- [x] 2026-10-04: Telegram deep-link ulash (`/v1/integrations/telegram/link`, bir martalik hash token, 5 daqiqa, race-safe), `telegram_accounts`, bot long polling (`/start`, rolga mos menyu, /tasks, /notifications, /profile, obyektlar, kam qolgan material, qarzdorlar), ilova ichidagi `notifications` jadvali va outbox orqali yetkazish. Integration testlar: 22/22. Material so‘rovi va progress yuborish bot oqimlari 06 va 08 bosqichlarida ulanadi.
+- [x] 2026-10-04: Telegram deep-link ulash (`/v1/integrations/telegram/link`, bir martalik hash token, 5 daqiqa, race-safe), `telegram_accounts`, bot long polling (`/start`, rolga mos menyu, /tasks, /notifications, /profile, obyektlar, kam qolgan material, qarzdorlar), ilova ichidagi `notifications` jadvali va outbox orqali yetkazish. Integration testlar: 22/22. Material so‘rovi bot oqimi 06-bosqichda ulandi (chat_state bilan ko‘p qadamli: obyekt → material → miqdor → izoh); progress yuborish 08-bosqichda.
 - [ ] Avtomatik oylik invoys chiqarish va ortiqcha to‘lovni keyingi davrga o‘tkazishni yozish.
 - [ ] Kamera hodisalarini saqlash/bog‘lash, UySot reja/fakt ma’lumotlari va reconciliation — tashqi/ichki yozuvlarni solishtirish — oqimini yozish.
 - [ ] **Tashqi bog‘liqlik:** tanlangan provayder hujjati, sandbox va ruxsat etilgan kirish ma’lumotlari bilan har adapterni ulash.

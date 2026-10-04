@@ -4,6 +4,13 @@ import { digest, token as randomToken } from './security.js';
 import { invariant, DomainError } from './errors.js';
 import { tenantAccess, accessState } from './auth.js';
 import { allowed } from './permissions.js';
+import {
+  continueFlow,
+  hasFlow,
+  listMaterialRequests,
+  loadState,
+  startMaterialRequest,
+} from './telegram-flows.js';
 export type TelegramUser = {
   id: string;
   username?: string;
@@ -385,11 +392,46 @@ export async function handleUpdate(pool: pg.Pool, update: Update) {
   if (!identity) return reply(chat, t(lang, 'not_linked'));
   if (identity.error) return reply(chat, t(lang, identity.error as Key), { remove_keyboard: true });
   const { user } = identity;
+  // 2a) Ko'p qadamli oqim davom etayotgan bo'lsa (material so'rovi), javob shu oqimga ketadi.
+  const state = await loadState(pool, from.id);
   const action = actionFor(user.role, text);
+  if (
+    hasFlow(state) &&
+    !(action && action !== 'material_request' && COMMANDS[text.split(' ')[0]!])
+  ) {
+    try {
+      return reply(
+        chat,
+        await continueFlow(pool, user, state, text, lang),
+        keyboard(user.role, lang),
+      );
+    } catch (error: any) {
+      const key = error?.code as Key;
+      return reply(
+        chat,
+        (T as any)[key] ? t(lang, key) : t(lang, 'FORBIDDEN'),
+        keyboard(user.role, lang),
+      );
+    }
+  }
   if (!action) return reply(chat, t(lang, 'unknown'), keyboard(user.role, lang));
+  if (action === 'material_request') {
+    try {
+      return reply(chat, await startMaterialRequest(pool, user, lang), keyboard(user.role, lang));
+    } catch (error: any) {
+      const key = error?.code as Key;
+      return reply(
+        chat,
+        (T as any)[key] ? t(lang, key) : t(lang, 'FORBIDDEN'),
+        keyboard(user.role, lang),
+      );
+    }
+  }
   try {
     const answer = await transaction(pool, user.tenant_id ?? null, (db) =>
-      runAction(db, user, action, lang),
+      action === 'material_requests'
+        ? listMaterialRequests(db, user, lang)
+        : runAction(db, user, action, lang),
     );
     return reply(chat, answer, keyboard(user.role, lang));
   } catch (error: any) {

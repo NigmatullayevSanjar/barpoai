@@ -224,6 +224,11 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           projectId,
           row.id,
         ]);
+        if (body.role === 'brigadier')
+          await db.query(
+            'INSERT INTO stock_accounts(tenant_id,project_id,custodian_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+            [actor.tenant_id, projectId, row.id],
+          );
       }
       await audit(db, actor, 'employee.create', row.id);
       return row;
@@ -305,15 +310,22 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, body.project_id);
-      await one(db, 'SELECT id FROM users WHERE tenant_id=$1 AND id=$2 AND active', [
-        actor.tenant_id,
-        params.id,
-      ]);
+      const target = await one(
+        db,
+        'SELECT id,role FROM users WHERE tenant_id=$1 AND id=$2 AND active',
+        [actor.tenant_id, params.id],
+      );
       await db.query('INSERT INTO project_assignments VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [
         actor.tenant_id,
         body.project_id,
         params.id,
       ]);
+      // Brigadir uchun obyektdagi shaxsiy material hisobi avtomatik ochiladi.
+      if (target.role === 'brigadier')
+        await db.query(
+          'INSERT INTO stock_accounts(tenant_id,project_id,custodian_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+          [actor.tenant_id, body.project_id, params.id],
+        );
       if (body.warehouse_id) {
         await one(db, 'SELECT 1 FROM warehouses WHERE tenant_id=$1 AND id=$2 AND project_id=$3', [
           actor.tenant_id,

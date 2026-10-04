@@ -5,12 +5,14 @@ import { erpUz } from '@/locales/erp.uz';
 import { erpRu } from '@/locales/erp.ru';
 import { estimatesUz } from '@/locales/estimates.uz';
 import { estimatesRu } from '@/locales/estimates.ru';
+import { stockUz } from '@/locales/stock.uz';
+import { stockRu } from '@/locales/stock.ru';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
 const dictionaries: Record<Lang, Dict> = {
-  uz: { ...uz, ...erpUz, ...estimatesUz },
-  ru: { ...ru, ...erpRu, ...estimatesRu },
+  uz: { ...uz, ...erpUz, ...estimatesUz, ...stockUz },
+  ru: { ...ru, ...erpRu, ...estimatesRu, ...stockRu },
 };
 const STORAGE_KEY = 'barpo.lang';
 
