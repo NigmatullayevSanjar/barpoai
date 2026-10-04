@@ -10,7 +10,7 @@ Koddagi muhandislik tavsiyalari: Fastify 5, TypeScript strict, parametrli SQL uc
 
 ## Runtime
 
-Web → HTTPS reverse proxy → Fastify API → PostgreSQL. Worker shu kod va shu bazani alohida process sifatida ishlatadi. Fotosuratlar private volume’da; API orqali vakolat tekshirilib olinadi. API tokenlar front-end xotirasida saqlanadi; brauzer yangilansa qayta login kerak. Production’dagi secure cookie sessiyasi keyingi hardening qarori bo‘lishi mumkin.
+Web → HTTPS reverse proxy → Fastify API → PostgreSQL. Worker shu kod va shu bazani alohida process sifatida ishlatadi. Fotosuratlar private volume’da; API orqali vakolat tekshirilib olinadi. Sessiya ikki kanalda: brauzer uchun httpOnly, SameSite=Lax cookie (`barpo_session`, 12 soat; productionda Secure) va integratsiyalar uchun Bearer token. Cookie bilan kelgan o‘zgartiruvchi so‘rovlarda Origin `APP_ORIGIN` ga teng bo‘lishi shart (CSRF). Login maydoni foydalanuvchi nomi yoki +998 telefon raqamini qabul qiladi.
 
 Docker Compose: `db`, `migrate` (bir martalik), `api`, `worker`. Migration tugamaguncha api/worker boshlanmaydi. `postgres_data` va `private_files` doimiy volume. Hosting provayderi noma’lum; aniq cloud xizmatiga bog‘lanish yo‘q. Lokal portlar faqat loopbackda.
 

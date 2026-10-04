@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T07:40:50.556Z",
+  "executed_at": "2026-10-04T07:58:52.084Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -19,6 +19,10 @@
     "Individual financial pages filter both menus and document data",
     "Admin delegates billing read independently; employee cannot manage role permissions",
     "Blocking revokes sessions; new admin session only reaches billing/support",
+    "Platform list exposes trial/overdue state; blocking stays a manual owner decision",
+    "Phone or login identifier; httpOnly cookie session with origin check",
+    "Telegram deep-link token is single-use, hashed, race-safe; account ownership and unlink enforced",
+    "Task assignment creates in-app notification and durable Telegram outbox job",
     "OpenAPI generated from registered API routes"
   ]
 }

@@ -62,7 +62,7 @@ Docker smoke oldidan `docker build -t barpo-backend:local .` bajaring. Brauzer t
 ## Muhim chegaralar
 
 - Tasdiqlangan SaaS tarif narxi yoki demo mijoz pullari bazaga avtomatik kiritilmaydi.
-- Telegram bot tokeni, UySot, bank, Didox, iHamkor, kamera va payment provayderlari foydalanuvchi tomonidan hali taqdim etilmagan. Ular R1 release blocker; soxta muvaffaqiyat yo‘q.
+- Telegram bot (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`) ulangan: worker long polling bilan `/start <token>` ulash, rolga mos menyu va bildirishnomalarni yetkazadi. UySot, bank, Didox, iHamkor, kamera va payment provayderlari hali taqdim etilmagan; soxta muvaffaqiyat yo‘q.
 - O‘rtacha tannarx, trialning signupda boshlanishi, 72 soat invite va 12 soat sessiya — hujjatdagi muhandislik defaultlari.
 - Texnik super adminni yaratish/tenant adminni tiklash operational identity tekshiruvi bilan migratsiya operatori orqali bajariladi. Public parol retrieval yoki ixtiyoriy SQL API yo‘q.
 - Texnik super adminning birinchi hisobi uchun `BOOTSTRAP_ROLE=super_admin` bilan bootstrapni alohida bajaring; keyingi texnik staff `/v1/platform/staff` orqali yaratiladi. Default bootstrap roli platform_owner.

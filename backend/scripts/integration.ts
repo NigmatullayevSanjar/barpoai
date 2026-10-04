@@ -7,6 +7,14 @@ import { createPool, transaction, one } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
 import { hashPassword, digest } from '../src/security.js';
+import {
+  createLinkToken,
+  consumeLinkToken,
+  telegramStatus,
+  unlinkTelegram,
+} from '../src/telegram.js';
+process.env.TELEGRAM_BOT_TOKEN ??= 'integration-test-token';
+process.env.APP_ORIGIN ??= 'http://localhost:5173';
 const name = `barpo-test-${process.pid}`,
   secret = randomBytes(18).toString('hex');
 const docker = (...args: string[]) =>
@@ -656,6 +664,151 @@ try {
   });
   await call('GET', '/v1/billing', undefined, blockedEmployee.access_token, undefined, 403);
   passed.push('Blocking revokes sessions; new admin session only reaches billing/support');
+  // ---- Milestone 1: phone login, cookie session, trial state, Telegram linking, notifications
+  const tenantsList = await call('GET', '/v1/platform/tenants', undefined, ownerToken);
+  const listed = tenantsList.items.find((row: any) => row.id === t.id);
+  assert.equal(listed.access_state, 'blocked');
+  await call(
+    'PATCH',
+    `/v1/platform/tenants/${t.id}`,
+    { version: listed.version, status: 'active', reason: 'Sinov uchun qayta ochish' },
+    ownerToken,
+  );
+  const reopened = (await call('GET', '/v1/platform/tenants', undefined, ownerToken)).items.find(
+    (row: any) => row.id === t.id,
+  );
+  assert.equal(reopened.access_state, 'trial');
+  assert.equal(reopened.days_left, 14);
+  passed.push('Platform list exposes trial/overdue state; blocking stays a manual owner decision');
+  const adminLogin = signups[0]!.statusCode === 200 ? 'admin1' : 'admin2';
+  const adminAgain = (await call('POST', '/v1/auth/login', { login: adminLogin, password: pass }))
+    .access_token;
+  const phoneUser = await call(
+    'POST',
+    '/v1/employees',
+    {
+      login: 'phone.user',
+      display_name: 'Telefon',
+      password: pass,
+      role: 'manager',
+      phone: '+998 (90) 111-22-33',
+    },
+    adminAgain,
+  );
+  assert.equal(phoneUser.phone, '+998901112233');
+  const cookieLogin = await app!.inject({
+    method: 'POST',
+    url: '/v1/auth/login',
+    payload: { login: '90 111 22 33', password: pass },
+  });
+  assert.equal(cookieLogin.statusCode, 200, cookieLogin.body);
+  const cookie = cookieLogin.cookies.find((c) => c.name === 'barpo_session');
+  assert(cookie && cookie.httpOnly, 'httpOnly cookie expected');
+  const viaCookie = await app!.inject({
+    method: 'GET',
+    url: '/v1/auth/me',
+    cookies: { barpo_session: cookie!.value },
+  });
+  assert.equal(viaCookie.statusCode, 200);
+  assert.equal(viaCookie.json().phone, '+998901112233');
+  const csrf = await app!.inject({
+    method: 'POST',
+    url: '/v1/auth/logout',
+    cookies: { barpo_session: cookie!.value },
+    headers: { origin: 'https://evil.example' },
+  });
+  assert.equal(csrf.statusCode, 403);
+  const okOrigin = await app!.inject({
+    method: 'POST',
+    url: '/v1/auth/logout',
+    cookies: { barpo_session: cookie!.value },
+    headers: { origin: process.env.APP_ORIGIN! },
+  });
+  assert.equal(okOrigin.statusCode, 200);
+  assert(
+    okOrigin.cookies.some((c) => c.name === 'barpo_session' && c.value === ''),
+    'cookie cleared',
+  );
+  passed.push('Phone or login identifier; httpOnly cookie session with origin check');
+  const link = await call('POST', '/v1/integrations/telegram/link', undefined, adminAgain);
+  assert.match(link.url, /^https:\/\/t\.me\/[A-Za-z0-9_]+\?start=[A-Za-z0-9_-]{32,}$/);
+  const rawToken = link.url.split('start=')[1];
+  const tgUser = { id: '424242', username: 'ali_tg', first_name: 'Ali', language_code: 'uz' };
+  const races = await Promise.allSettled(
+    [1, 2].map(() => transaction(appPool!, null, (db) => consumeLinkToken(db, rawToken, tgUser))),
+  );
+  assert.deepEqual(races.map((r) => r.status).sort(), ['fulfilled', 'rejected']);
+  assert.equal(
+    (races.find((r) => r.status === 'rejected') as any).reason.code,
+    'TELEGRAM_LINK_USED',
+  );
+  await assert.rejects(
+    transaction(appPool!, null, (db) => consumeLinkToken(db, 'x'.repeat(40), tgUser)),
+    (e: any) => e.code === 'TELEGRAM_LINK_INVALID',
+  );
+  const status = await call('GET', '/v1/integrations/telegram', undefined, adminAgain);
+  assert.equal(status.linked, true);
+  assert.equal(status.username, 'ali_tg');
+  const managerAgain = (
+    await call('POST', '/v1/auth/login', { login: 'manager', password: pass + '2' })
+  ).access_token;
+  const otherLink = await call('POST', '/v1/integrations/telegram/link', undefined, managerAgain);
+  await assert.rejects(
+    transaction(appPool!, null, (db) =>
+      consumeLinkToken(db, otherLink.url.split('start=')[1], tgUser),
+    ),
+    (e: any) => e.code === 'TELEGRAM_ACCOUNT_IN_USE',
+  );
+  const linkedRow = (
+    await admin.query('SELECT user_id FROM telegram_accounts WHERE telegram_user_id=$1', ['424242'])
+  ).rows[0];
+  assert.equal(linkedRow.user_id, relog.user.id);
+  await call('DELETE', '/v1/integrations/telegram', undefined, adminAgain);
+  assert.equal(
+    (await call('GET', '/v1/integrations/telegram', undefined, adminAgain)).linked,
+    false,
+  );
+  assert.equal(
+    (await admin.query('SELECT 1 FROM telegram_accounts WHERE telegram_user_id=$1', ['424242']))
+      .rowCount,
+    0,
+  );
+  passed.push(
+    'Telegram deep-link token is single-use, hashed, race-safe; account ownership and unlink enforced',
+  );
+  const notifTask = await call(
+    'POST',
+    '/v1/tasks',
+    {
+      project_id: project.id,
+      title: 'Bildirishnoma sinovi',
+      assignee_id: brigadier.id,
+      reviewer_id: foreman.id,
+      priority: 'high',
+    },
+    adminAgain,
+  );
+  const brigadierAgain = (
+    await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })
+  ).access_token;
+  const inbox = await call('GET', '/v1/me/notifications?unread=true', undefined, brigadierAgain);
+  assert(
+    inbox.items.some((n: any) => n.kind === 'task.assigned' && n.payload.task_id === notifTask.id),
+  );
+  assert(inbox.unread >= 1);
+  await call('POST', '/v1/me/notifications/read', { ids: [] }, brigadierAgain);
+  assert.equal(
+    (await call('GET', '/v1/me/notifications?unread=true', undefined, brigadierAgain)).unread,
+    0,
+  );
+  const queued = (
+    await admin.query(
+      "SELECT status,error_code FROM outbox WHERE kind='notification' AND recipient_id=$1",
+      [brigadier.id],
+    )
+  ).rows;
+  assert(queued.length >= 1);
+  passed.push('Task assignment creates in-app notification and durable Telegram outbox job');
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

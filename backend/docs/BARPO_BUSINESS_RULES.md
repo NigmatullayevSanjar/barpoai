@@ -4,7 +4,7 @@
 
 Tasdiqlangan: yangi korxonaga 14 kun trial; bir kompaniyada bir admin; platform owner nomni faqat o‘ziga alias qiladi; UZS, QQS yo‘q; smetada approval yo‘q; hisobotda approval bor; jo‘natish ≠ qabul ≠ sarf. Role-page CRUD foydalanuvchining yangi talabidir.
 
-Tavsiya/default: trial muvaffaqiyatli signup tranzaksiyasida boshlanadi, `[start,start+14 kun)` UTC interval. 72 soat invite, 30 minut reset, 12 soat sessiya. Trial/pullik coverage tugaganda operatsion API 402, alohida grace period 0. Manual block hatto pullik bo‘lsa 403. To‘lov coverage’ni tiklashi mumkin, manual blockni avtomatik ochmaydi. Bu siyosatlar foydalanuvchi tasdiqlagan narx yoki tijorat sharti deb olinmaydi.
+Tavsiya/default: trial muvaffaqiyatli signup tranzaksiyasida boshlanadi, `[start,start+14 kun)` UTC interval. 72 soat invite, 30 minut reset, 12 soat sessiya. **2026-10-04 qarori:** trial yoki to‘lov muddati tugaganda tizim avtomatik bloklamaydi; API `access_state` (trial/paid/overdue) va `days_overdue` ni ko‘rsatadi, bloklash platforma egasining qo‘lda qaroridir. Manual block hatto pullik bo‘lsa 403. To‘lov manual blockni avtomatik ochmaydi. Bu siyosatlar foydalanuvchi tasdiqlagan narx yoki tijorat sharti deb olinmaydi.
 
 ## Onboarding va billing
 

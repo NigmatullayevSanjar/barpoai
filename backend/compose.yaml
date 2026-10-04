@@ -27,6 +27,9 @@ services:
     environment:
       DATABASE_URL: postgresql://barpo_app:${DB_APP_PASSWORD}@db:5432/barpo
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-barpoai_bot}
+      TELEGRAM_LINK_TOKEN_TTL_SECONDS: ${TELEGRAM_LINK_TOKEN_TTL_SECONDS:-300}
     ports: ["127.0.0.1:3001:3001"]
     volumes: ["private_files:/app/storage"]
     depends_on:
@@ -43,6 +46,8 @@ services:
     environment:
       DATABASE_URL: postgresql://barpo_app:${DB_APP_PASSWORD}@db:5432/barpo
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-barpoai_bot}
+      TELEGRAM_LINK_TOKEN_TTL_SECONDS: ${TELEGRAM_LINK_TOKEN_TTL_SECONDS:-300}
     depends_on:
       migrate: {condition: service_completed_successfully}
     restart: unless-stopped

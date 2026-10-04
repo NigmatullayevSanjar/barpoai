@@ -1,10 +1,10 @@
 # API bilan tez boshlash
 
-HTTP bazasi: `/v1`. Auth: `Authorization: Bearer <access_token>`. Operatsion commandlar `Idempotency-Key` talab qiladi (8–128 belgi, odatda UUID). Qayta yuborishda ayni key va ayni payload. Bir keyni yangi ma’lumotga ishlatmang. DTOlar qat’iy: noma’lum field 400. Pul va quantity JSON string: `"100.50"`, `"25.000000"`.
+HTTP bazasi: `/v1`. Auth: brauzerda httpOnly cookie `barpo_session` (login javobida qo‘yiladi, `credentials: include` bilan yuboriladi, o‘zgartiruvchi so‘rovlarda Origin tekshiriladi) yoki `Authorization: Bearer <access_token>`. Operatsion commandlar `Idempotency-Key` talab qiladi (8–128 belgi, odatda UUID). Qayta yuborishda ayni key va ayni payload. Bir keyni yangi ma’lumotga ishlatmang. DTOlar qat’iy: noma’lum field 400. Pul va quantity JSON string: `"100.50"`, `"25.000000"`.
 
 ## Asosiy DTO namunalari
 
-Login input: `{ "login":"owner", "password":"..." }`.
+Login input: `{ "login":"owner", "password":"..." }` — `login` foydalanuvchi nomi yoki telefon (`+998 90 123 45 67`, `901234567`).
 Login output: `{ "access_token":"...", "token_type":"Bearer", "expires_in":43200, "user":{"id":"uuid","tenant_id":"uuid yoki null","role":"tenant_admin","display_name":"...","must_change_password":false} }`.
 
 Error: `{ "error":{"code":"PAGE_ACTION_FORBIDDEN"}, "request_id":"req-..." }`. Validation error `fields:[{path:["amount"],message:"..."}]` oladi. Xato kodlari: UNAUTHORIZED/INVALID_CREDENTIALS (401), SUBSCRIPTION_REQUIRED (402), FORBIDDEN/PAGE_ACTION_FORBIDDEN/TENANT_BLOCKED/PASSWORD_CHANGE_REQUIRED (403), NOT_FOUND (404), VERSION_CONFLICT/IDEMPOTENCY_CONFLICT/INVARIANT_VIOLATION/INSUFFICIENT_AVAILABLE_STOCK (409), INVITE_UNAVAILABLE/PREVIEW_EXPIRED (410), RATE_LIMITED (429), PROVIDER_NOT_CONFIGURED/PAYMENT_PROVIDER_NOT_CONFIGURED (503).
@@ -52,3 +52,9 @@ Command output: id, tenant_id, project_id, kind, material_id, from_account_id/to
 ## Hujjat va frontend chegaralari
 
 OpenAPI runtime route registridan generatsiya qilinadi. Input/permission/idempotency/pathlar kod bilan bir manbadan. Response schema hozir ayrim operatsiyalarda generic object: fieldlarni qat’iy avtomatik serialize qilish full R1 hardening gate sifatida qayd etilgan. Frontend auth va permissions real ishlaydi; biznes ekranlarining qolgan demo formalarini ushbu endpointlarga ulash hali tugallanmagan.
+
+## Telegram ulash va bildirishnomalar
+
+`POST /v1/integrations/telegram/link` → `{url:"https://t.me/barpoai_bot?start=<token>",expires_at,expires_in:300}`. Token bir martalik, 5 daqiqa, bazada faqat SHA-256 hash. Bot `/start <token>` ni qabul qilib tokenni atomik sarflaydi; rol va kompaniya tokendan emas, bazadagi foydalanuvchidan olinadi. Bir Telegram akkaunt bitta foydalanuvchiga: boshqasida ulangan bo‘lsa `TELEGRAM_ACCOUNT_IN_USE`; foydalanuvchi yangi akkaunt ulasa eskisi avtomatik uziladi. `GET /v1/integrations/telegram` holat, `DELETE /v1/integrations/telegram` uzish. Bot menyusi rolga qarab tuziladi, lekin har amal bazadagi ruxsat va tenant doirasi bilan qayta tekshiriladi.
+
+`GET /v1/me/notifications?unread=true` → `{items,unread}`; `POST /v1/me/notifications/read {ids:[]}` hammasini o‘qilgan qiladi. Bildirishnoma manbalari: vazifa biriktirish/holat o‘zgarishi, hisobot yuborish/tekshirish, material jo‘natish/sarf taklifi/qaytarish, kam qolgan material, 24 soat qolgan va o‘tgan deadline. Har biri ilova ichida saqlanadi va Telegram ulangan bo‘lsa worker orqali yetkaziladi.

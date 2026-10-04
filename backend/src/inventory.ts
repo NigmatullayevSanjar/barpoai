@@ -2,6 +2,7 @@ import { type Db, type Row, one, audit } from './db.js';
 import { accountScope, assignedUser, permit, projectScope } from './permissions.js';
 import { dec, money, quantity } from './money.js';
 import { invariant } from './errors.js';
+import { notify, projectRecipients } from './notify.js';
 export async function balances(db: Db, tenant: string, material: string, accounts: string[]) {
   for (const account of [...new Set(accounts)].sort()) {
     await db.query(
@@ -65,19 +66,30 @@ async function ledger(
     [actor.tenant_id, account, command.material_id, qty, value],
   );
   if (dec(row.quantity).minus(row.reserved).lt(row.minimum_quantity)) {
-    await db.query(
-      `INSERT INTO outbox(tenant_id,project_id,recipient_id,kind,payload,dedup_key)
-      SELECT $1,$2,u.id,'stock.low',jsonb_build_object('account_id',$3::text,'material_id',$4::text),$5||':'||u.id::text
-      FROM stock_accounts a JOIN warehouse_assignments wa ON wa.tenant_id=a.tenant_id AND wa.warehouse_id=a.warehouse_id
-      JOIN users u ON u.id=wa.user_id AND u.active WHERE a.tenant_id=$1 AND a.id=$3 ON CONFLICT DO NOTHING`,
-      [
-        actor.tenant_id,
-        command.project_id,
-        account,
-        command.material_id,
-        `stock.low:${effect}:${account}`,
-      ],
+    // Ombor mudirlari (biriktirilgan) va tenant admin: ilova ichida + Telegram orqali.
+    const info = await one(
+      db,
+      "SELECT m.name,m.unit_id,coalesce(w.name,'') warehouse,p.name project FROM materials m,stock_accounts a LEFT JOIN warehouses w ON w.id=a.warehouse_id JOIN projects p ON p.id=a.project_id WHERE m.id=$2 AND a.id=$1",
+      [account, command.material_id],
     );
+    const recipients = (
+      await db.query(
+        `SELECT u.id FROM users u WHERE u.tenant_id=$1 AND u.active AND (u.role='tenant_admin' OR EXISTS(
+           SELECT 1 FROM stock_accounts a JOIN warehouse_assignments wa ON wa.tenant_id=a.tenant_id AND wa.warehouse_id=a.warehouse_id AND wa.user_id=u.id WHERE a.tenant_id=$1 AND a.id=$2))`,
+        [actor.tenant_id, account],
+      )
+    ).rows;
+    for (const user of recipients)
+      await notify(db, {
+        tenant_id: actor.tenant_id,
+        user_id: user.id,
+        project_id: command.project_id,
+        kind: 'stock.low',
+        title: '⚠️ Omborda material kamaydi',
+        body: `Obyekt: ${info.project}\nOmbor: ${info.warehouse}\nMaterial: ${info.name}\nQoldiq: ${quantity(dec(row.quantity).minus(row.reserved))} ${info.unit_id}\nMinimum: ${quantity(row.minimum_quantity)} ${info.unit_id}`,
+        payload: { account_id: account, material_id: command.material_id },
+        dedup_key: `stock.low:${effect}:${account}:${user.id}`,
+      });
   }
 }
 async function stockCost(db: Db, actor: Row, account: string, material: string, qty: string) {
@@ -183,6 +195,36 @@ export async function createStock(db: Db, actor: Row, input: Row) {
     ]);
   }
   await audit(db, actor, `stock.${kind}`, command.id);
+  // Jo'natish → brigadirga; sarf/qaytarish taklifi → prorablar va tenant adminga xabar.
+  if (pending) {
+    const labels: Record<string, [string, string]> = {
+      transfer: ['📦 Sizga material jo‘natildi', 'Qabul qilish uchun platformaga kiring.'],
+      consumption: ['📝 Material sarfi taklifi', 'Tekshirish va tasdiqlash kutilmoqda.'],
+      return: ['↩️ Material qaytarish', 'Omborga qabul qilish kutilmoqda.'],
+    };
+    const [title, hint] = labels[kind]!;
+    const recipients =
+      kind === 'transfer'
+        ? [to!.custodian_id as string]
+        : await projectRecipients(
+            db,
+            actor.tenant_id,
+            input.project_id,
+            kind === 'consumption' ? ['foreman'] : ['warehouse_manager'],
+            actor.id,
+          );
+    for (const user of recipients)
+      await notify(db, {
+        tenant_id: actor.tenant_id,
+        user_id: user,
+        project_id: input.project_id,
+        kind: `stock.${kind}`,
+        title,
+        body: `Material: ${material.name}\nMiqdor: ${quantity(input.quantity)} ${material.unit_id}\n${hint}`,
+        payload: { command_id: command.id },
+        dedup_key: `stock.${kind}:${command.id}:${user}`,
+      });
+  }
   return one(db, 'SELECT * FROM stock_commands WHERE id=$1', [command.id]);
 }
 export async function transitionStock(db: Db, actor: Row, id: string, input: Row) {

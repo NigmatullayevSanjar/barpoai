@@ -17,6 +17,7 @@ import {
 import { token, digest, hashPassword } from './security.js';
 import { invariant } from './errors.js';
 import { dec } from './money.js';
+import { accessState } from './auth.js';
 const owner = ['platform_owner'];
 export function platformRoutes(add: (r: Endpoint) => void) {
   add({
@@ -38,16 +39,19 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/tenants',
-    summary: 'Korxonalar va faqat egaga tegishli alias',
+    summary: 'Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q)',
     platform: owner,
     query: pageQuery,
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          'SELECT t.*,a.alias FROM tenants t LEFT JOIN tenant_aliases a ON a.tenant_id=t.id AND a.owner_id=$1 ORDER BY t.created_at,t.id LIMIT $2 OFFSET $3',
+          `SELECT t.*,a.alias,(SELECT count(*)::int FROM users u WHERE u.tenant_id=t.id AND u.active) active_users,
+            (SELECT display_name FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active LIMIT 1) admin_name,
+            (SELECT p.code FROM subscriptions s JOIN plan_versions p ON p.id=s.plan_version_id WHERE s.tenant_id=t.id) plan_code
+           FROM tenants t LEFT JOIN tenant_aliases a ON a.tenant_id=t.id AND a.owner_id=$1 ORDER BY t.created_at,t.id LIMIT $2 OFFSET $3`,
           [actor.id, query.limit, query.offset],
         )
-      ).rows,
+      ).rows.map((row) => ({ ...row, ...accessState(row) })),
     }),
   });
   add({

@@ -1,11 +1,12 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import cookie from '@fastify/cookie';
 import { z } from 'zod';
 import type pg from 'pg';
 import { transaction, idempotent, mapDatabaseError, type Db, type Row } from './db.js';
-import { authenticate, tenantAccess } from './auth.js';
+import { authenticate, tenantAccess, SESSION_COOKIE, SESSION_SECONDS } from './auth.js';
 import { invariant } from './errors.js';
 import {
   permit,
@@ -24,6 +25,9 @@ export interface Context {
   params: Row;
   query: Row;
   request: FastifyRequest;
+  reply: FastifyReply;
+  /** Brauzer cookie orqali kelgan sessiya; login javobi ham cookie qo'yishi uchun. */
+  channel: 'bearer' | 'cookie';
 }
 export interface Endpoint {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -44,7 +48,22 @@ export interface Endpoint {
   adminOnly?: boolean;
   pageFor?: (body: Row, query: Row) => Page;
   response?: Record<string, unknown>;
+  /** 'set' — javobdagi access_token cookie sifatida ham qo'yiladi; 'clear' — cookie o'chiriladi. */
+  session?: 'set' | 'clear';
   handler: (ctx: Context) => Promise<any>;
+}
+export const appOrigin = () => process.env.APP_ORIGIN ?? 'http://localhost:5173';
+export function setSessionCookie(reply: FastifyReply, token: string) {
+  reply.setCookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_SECONDS,
+  });
+}
+export function clearSessionCookie(reply: FastifyReply) {
+  reply.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoint[]) {
   return (route: Endpoint) => {
@@ -52,12 +71,26 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
     app.route({
       method: route.method,
       url: route.path,
-      handler: async (request) =>
+      handler: async (request, reply) =>
         transaction(pool, null, async (db) => {
           const body = route.body ? route.body.parse(request.body) : {};
           const params = route.params ? route.params.parse(request.params) : {};
           const query = route.query ? route.query.parse(request.query) : {};
-          const actor = route.public ? {} : await authenticate(db, request.headers.authorization);
+          const cookieToken = request.cookies?.[SESSION_COOKIE];
+          const bearer = request.headers.authorization;
+          const channel: 'bearer' | 'cookie' = bearer
+            ? 'bearer'
+            : cookieToken
+              ? 'cookie'
+              : 'bearer';
+          // Cookie sessiya bilan kelgan o'zgartiruvchi so'rovlar faqat o'z frontend originidan qabul qilinadi (CSRF).
+          if (!bearer && cookieToken && request.method !== 'GET') {
+            const origin =
+              request.headers.origin ??
+              request.headers.referer?.replace(/(^https?:\/\/[^/]+).*/, '$1');
+            invariant(origin === appOrigin(), 'CSRF_ORIGIN_REJECTED', 403);
+          }
+          const actor = route.public ? {} : await authenticate(db, bearer, cookieToken);
           if (!route.public) {
             invariant(
               !actor.must_change_password || route.passwordChange,
@@ -97,6 +130,8 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
               params: params as Row,
               query: query as Row,
               request,
+              reply,
+              channel,
             });
           let result = route.idempotent
             ? await idempotent(
@@ -109,6 +144,9 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
             : await run();
           if (route.sensitive && !(await allowed(db, actor, 'prices.read')))
             result = redactPrices(result);
+          if (route.session === 'set' && result?.access_token)
+            setSessionCookie(reply, result.access_token);
+          if (route.session === 'clear') clearSessionCookie(reply);
           return result;
         }),
     });
@@ -131,25 +169,24 @@ export async function baseApp(logging = false) {
         }
       : false,
     bodyLimit: 8 * 1024 * 1024,
-    trustProxy: false,
+    trustProxy: process.env.TRUST_PROXY === '1',
   });
   await app.register(helmet);
+  await app.register(cookie);
   await app.register(cors, {
-    origin: process.env.APP_ORIGIN ?? 'http://localhost:5173',
-    credentials: false,
+    origin: appOrigin(),
+    credentials: true,
   });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
   app.setErrorHandler((error: any, request, reply) => {
     if (error instanceof z.ZodError)
-      return reply
-        .code(400)
-        .send({
-          error: {
-            code: 'VALIDATION_ERROR',
-            fields: error.issues.map((e) => ({ path: e.path, message: e.message })),
-          },
-          request_id: request.id,
-        });
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          fields: error.issues.map((e) => ({ path: e.path, message: e.message })),
+        },
+        request_id: request.id,
+      });
     if (error.statusCode === 429)
       return reply.code(429).send({ error: { code: 'RATE_LIMITED' }, request_id: request.id });
     if (error.statusCode === 413)
@@ -196,7 +233,7 @@ export function openapi(definitions: Endpoint[]) {
     const operation: any = {
       summary: r.summary,
       operationId: r.method.toLowerCase() + r.path.replace(/[^a-zA-Z0-9]/g, '_'),
-      security: r.public ? [] : [{ bearerAuth: [] }],
+      security: r.public ? [] : [{ bearerAuth: [] }, { cookieAuth: [] }],
       parameters,
       'x-permission': r.permission ?? r.platform?.join('|') ?? 'authenticated',
       'x-tenant-scope': !r.platform && !r.public,
@@ -233,14 +270,17 @@ export function openapi(definitions: Endpoint[]) {
     openapi: '3.1.0',
     info: {
       title: 'BARPO AI API',
-      version: '0.1.0',
+      version: '0.2.0',
       description:
-        'UZS decimal qiymatlar string. Tenant sessiyadan olinadi. R1 tashqi adapterlari provayder tanlanmaguncha tayyor emas.',
+        'UZS decimal qiymatlar string. Tenant sessiyadan olinadi. Sessiya Bearer token yoki httpOnly cookie orqali. Trial tugashi avtomatik bloklamaydi; platforma egasi qo‘lda hal qiladi.',
     },
     servers: [{ url: 'http://localhost:3001' }],
     paths,
     components: {
-      securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+      securitySchemes: {
+        bearerAuth: { type: 'http', scheme: 'bearer' },
+        cookieAuth: { type: 'apiKey', in: 'cookie', name: SESSION_COOKIE },
+      },
       schemas: {
         Error: {
           type: 'object',

@@ -9,6 +9,15 @@ export const positiveAmount = amount.refine((s) => /[1-9]/.test(s), 'Musbat qiym
 export const positiveQty = qty.refine((s) => /[1-9]/.test(s), 'Musbat miqdor kerak');
 export const password = z.string().min(12).max(128);
 export const loginName = z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/);
+// Telefon: +998 va 9 raqam; bo'sh joy, qavs va chiziqlar normalizatsiyada olib tashlanadi.
+export const phone = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/[\s()-]/g, ''))
+  .pipe(z.string().regex(/^(\+?998)?[0-9]{9}$/))
+  .transform((v) => '+998' + v.slice(-9));
+// Login maydoni: foydalanuvchi nomi yoki telefon raqami.
+export const identifier = z.string().trim().min(3).max(64);
 export const version = z.number().int().positive();
 export const reason = z.string().trim().min(5).max(2000);
 export const estimateLine = z.strictObject({

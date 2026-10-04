@@ -11,6 +11,7 @@ import {
   password,
   loginName,
   reason,
+  phone,
 } from './schemas.js';
 import {
   projectScope,
@@ -22,6 +23,7 @@ import {
 } from './permissions.js';
 import { hashPassword, token, digest } from './security.js';
 import { invariant } from './errors.js';
+import { accessState } from './auth.js';
 export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
@@ -141,7 +143,10 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          'SELECT id,login,display_name,role,active,must_change_password,version FROM users WHERE tenant_id=$1 ORDER BY display_name,id LIMIT $2 OFFSET $3',
+          `SELECT u.id,u.login,u.display_name,u.phone,u.role,u.active,u.must_change_password,u.version,u.created_at,
+             (SELECT coalesce(json_agg(json_build_object('project_id',a.project_id,'project_name',p.name) ORDER BY p.name),'[]') FROM project_assignments a JOIN projects p ON p.id=a.project_id WHERE a.tenant_id=u.tenant_id AND a.user_id=u.id AND p.archived_at IS NULL) projects,
+             EXISTS(SELECT 1 FROM telegram_accounts ta WHERE ta.user_id=u.id) telegram_linked
+           FROM users u WHERE u.tenant_id=$1 ORDER BY u.display_name,u.id LIMIT $2 OFFSET $3`,
           [actor.tenant_id, query.limit, query.offset],
         )
       ).rows,
@@ -161,19 +166,26 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     summary: 'Xodim va almashtirilishi majburiy boshlang‘ich parol',
     permission: 'employees.manage',
     action: 'create',
-    body: z.strictObject({ login: loginName, password, display_name: text, role: employeeRole }),
+    body: z.strictObject({
+      login: loginName,
+      password,
+      display_name: text,
+      role: employeeRole,
+      phone: phone.optional(),
+    }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
       await delegatableRole(db, actor, body.role);
       const row = await one(
         db,
-        'INSERT INTO users(tenant_id,login,password_hash,display_name,role,must_change_password) VALUES($1,$2,$3,$4,$5,true) RETURNING id,login,role,display_name,must_change_password,version',
+        'INSERT INTO users(tenant_id,login,password_hash,display_name,role,must_change_password,phone) VALUES($1,$2,$3,$4,$5,true,$6) RETURNING id,login,role,display_name,phone,must_change_password,version',
         [
           actor.tenant_id,
           body.login.toLowerCase(),
           await hashPassword(body.password),
           body.display_name,
           body.role,
+          body.phone ?? null,
         ],
       );
       await audit(db, actor, 'employee.create', row.id);
@@ -186,7 +198,13 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     summary: 'Rol yoki holat o‘zgarishi sessiyalarni bekor qiladi',
     permission: 'employees.manage',
     params: idParams,
-    body: z.strictObject({ version, display_name: text, role: employeeRole, active: z.boolean() }),
+    body: z.strictObject({
+      version,
+      display_name: text,
+      role: employeeRole,
+      active: z.boolean(),
+      phone: phone.nullable().optional(),
+    }),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       const user = await one(db, 'SELECT * FROM users WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [
@@ -214,8 +232,16 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       }
       const row = await one(
         db,
-        'UPDATE users SET display_name=$3,role=$4,active=$5,version=version+1 WHERE tenant_id=$1 AND id=$2 RETURNING id,display_name,role,active,version',
-        [actor.tenant_id, user.id, body.display_name, body.role, body.active],
+        'UPDATE users SET display_name=$3,role=$4,active=$5,phone=CASE WHEN $6::boolean THEN $7 ELSE phone END,version=version+1 WHERE tenant_id=$1 AND id=$2 RETURNING id,display_name,role,active,phone,version',
+        [
+          actor.tenant_id,
+          user.id,
+          body.display_name,
+          body.role,
+          body.active,
+          body.phone !== undefined,
+          body.phone ?? null,
+        ],
       );
       await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
       await audit(db, actor, 'employee.update', user.id);
@@ -372,7 +398,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
         db,
         'SELECT legal_name,status,trial_started_at,trial_ends_at,paid_until FROM tenants WHERE id=$1',
         [actor.tenant_id],
-      ),
+      ).then((row) => ({ ...row, ...accessState(row) })),
       subscription:
         (
           await db.query(

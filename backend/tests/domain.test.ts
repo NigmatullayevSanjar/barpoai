@@ -61,3 +61,40 @@ test('Excel mapping parses decimal strings and rejects formula cells', async () 
     /FORMULAS_NOT_ALLOWED/,
   );
 });
+import { isPhone, normalizePhone, accessState } from '../src/auth.js';
+import { phone } from '../src/schemas.js';
+test('phone login identifiers normalize to +998XXXXXXXXX', () => {
+  assert.equal(isPhone('+998 90 123-45-67'), true);
+  assert.equal(isPhone('901234567'), true);
+  assert.equal(isPhone('owner'), false);
+  assert.equal(normalizePhone('(90) 123 45 67'), '+998901234567');
+  assert.equal(phone.parse('998 90 123 45 67'), '+998901234567');
+  assert.equal(phone.safeParse('12345').success, false);
+});
+test('trial end is reported, never auto-blocked', () => {
+  const day = 86400000,
+    now = Date.parse('2026-10-04T00:00:00Z');
+  const trial = accessState(
+    { status: 'active', trial_ends_at: new Date(now + 3 * day).toISOString(), paid_until: null },
+    now,
+  );
+  assert.deepEqual([trial.access_state, trial.days_left, trial.days_overdue], ['trial', 3, 0]);
+  const overdue = accessState(
+    { status: 'active', trial_ends_at: new Date(now - 5 * day).toISOString(), paid_until: null },
+    now,
+  );
+  assert.deepEqual([overdue.access_state, overdue.days_overdue], ['overdue', 5]);
+  const paid = accessState(
+    {
+      status: 'active',
+      trial_ends_at: new Date(now - 5 * day).toISOString(),
+      paid_until: new Date(now + 20 * day).toISOString(),
+    },
+    now,
+  );
+  assert.equal(paid.access_state, 'paid');
+  assert.equal(
+    accessState({ status: 'blocked', trial_ends_at: null, paid_until: null }, now).access_state,
+    'blocked',
+  );
+});

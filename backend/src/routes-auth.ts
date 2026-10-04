@@ -1,18 +1,22 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { login, registerInvite, issueSession } from './auth.js';
+import { login, registerInvite, issueSession, publicUser } from './auth.js';
 import { digest, hashPassword, verifyPassword, verifyTelegram } from './security.js';
-import { password, loginName, text } from './schemas.js';
+import { password, loginName, text, identifier, phone, pageQuery, uuid } from './schemas.js';
 import { invariant } from './errors.js';
+import { createLinkToken, telegramStatus, unlinkTelegram } from './telegram.js';
 export function authRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/auth/login',
-    summary: 'Login; bloklangan admin faqat billing/supportga kira oladi',
+    summary:
+      'Login yoki telefon raqami bilan kirish; cookie va Bearer sessiya; bloklangan admin faqat billing/supportga kira oladi',
     public: true,
-    body: z.strictObject({ login: loginName, password: z.string().min(1).max(128) }),
-    handler: async ({ db, body }) => login(db, body as { login: string; password: string }),
+    session: 'set',
+    body: z.strictObject({ login: identifier, password: z.string().min(1).max(128) }),
+    handler: async ({ db, body }) =>
+      login(db, body as { login: string; password: string }, 'cookie'),
   });
   add({
     method: 'POST',
@@ -34,32 +38,35 @@ export function authRoutes(add: (r: Endpoint) => void) {
     path: '/v1/auth/register',
     summary: 'Individual link orqali bir martalik admin signup',
     public: true,
+    session: 'set',
     body: z.strictObject({
       token: z.string().min(32).max(100),
       login: loginName,
       password,
       display_name: text,
+      phone: phone.optional(),
     }),
-    handler: async ({ db, body }) => registerInvite(db, body as any),
+    handler: async ({ db, body }) => registerInvite(db, body as any, 'cookie'),
   });
   add({
     method: 'GET',
     path: '/v1/auth/me',
     summary: 'Sessiya identifikatori va server roli',
     passwordChange: true,
-    handler: async ({ actor }) => ({
-      id: actor.id,
-      tenant_id: actor.tenant_id,
-      role: actor.role,
-      display_name: actor.display_name,
-      must_change_password: actor.must_change_password,
-    }),
+    handler: async ({ db, actor }) => {
+      const tenant = actor.tenant_id
+        ? (await db.query('SELECT legal_name,status FROM tenants WHERE id=$1', [actor.tenant_id]))
+            .rows[0]
+        : null;
+      return { ...publicUser(actor), tenant_name: tenant?.legal_name ?? null };
+    },
   });
   add({
     method: 'POST',
     path: '/v1/auth/logout',
     summary: 'Joriy sessiyani bekor qilish',
     passwordChange: true,
+    session: 'clear',
     handler: async ({ db, actor }) => {
       await db.query('UPDATE sessions SET revoked_at=now() WHERE token_hash=$1', [
         actor.token_hash,
@@ -72,6 +79,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
     path: '/v1/auth/password',
     summary: 'Parol almashtirish va barcha sessiyalarni bekor qilish',
     passwordChange: true,
+    session: 'clear',
     body: z.strictObject({ current_password: z.string().min(1).max(128), new_password: password }),
     handler: async ({ db, actor, body }) => {
       const user = await one(db, 'SELECT * FROM users WHERE id=$1 FOR UPDATE', [actor.id]);
@@ -87,6 +95,22 @@ export function authRoutes(add: (r: Endpoint) => void) {
       await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [actor.id]);
       await audit(db, actor, 'auth.password_change', actor.id);
       return { ok: true, login_required: true };
+    },
+  });
+  add({
+    method: 'PATCH',
+    path: '/v1/auth/profile',
+    summary: 'O‘z profilini tahrirlash: ism va telefon',
+    passwordChange: true,
+    body: z.strictObject({ display_name: text, phone: phone.nullable() }),
+    handler: async ({ db, actor, body }) => {
+      const row = await one(
+        db,
+        'UPDATE users SET display_name=$2,phone=$3,version=version+1 WHERE id=$1 RETURNING *',
+        [actor.id, body.display_name, body.phone],
+      );
+      await audit(db, actor, 'auth.profile_update', actor.id);
+      return publicUser(row);
     },
   });
   add({
@@ -120,6 +144,28 @@ export function authRoutes(add: (r: Endpoint) => void) {
       return { ok: true };
     },
   });
+  // ---------------------------------------------------------------- Telegram
+  add({
+    method: 'POST',
+    path: '/v1/integrations/telegram/link',
+    summary: 'Bir martalik, 5 daqiqalik Telegram ulash havolasi (deep link)',
+    passwordChange: true,
+    handler: async ({ db, actor }) => createLinkToken(db, actor),
+  });
+  add({
+    method: 'GET',
+    path: '/v1/integrations/telegram',
+    summary: 'Joriy foydalanuvchining Telegram ulanish holati',
+    passwordChange: true,
+    handler: async ({ db, actor }) => telegramStatus(db, actor),
+  });
+  add({
+    method: 'DELETE',
+    path: '/v1/integrations/telegram',
+    summary: 'Telegram akkauntni uzish; eski akkaunt boshqa amal bajara olmaydi',
+    passwordChange: true,
+    handler: async ({ db, actor }) => unlinkTelegram(db, actor),
+  });
   const telegram = z.strictObject({
     id: z.string().regex(/^\d+$/),
     auth_date: z.string().regex(/^\d+$/),
@@ -131,29 +177,61 @@ export function authRoutes(add: (r: Endpoint) => void) {
   });
   add({
     method: 'POST',
-    path: '/v1/auth/telegram/link',
-    summary: 'Mavjud xodimga Telegram identity bog‘lash',
-    body: telegram,
-    handler: async ({ db, actor, body }) => {
-      invariant(process.env.TELEGRAM_BOT_TOKEN, 'PROVIDER_NOT_CONFIGURED', 503);
-      const id = verifyTelegram(body, process.env.TELEGRAM_BOT_TOKEN);
-      await db.query('UPDATE users SET telegram_id=$2 WHERE id=$1', [actor.id, id]);
-      await audit(db, actor, 'telegram.link', actor.id);
-      return { ok: true };
-    },
-  });
-  add({
-    method: 'POST',
     path: '/v1/auth/telegram/login',
-    summary: 'Oldindan bog‘langan Telegram bilan login',
+    summary: 'Oldindan ulangan Telegram (Login Widget imzosi) bilan kirish',
     public: true,
+    session: 'set',
     body: telegram,
     handler: async ({ db, body }) => {
       invariant(process.env.TELEGRAM_BOT_TOKEN, 'PROVIDER_NOT_CONFIGURED', 503);
       const id = verifyTelegram(body, process.env.TELEGRAM_BOT_TOKEN);
-      const user = await one(db, 'SELECT * FROM users WHERE telegram_id=$1 AND active', [id]);
+      const user = await one(
+        db,
+        'SELECT u.* FROM telegram_accounts a JOIN users u ON u.id=a.user_id WHERE a.telegram_user_id=$1 AND u.active',
+        [id],
+      );
       await audit(db, user, 'telegram.login', user.id);
-      return issueSession(db, user);
+      return issueSession(db, user, 'cookie');
+    },
+  });
+  // ---------------------------------------------------------------- Bildirishnomalar
+  add({
+    method: 'GET',
+    path: '/v1/me/notifications',
+    summary: 'O‘z bildirishnomalari; unread soni bilan',
+    passwordChange: true,
+    query: pageQuery.extend({ unread: z.coerce.boolean().optional() }),
+    handler: async ({ db, actor, query }) => {
+      if (actor.tenant_id)
+        await db.query("SELECT set_config('app.tenant_id',$1,true)", [actor.tenant_id]);
+      const items = (
+        await db.query(
+          'SELECT id,kind,title,body,payload,project_id,read_at,created_at FROM notifications WHERE user_id=$1 AND ($2::boolean IS NOT TRUE OR read_at IS NULL) ORDER BY created_at DESC,id LIMIT $3 OFFSET $4',
+          [actor.id, query.unread ?? false, query.limit, query.offset],
+        )
+      ).rows;
+      const unread = await one(
+        db,
+        'SELECT count(*)::int unread FROM notifications WHERE user_id=$1 AND read_at IS NULL',
+        [actor.id],
+      );
+      return { items, unread: unread.unread };
+    },
+  });
+  add({
+    method: 'POST',
+    path: '/v1/me/notifications/read',
+    summary: 'Bildirishnomalarni o‘qilgan deb belgilash (ids bo‘sh bo‘lsa hammasi)',
+    passwordChange: true,
+    body: z.strictObject({ ids: z.array(uuid).max(200).default([]) }),
+    handler: async ({ db, actor, body }) => {
+      if (actor.tenant_id)
+        await db.query("SELECT set_config('app.tenant_id',$1,true)", [actor.tenant_id]);
+      const result = await db.query(
+        'UPDATE notifications SET read_at=now() WHERE user_id=$1 AND read_at IS NULL AND (cardinality($2::uuid[])=0 OR id=ANY($2::uuid[]))',
+        [actor.id, body.ids],
+      );
+      return { ok: true, updated: result.rowCount };
     },
   });
 }

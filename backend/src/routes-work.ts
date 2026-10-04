@@ -16,6 +16,7 @@ import {
   timestamp,
 } from './schemas.js';
 import { projectScope, assignedUser, allowed } from './permissions.js';
+import { notify, projectRecipients } from './notify.js';
 import { invariant } from './errors.js';
 export function workRoutes(add: (r: Endpoint) => void) {
   add({
@@ -55,6 +56,17 @@ export function workRoutes(add: (r: Endpoint) => void) {
         ],
       );
       await audit(db, actor, 'task.create', row.id);
+      const project = await one(db, 'SELECT name FROM projects WHERE id=$1', [body.project_id]);
+      await notify(db, {
+        tenant_id: actor.tenant_id,
+        user_id: body.assignee_id,
+        project_id: body.project_id,
+        kind: 'task.assigned',
+        title: '📋 Yangi vazifa',
+        body: `Obyekt: ${project.name}\nVazifa: ${body.title}\nMuddat: ${body.deadline ? new Date(body.deadline).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' }) : '—'}`,
+        payload: { task_id: row.id },
+        dedup_key: `task.assigned:${row.id}`,
+      });
       return row;
     },
   });
@@ -127,6 +139,22 @@ export function workRoutes(add: (r: Endpoint) => void) {
         [params.id, body.status],
       );
       await audit(db, actor, `task.${body.status}`, params.id, { note: body.note ?? null });
+      const titles: Record<string, string> = {
+        submitted: '📨 Vazifa tekshiruvga yuborildi',
+        returned: '↩️ Vazifa qaytarildi',
+        accepted: '✅ Vazifa qabul qilindi',
+        in_progress: '▶️ Vazifa boshlandi',
+      };
+      await notify(db, {
+        tenant_id: actor.tenant_id,
+        user_id: review ? task.assignee_id : task.reviewer_id,
+        project_id: task.project_id,
+        kind: `task.${body.status}`,
+        title: titles[body.status]!,
+        body: `Vazifa: ${task.title}${body.note ? `\nIzoh: ${body.note}` : ''}`,
+        payload: { task_id: task.id },
+        dedup_key: `task.${body.status}:${task.id}:${row.version}`,
+      });
       return row;
     },
   });
@@ -161,7 +189,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
         );
         invariant(line.kind !== 'material', 'MATERIAL_IS_NOT_WORK_PROGRESS');
       }
-      return one(
+      const report = await one(
         db,
         'INSERT INTO reports(tenant_id,project_id,zone_id,author_id,kind,report_date,content,progress_quantity,estimate_line_id,forecast_end) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [
@@ -177,6 +205,25 @@ export function workRoutes(add: (r: Endpoint) => void) {
           body.forecast_end ?? null,
         ],
       );
+      const project = await one(db, 'SELECT name FROM projects WHERE id=$1', [body.project_id]);
+      for (const user of await projectRecipients(
+        db,
+        actor.tenant_id,
+        body.project_id,
+        ['foreman'],
+        actor.id,
+      ))
+        await notify(db, {
+          tenant_id: actor.tenant_id,
+          user_id: user,
+          project_id: body.project_id,
+          kind: 'report.submitted',
+          title: body.kind === 'daily' ? '📝 Yangi kunlik hisobot' : '📝 Yangi haftalik hisobot',
+          body: `Obyekt: ${project.name}\nMuallif: ${actor.display_name}\nSana: ${body.report_date}`,
+          payload: { report_id: report.id },
+          dedup_key: `report.submitted:${report.id}:${user}`,
+        });
+      return report;
     },
   });
   add({
@@ -240,6 +287,16 @@ export function workRoutes(add: (r: Endpoint) => void) {
         [report.id, body.action, actor.id],
       );
       await audit(db, actor, `report.${body.action}`, report.id, { reason: body.reason });
+      await notify(db, {
+        tenant_id: actor.tenant_id,
+        user_id: report.author_id,
+        project_id: report.project_id,
+        kind: `report.${body.action}`,
+        title: body.action === 'accepted' ? '✅ Hisobot qabul qilindi' : '↩️ Hisobot qaytarildi',
+        body: `Sana: ${report.report_date}\nIzoh: ${body.reason}`,
+        payload: { report_id: report.id },
+        dedup_key: `report.${body.action}:${report.id}:${row.version}`,
+      });
       return row;
     },
   });

@@ -103,6 +103,7 @@ Bog‘liqlik: 01. Qabul mezoni: toza va avvalgi sxemali test bazasida migratsiya
 - [x] Login/logout, parol almashtirish, taklif orqali signup va reset token endpointlari mavjud.
 - [x] 10 rol, kompaniya roli uchun sahifa–CRUD matritsasi va obyekt/ombor doirasi mavjud.
 - [x] Frontend login va ruxsatlar sahifasi serverga ulangan.
+- [x] 2026-10-04: login foydalanuvchi nomi yoki telefon bilan; httpOnly cookie sessiya (Origin tekshiruvi) va Bearer parallel; profil tahriri (`PATCH /v1/auth/profile`); trial tugashi avtomatik bloklamaydi — `access_state`/`days_overdue` platforma ro‘yxatida ko‘rinadi, bloklash qo‘lda.
 - [ ] Taklifni ochish, signup, reset va profil oqimlarining qolgan frontend qismlarini real APIga ulash.
 - [ ] Kompaniya adminini tiklash uchun shaxsni tekshirish jarayonini yakunlash.
 - [ ] Sessiya tugashi, bloklanish va har rolning to‘g‘ri bosh sahifaga qaytishini tekshirish.
@@ -176,6 +177,7 @@ Bog‘liqlik: 05–08. Qabul mezoni: har bir ko‘rsatkichni bazadagi manba yozu
 
 - [x] Tarif versiyalari, SaaS invoyslari, qo‘lda to‘lov/kredit/refund yozuvlari va integratsiya holati kodi mavjud.
 - [x] Telegram identity tekshiruvi va kam qolgan material haqida xabar yuboruvchi worker kodi mavjud; real ulanish tasdiqlanmagan.
+- [x] 2026-10-04: Telegram deep-link ulash (`/v1/integrations/telegram/link`, bir martalik hash token, 5 daqiqa, race-safe), `telegram_accounts`, bot long polling (`/start`, rolga mos menyu, /tasks, /notifications, /profile, obyektlar, kam qolgan material, qarzdorlar), ilova ichidagi `notifications` jadvali va outbox orqali yetkazish. Integration testlar: 22/22. Material so‘rovi va progress yuborish bot oqimlari 06 va 08 bosqichlarida ulanadi.
 - [ ] Avtomatik oylik invoys chiqarish va ortiqcha to‘lovni keyingi davrga o‘tkazishni yozish.
 - [ ] Kamera hodisalarini saqlash/bog‘lash, UySot reja/fakt ma’lumotlari va reconciliation — tashqi/ichki yozuvlarni solishtirish — oqimini yozish.
 - [ ] **Tashqi bog‘liqlik:** tanlangan provayder hujjati, sandbox va ruxsat etilgan kirish ma’lumotlari bilan har adapterni ulash.

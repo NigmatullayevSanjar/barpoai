@@ -25,6 +25,9 @@ const domains = {
     'billing_invoices',
     'billing_entries',
     'support_requests',
+    'telegram_link_tokens',
+    'telegram_accounts',
+    'telegram_bot_state',
   ],
   'Resurs va ruxsat': [
     'projects',
@@ -59,6 +62,7 @@ const domains = {
     'integration_mappings',
     'integration_inbox',
     'outbox',
+    'notifications',
     'idempotency_keys',
     'audit_events',
   ],
