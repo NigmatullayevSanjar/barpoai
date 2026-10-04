@@ -42,6 +42,15 @@ const ProjectsPage = lazy(() =>
 const ProjectDetailPage = lazy(() =>
   import('@/features/projects/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })),
 );
+const EstimatesPage = lazy(() =>
+  import('@/features/estimates/EstimatesPage').then((m) => ({ default: m.EstimatesPage })),
+);
+const EstimateDetailPage = lazy(() =>
+  import('@/features/estimates/EstimateDetailPage').then((m) => ({ default: m.EstimateDetailPage })),
+);
+const EstimateEditorPage = lazy(() =>
+  import('@/features/estimates/EstimateEditor').then((m) => ({ default: m.EstimateEditorPage })),
+);
 const EmployeesPage = lazy(() =>
   import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })),
 );
@@ -100,6 +109,7 @@ const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
   dashboard: <TenantDashboard />,
   projects: <ProjectsPage />,
   employees: <EmployeesPage />,
+  estimates: <EstimatesPage />,
   permissions: <RolePermissionsPage />,
   billing: <TenantBillingPage />,
 };
@@ -147,6 +157,15 @@ export function App() {
                       ))}
                       <Route element={<RequirePage page="projects" />}>
                         <Route path="/app/projects/:id" element={<ProjectDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePage page="estimates" />}>
+                        <Route path="/app/estimates/:id" element={<EstimateDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePage page="estimates" action="create" />}>
+                        <Route path="/app/estimates/new" element={<EstimateEditorPage />} />
+                      </Route>
+                      <Route element={<RequirePage page="estimates" action="update" />}>
+                        <Route path="/app/estimates/:id/edit" element={<EstimateEditorPage />} />
                       </Route>
                     </Route>
                   </Route>

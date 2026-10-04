@@ -6,6 +6,10 @@ import { digest, hashPassword, verifyPassword, verifyTelegram } from './security
 import { password, loginName, text, identifier, phone, pageQuery, uuid } from './schemas.js';
 import { invariant } from './errors.js';
 import { createLinkToken, telegramStatus, unlinkTelegram } from './telegram.js';
+const authLimit = (max: number) => ({
+  max: Number(process.env.AUTH_RATE_LIMIT_PER_MINUTE ?? max),
+  timeWindow: '1 minute',
+});
 export function authRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -14,6 +18,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
       'Login yoki telefon raqami bilan kirish; cookie va Bearer sessiya; bloklangan admin faqat billing/supportga kira oladi',
     public: true,
     session: 'set',
+    rateLimit: authLimit(15),
     body: z.strictObject({ login: identifier, password: z.string().min(1).max(128) }),
     handler: async ({ db, body }) =>
       login(db, body as { login: string; password: string }, 'cookie'),
@@ -23,6 +28,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
     path: '/v1/auth/invites/preview',
     summary: 'Linkni sarflamasdan tekshirish',
     public: true,
+    rateLimit: authLimit(30),
     body: z.strictObject({ token: z.string().min(32).max(100) }),
     handler: async ({ db, body }) => {
       const invite = await one(
@@ -39,6 +45,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
     summary: 'Individual link orqali bir martalik admin signup',
     public: true,
     session: 'set',
+    rateLimit: authLimit(10),
     body: z.strictObject({
       token: z.string().min(32).max(100),
       login: loginName,
@@ -118,6 +125,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
     path: '/v1/auth/reset',
     summary: 'Bir martalik reset token bilan parolni tiklash',
     public: true,
+    rateLimit: authLimit(10),
     body: z.strictObject({ token: z.string().min(32).max(100), new_password: password }),
     handler: async ({ db, body }) => {
       const reset = await one(db, 'SELECT * FROM password_resets WHERE token_hash=$1 FOR UPDATE', [

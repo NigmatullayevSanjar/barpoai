@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T09:10:51.844Z",
+  "executed_at": "2026-10-04T09:46:57.796Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -12,6 +12,9 @@
     "Admin creates a project with code and customer and adds a zone from the UI",
     "Employee created from the UI with project assignment; project members tab and employee card agree",
     "Company dashboard lists real projects and counters",
+    "Estimate created in the grid editor with labor and material lines; totals match decimal arithmetic",
+    "Editing an estimate creates an immutable new revision and keeps history",
+    "Excel import: inspect headers, auto-map columns, resolve material by name, preview then commit",
     "Profile issues one-time Telegram deep link; UI switches between UZ and RU",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
     "Logout clears the session cookie and protected routes redirect to login",

@@ -125,8 +125,8 @@ Bog‘liqlik: 03. Qabul mezoni: yaratilgan xodim/obyekt sahifa yangilanganda saq
 - [x] Material yaratish, qo‘lda/norma bilan smeta, oylik taqsimot, reviziya va Excel preview/commit mavjud.
 - [ ] Reviziyalar orasida bir xil ish qatorini barqaror bog‘lash modelini yakunlash.
 - [ ] Dastlabki reja, joriy reja va haqiqiy natijani obyekt/zona kesimida yig‘ish hisoblarini yakunlash.
-- [ ] Smeta yaratish/tahrirlash, material tanlash va Excel import ekranlarini real APIga ulash.
-- [ ] Importdagi xatoli qatorlar va o‘lchov birliklarini foydalanuvchiga tushunarli ko‘rsatish.
+- [x] 2026-10-04: smeta ro‘yxati (jami, material/ish summalari), Excel-ko‘rinishidagi tahrir jadvali (tur, kategoriya, material, zona, birlik, qo‘lda/norma miqdor, yo‘qotish %, narx, izoh, oylik taqsimot, qator nusxalash/o‘chirish, jonli validatsiya), yangi reviziya bilan saqlash, smeta kartasi (qatorlar, kategoriya guruhlari, reja/fakt, turlar/kategoriya/zona bo‘yicha yig‘indi, reviziyalar tarixi va snapshot ko‘rish), Excel eksport, Excel import ustasi (inspeksiya, avto moslash, material/zona nomini aniqlash, preview, commit), inline material yaratish. Migratsiya 008 (kategoriya, izoh, tartib). E2e 17/17.
+- [x] Importdagi topilmagan nomlar qator raqami bilan ko‘rsatiladi; birlik material birligi bilan solishtiriladi (jonli xato).
 
 Bog‘liqlik: 04. Qabul mezoni: smeta o‘zgarsa, oldingi sarf va progress bog‘lanishlari saqlanadi; Excel previewning o‘zi smeta yaratmaydi.
 

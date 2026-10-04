@@ -13,6 +13,8 @@ import {
   telegramStatus,
   unlinkTelegram,
 } from '../src/telegram.js';
+process.env.AUTH_RATE_LIMIT_PER_MINUTE = '10000';
+process.env.RATE_LIMIT_PER_MINUTE = '100000';
 process.env.TELEGRAM_BOT_TOKEN ??= 'integration-test-token';
 process.env.APP_ORIGIN ??= 'http://localhost:5173';
 const name = `barpo-test-${process.pid}`,

@@ -25,7 +25,7 @@ import {
 } from './permissions.js';
 import { invariant } from './errors.js';
 import { digest } from './security.js';
-import { writeEstimate, validateEstimate, parseWorkbook } from './estimates.js';
+import { writeEstimate, validateEstimate, parseWorkbook, resolveImportNames } from './estimates.js';
 import { createStock, transitionStock, reverseStock, reconcileStock } from './inventory.js';
 import { postFinance, reverseFinance } from './finance.js';
 import { money } from './money.js';
@@ -66,22 +66,29 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/materials',
-    summary: 'Kompaniya materialini yaratish',
-    permission: 'stock.receive',
+    summary: 'Kompaniya materialini yaratish (ombor kirimi yoki smeta import huquqi bilan)',
     body: z.strictObject({ name: text, unit_id: text, catalog_id: uuid.optional() }),
     idempotent: true,
-    handler: async ({ db, actor, body }) =>
-      one(
+    handler: async ({ db, actor, body }) => {
+      invariant(
+        (await allowed(db, actor, 'stock.receive')) ||
+          (await allowed(db, actor, 'estimates.import')),
+        'FORBIDDEN',
+        403,
+      );
+      await one(db, 'SELECT 1 FROM units WHERE id=$1', [body.unit_id]);
+      return one(
         db,
         'INSERT INTO materials(tenant_id,name,unit_id,catalog_id) VALUES($1,$2,$3,$4) RETURNING *',
         [actor.tenant_id, body.name, body.unit_id, body.catalog_id ?? null],
-      ),
+      );
+    },
   });
   add({
     method: 'GET',
     path: '/v1/materials',
-    summary: 'Kompaniya materiallari',
-    permission: 'stock.read',
+    summary: 'Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli)',
+    permission: 'projects.read',
     query: pageQuery,
     handler: async ({ db, actor, query }) => ({
       items: (
@@ -250,7 +257,13 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       return {
         items: (
           await db.query(
-            'SELECT * FROM estimates WHERE tenant_id=$1 AND project_id=$2 AND archived_at IS NULL ORDER BY created_at,id LIMIT $3 OFFSET $4',
+            `SELECT e.*,u.display_name created_by_name,
+               (SELECT count(*)::int FROM estimate_lines l WHERE l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL) line_count,
+               (SELECT coalesce(sum(l.total),0)::text FROM estimate_lines l WHERE l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL) total,
+               (SELECT coalesce(sum(l.total) FILTER(WHERE l.kind='material'),0)::text FROM estimate_lines l WHERE l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL) material_total,
+               (SELECT coalesce(sum(l.total) FILTER(WHERE l.kind<>'material'),0)::text FROM estimate_lines l WHERE l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL) work_total
+             FROM estimates e LEFT JOIN users u ON u.id=e.created_by
+             WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.archived_at IS NULL ORDER BY e.created_at DESC,e.id LIMIT $3 OFFSET $4`,
             [actor.tenant_id, query.project_id, query.limit, query.offset],
           )
         ).rows,
@@ -274,7 +287,16 @@ export function operationRoutes(add: (r: Endpoint) => void) {
         ...estimate,
         lines: (
           await db.query(
-            `SELECT l.*,coalesce((SELECT jsonb_agg(jsonb_build_object('month',m.month,'quantity',m.quantity::text) ORDER BY m.month) FROM estimate_months m WHERE m.tenant_id=l.tenant_id AND m.line_id=l.id),'[]') months FROM estimate_lines l WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL ORDER BY l.id`,
+            `SELECT l.*,m.name material_name,z.name zone_name,
+               coalesce((SELECT jsonb_agg(jsonb_build_object('month',mo.month,'quantity',mo.quantity::text) ORDER BY mo.month) FROM estimate_months mo WHERE mo.tenant_id=l.tenant_id AND mo.line_id=l.id),'[]') months,
+               CASE WHEN l.kind='material'
+                 THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                 ELSE (SELECT coalesce(sum(p.quantity),0)::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_quantity,
+               CASE WHEN l.kind='material'
+                 THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
+                 ELSE NULL END fact_value
+             FROM estimate_lines l LEFT JOIN materials m ON m.id=l.material_id LEFT JOIN zones z ON z.id=l.zone_id
+             WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL ORDER BY l.position,l.id`,
             [actor.tenant_id, params.id],
           )
         ).rows,
@@ -333,7 +355,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       project_id: uuid,
       name: text,
       file_base64: z.string().max(2800000),
-      mapping: z.record(
+      mapping: z.partialRecord(
         z.enum([
           'kind',
           'description',
@@ -345,17 +367,34 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           'norm',
           'work_quantity',
           'loss_percent',
+          'material_name',
+          'zone_name',
+          'category',
+          'note',
         ]),
         text,
       ),
+      defaults: z
+        .strictObject({
+          kind: z.enum(['material', 'labor', 'equipment', 'service']).optional(),
+          unit_id: text.optional(),
+        })
+        .optional(),
     }),
     idempotent: true,
     sensitive: true,
     handler: async ({ db, actor, body }) => {
+      const parsed = await parseWorkbook(body.file_base64, body.mapping);
+      for (const line of parsed) {
+        if (body.defaults?.kind && !line.kind) line.kind = body.defaults.kind;
+        if (body.defaults?.unit_id && !line.unit_id) line.unit_id = body.defaults.unit_id;
+      }
+      const resolved = await resolveImportNames(db, actor, body.project_id, parsed);
+      invariant(resolved.errors.length === 0, 'IMPORT_NAMES_UNRESOLVED', 400, resolved.errors);
       const input = {
         project_id: body.project_id,
         name: body.name,
-        lines: await parseWorkbook(body.file_base64, body.mapping),
+        lines: resolved.lines,
       };
       await validateEstimate(db, actor, input);
       const row = await one(

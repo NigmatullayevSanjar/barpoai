@@ -31,6 +31,9 @@ export const estimateLine = z.strictObject({
   norm: qty.optional(),
   work_quantity: qty.optional(),
   loss_percent: qty.optional(),
+  category: z.string().trim().max(120).nullable().optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+  position: z.number().int().min(0).max(100000).optional(),
   months: z
     .array(z.strictObject({ month: date, quantity: qty }))
     .max(120)

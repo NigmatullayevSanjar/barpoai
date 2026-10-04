@@ -5,6 +5,7 @@ import { platformRoutes } from './routes-platform.js';
 import { platformExtraRoutes } from './routes-platform-extra.js';
 import { companyRoutes } from './routes-company.js';
 import { companyExtraRoutes } from './routes-company-extra.js';
+import { estimateExtraRoutes } from './routes-estimates-extra.js';
 import { permissionRoutes } from './routes-permissions.js';
 import { operationRoutes } from './routes-operations.js';
 import { workRoutes } from './routes-work.js';
@@ -27,6 +28,7 @@ export async function buildApp(pool: pg.Pool, logging = false) {
   platformExtraRoutes(add);
   companyRoutes(add);
   companyExtraRoutes(add);
+  estimateExtraRoutes(add);
   permissionRoutes(add);
   operationRoutes(add);
   workRoutes(add);

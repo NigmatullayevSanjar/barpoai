@@ -3,10 +3,15 @@ import { uz } from '@/locales/uz';
 import { ru } from '@/locales/ru';
 import { erpUz } from '@/locales/erp.uz';
 import { erpRu } from '@/locales/erp.ru';
+import { estimatesUz } from '@/locales/estimates.uz';
+import { estimatesRu } from '@/locales/estimates.ru';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
-const dictionaries: Record<Lang, Dict> = { uz: { ...uz, ...erpUz }, ru: { ...ru, ...erpRu } };
+const dictionaries: Record<Lang, Dict> = {
+  uz: { ...uz, ...erpUz, ...estimatesUz },
+  ru: { ...ru, ...erpRu, ...estimatesRu },
+};
 const STORAGE_KEY = 'barpo.lang';
 
 type I18n = {

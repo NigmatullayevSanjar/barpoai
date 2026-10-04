@@ -92,6 +92,14 @@ function TelegramCard() {
       </div>
       <div className="card-pad stack">
         <p className="muted text-sm">{t('telegram.desc')}</p>
+        {status.isError && (
+          <Alert tone="danger">
+            {errorMessage(t, (status.error as ApiError).code, (status.error as ApiError).status)}{' '}
+            <Button size="sm" variant="ghost" onClick={() => status.refetch()}>
+              {t('common.retry')}
+            </Button>
+          </Alert>
+        )}
         {s && !s.configured && <Alert tone="warning">{t('telegram.not_configured')}</Alert>}
         {s?.linked && (
           <>

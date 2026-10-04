@@ -9,6 +9,8 @@ import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
 import { hashPassword } from '../src/security.js';
 import { chromium, type Browser } from 'playwright';
+import ExcelJS from 'exceljs';
+import { tmpdir } from 'node:os';
 
 /**
  * Haqiqiy brauzer sinovi: vaqtinchalik PostgreSQL + API + Vite.
@@ -64,6 +66,8 @@ try {
     "INSERT INTO users(login,display_name,password_hash,role) VALUES('ui_owner','Platforma egasi',$1,'platform_owner')",
     [await hashPassword(password)],
   );
+  process.env.AUTH_RATE_LIMIT_PER_MINUTE = '10000';
+  process.env.RATE_LIMIT_PER_MINUTE = '100000';
   process.env.TELEGRAM_BOT_TOKEN = 'ui-test-token';
   process.env.TELEGRAM_BOT_USERNAME = 'barpoai_bot';
   ({ app } = await buildApp(pool));
@@ -257,6 +261,79 @@ try {
   await adminPage.goto(webURL + '/app');
   await adminPage.getByRole('link', { name: /Navoiy 28 turar-joy/ }).waitFor();
   checks.push('Company dashboard lists real projects and counters');
+  // 5c. Smeta: qo‘lda yaratish, material, reviziya, Excel import (stage 05)
+  await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Yangi smeta' }).first().click();
+  await adminPage.getByLabel('Smeta nomi').fill('Asosiy smeta');
+  const row1 = adminPage.locator('table.grid-editor tbody tr').first();
+  await row1.getByLabel('Turi', { exact: true }).selectOption('labor');
+  await row1.getByLabel('Nomi', { exact: true }).fill('Beton quyish');
+  await row1.getByLabel('Birlik', { exact: true }).selectOption('m3');
+  await row1.getByLabel('Miqdor', { exact: true }).fill('120');
+  await row1.getByLabel('Birlik narxi').fill('250000');
+  await adminPage.getByRole('button', { name: 'Qator qo‘shish' }).click();
+  const row2 = adminPage.locator('table.grid-editor tbody tr').nth(1);
+  await row2.getByLabel('Turi', { exact: true }).selectOption('material');
+  await row2.getByRole('button', { name: 'Yangi material' }).click();
+  await adminPage.getByRole('dialog').getByLabel('Material nomi').fill('Sement M500');
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel(/O‘lchov birligi/)
+    .selectOption('kg');
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Yaratish', exact: true })
+    .click();
+  await adminPage.getByRole('status').filter({ hasText: 'Material yaratildi' }).waitFor();
+  await row2.getByLabel('Nomi', { exact: true }).fill('Sement');
+  await row2.getByLabel('Miqdor', { exact: true }).fill('5000');
+  await row2.getByLabel('Birlik narxi').fill('1200.50');
+  await adminPage.locator('.sticky-actions').getByRole('button', { name: 'Saqlash' }).click();
+  await adminPage.getByRole('status').filter({ hasText: 'Smeta yaratildi' }).waitFor();
+  await adminPage.getByRole('heading', { name: /Asosiy smeta/ }).waitFor();
+  await adminPage.getByText('Beton quyish').waitFor();
+  const estTotal = (
+    await owner.query('SELECT sum(total)::text s FROM estimate_lines WHERE archived_at IS NULL')
+  ).rows[0].s;
+  assert.equal(estTotal, '36002500.00');
+  checks.push(
+    'Estimate created in the grid editor with labor and material lines; totals match decimal arithmetic',
+  );
+  await adminPage.getByRole('button', { name: 'Tahrirlash' }).click();
+  await adminPage.getByRole('heading', { name: /yangi reviziya/ }).waitFor();
+  await adminPage
+    .locator('table.grid-editor tbody tr')
+    .first()
+    .getByLabel('Miqdor', { exact: true })
+    .fill('130');
+  await adminPage.locator('.sticky-actions').getByRole('button', { name: 'Saqlash' }).click();
+  await adminPage.getByRole('status').filter({ hasText: 'reviziya 2' }).waitFor();
+  await adminPage.getByRole('tab', { name: 'Reviziyalar tarixi' }).click();
+  await adminPage.getByRole('cell', { name: /1/ }).first().waitFor();
+  assert.equal((await owner.query('SELECT count(*)::int n FROM estimate_revisions')).rows[0].n, 2);
+  checks.push('Editing an estimate creates an immutable new revision and keeps history');
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet('Smeta');
+  sheet.addRow(['Turi', 'Nomi', 'Material', 'Birlik', 'Miqdor', 'Narx', 'Kategoriya']);
+  sheet.addRow(['material', 'Sement import', 'Sement M500', 'kg', 1000, 1100, 'Materiallar']);
+  sheet.addRow(['labor', 'G‘isht terish', '', 'm2', 80, 95000, 'Ishlar']);
+  const xlsxPath = resolve(tmpdir(), 'barpo-ui-import-' + process.pid + '.xlsx');
+  await book.xlsx.writeFile(xlsxPath);
+  await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Excel import' }).first().click();
+  await adminPage.getByRole('dialog').locator('input[type=file]').setInputFiles(xlsxPath);
+  await adminPage.getByRole('dialog').getByText('2 ta qator topildi').waitFor();
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Tekshirish' }).click();
+  await adminPage
+    .getByRole('dialog')
+    .getByText(/Tekshiruv o‘tdi: 2 ta qator/)
+    .waitFor();
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Smetani yaratish' }).click();
+  await adminPage.getByRole('status').filter({ hasText: 'Smeta import qilindi' }).waitFor();
+  await adminPage.getByText('G‘isht terish').waitFor();
+  checks.push(
+    'Excel import: inspect headers, auto-map columns, resolve material by name, preview then commit',
+  );
   // 6. Profil va Telegram havolasi, til almashtirish
   await adminPage.goto(webURL + '/profile');
   await adminPage.getByRole('button', { name: 'Telegramni ulash' }).click();

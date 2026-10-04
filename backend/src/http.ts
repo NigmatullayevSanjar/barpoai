@@ -48,6 +48,8 @@ export interface Endpoint {
   adminOnly?: boolean;
   pageFor?: (body: Row, query: Row) => Page;
   response?: Record<string, unknown>;
+  /** Marshrutga xos cheklov (masalan, login uchun qattiqroq). */
+  rateLimit?: { max: number; timeWindow: string };
   /** 'set' — javobdagi access_token cookie sifatida ham qo'yiladi; 'clear' — cookie o'chiriladi. */
   session?: 'set' | 'clear';
   handler: (ctx: Context) => Promise<any>;
@@ -71,6 +73,7 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
     app.route({
       method: route.method,
       url: route.path,
+      config: route.rateLimit ? { rateLimit: route.rateLimit } : undefined,
       handler: async (request, reply) =>
         transaction(pool, null, async (db) => {
           const body = route.body ? route.body.parse(request.body) : {};
@@ -177,7 +180,11 @@ export async function baseApp(logging = false) {
     origin: appOrigin(),
     credentials: true,
   });
-  await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+  // SPA polling va bitta IP orqasidagi ko'p foydalanuvchi uchun umumiy chegara; login/reset alohida qattiq.
+  await app.register(rateLimit, {
+    max: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 900),
+    timeWindow: '1 minute',
+  });
   app.setErrorHandler((error: any, request, reply) => {
     if (error instanceof z.ZodError)
       return reply.code(400).send({
@@ -196,7 +203,12 @@ export async function baseApp(logging = false) {
     const mapped = mapDatabaseError(error);
     if (mapped.status === 500)
       request.log.error({ code: error.code, name: error.name }, 'Request failed');
-    return reply.code(mapped.status).send({ error: { code: mapped.code }, request_id: request.id });
+    return reply
+      .code(mapped.status)
+      .send({
+        error: { code: mapped.code, details: (mapped as any).details ?? undefined },
+        request_id: request.id,
+      });
   });
   return app;
 }
