@@ -22,6 +22,43 @@ async function accountName(db: Db, tenant: string, id: string | null) {
   return row?.name ?? null;
 }
 
+/** Obyekt bo'yicha hisoblar va qoldiqlar (rol doirasida); eksport ham shu funksiyadan. */
+export async function stockOverview(db: Db, actor: Row, projectId: string) {
+  await projectScope(db, actor, projectId);
+  const accounts = (
+    await db.query(
+      `SELECT a.id,a.warehouse_id,a.custodian_id,coalesce(w.name,u.display_name) name,CASE WHEN a.warehouse_id IS NULL THEN 'custody' ELSE 'warehouse' END kind,u.role custodian_role
+       FROM stock_accounts a LEFT JOIN warehouses w ON w.id=a.warehouse_id LEFT JOIN users u ON u.id=a.custodian_id
+       WHERE a.tenant_id=$1 AND a.project_id=$2 AND ${accountFilter} ORDER BY a.warehouse_id NULLS LAST,name`,
+      [actor.tenant_id, projectId, actor.role, actor.id],
+    )
+  ).rows;
+  const balances = accounts.length
+    ? (
+        await db.query(
+          `SELECT b.account_id,b.material_id,m.name material_name,m.unit_id,b.quantity::text quantity,b.reserved::text reserved,(b.quantity-b.reserved)::text available,
+                  b.value::text value,b.minimum_quantity::text minimum_quantity,(b.quantity-b.reserved<b.minimum_quantity AND b.minimum_quantity>0) low
+           FROM stock_balances b JOIN materials m ON m.id=b.material_id
+           WHERE b.tenant_id=$1 AND b.account_id=ANY($2::uuid[]) AND (b.quantity>0 OR b.reserved>0 OR b.minimum_quantity>0) ORDER BY m.name`,
+          [actor.tenant_id, accounts.map((a) => a.id)],
+        )
+      ).rows
+    : [];
+  const pending = await one(
+    db,
+    `SELECT count(*) FILTER(WHERE kind='transfer' AND status IN ('pending','partial','disputed'))::int transfers,
+            count(*) FILTER(WHERE kind='consumption' AND status IN ('pending','partial','disputed'))::int consumptions,
+            count(*) FILTER(WHERE kind='return' AND status IN ('pending','partial','disputed'))::int returns
+     FROM stock_commands WHERE tenant_id=$1 AND project_id=$2`,
+    [actor.tenant_id, projectId],
+  );
+  const requests = await one(
+    db,
+    "SELECT count(*)::int pending FROM material_requests WHERE tenant_id=$1 AND project_id=$2 AND status='pending'",
+    [actor.tenant_id, projectId],
+  );
+  return { accounts, balances, pending: { ...pending, requests: requests.pending } };
+}
 export function stockExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
@@ -30,42 +67,7 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
     permission: 'stock.read',
     query: z.object({ project_id: uuid }),
     sensitive: true,
-    handler: async ({ db, actor, query }) => {
-      await projectScope(db, actor, query.project_id);
-      const accounts = (
-        await db.query(
-          `SELECT a.id,a.warehouse_id,a.custodian_id,coalesce(w.name,u.display_name) name,CASE WHEN a.warehouse_id IS NULL THEN 'custody' ELSE 'warehouse' END kind,u.role custodian_role
-           FROM stock_accounts a LEFT JOIN warehouses w ON w.id=a.warehouse_id LEFT JOIN users u ON u.id=a.custodian_id
-           WHERE a.tenant_id=$1 AND a.project_id=$2 AND ${accountFilter} ORDER BY a.warehouse_id NULLS LAST,name`,
-          [actor.tenant_id, query.project_id, actor.role, actor.id],
-        )
-      ).rows;
-      const balances = accounts.length
-        ? (
-            await db.query(
-              `SELECT b.account_id,b.material_id,m.name material_name,m.unit_id,b.quantity::text quantity,b.reserved::text reserved,(b.quantity-b.reserved)::text available,
-                      b.value::text value,b.minimum_quantity::text minimum_quantity,(b.quantity-b.reserved<b.minimum_quantity AND b.minimum_quantity>0) low
-               FROM stock_balances b JOIN materials m ON m.id=b.material_id
-               WHERE b.tenant_id=$1 AND b.account_id=ANY($2::uuid[]) AND (b.quantity>0 OR b.reserved>0 OR b.minimum_quantity>0) ORDER BY m.name`,
-              [actor.tenant_id, accounts.map((a) => a.id)],
-            )
-          ).rows
-        : [];
-      const pending = await one(
-        db,
-        `SELECT count(*) FILTER(WHERE kind='transfer' AND status IN ('pending','partial','disputed'))::int transfers,
-                count(*) FILTER(WHERE kind='consumption' AND status IN ('pending','partial','disputed'))::int consumptions,
-                count(*) FILTER(WHERE kind='return' AND status IN ('pending','partial','disputed'))::int returns
-         FROM stock_commands WHERE tenant_id=$1 AND project_id=$2`,
-        [actor.tenant_id, query.project_id],
-      );
-      const requests = await one(
-        db,
-        "SELECT count(*)::int pending FROM material_requests WHERE tenant_id=$1 AND project_id=$2 AND status='pending'",
-        [actor.tenant_id, query.project_id],
-      );
-      return { accounts, balances, pending: { ...pending, requests: requests.pending } };
-    },
+    handler: ({ db, actor, query }) => stockOverview(db, actor, query.project_id),
   });
   add({
     method: 'GET',

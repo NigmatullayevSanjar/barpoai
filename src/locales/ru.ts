@@ -35,9 +35,6 @@ export const ru: Record<string, string> = {
   'common.reason': 'Причина',
   'common.reason_hint': 'Минимум 5 символов; записывается в журнал аудита',
   'common.version_conflict': 'Данные изменены в другом окне. Обновите страницу.',
-  'common.coming_soon': 'Раздел будет подключён на следующем этапе',
-  'common.coming_soon_desc':
-    'Когда backend будет готов, страница заработает с реальными данными. Статические цифры не показываются.',
   'common.not_found': 'Страница не найдена',
   'common.not_found_desc': 'Запрошенный адрес не существует или был перемещён.',
   'common.go_home': 'На главную',

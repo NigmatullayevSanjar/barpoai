@@ -218,12 +218,12 @@ export function authRoutes(add: (r: Endpoint) => void) {
           [actor.id, query.unread ?? false, query.limit, query.offset],
         )
       ).rows;
-      const unread = await one(
+      const counts = await one(
         db,
-        'SELECT count(*)::int unread FROM notifications WHERE user_id=$1 AND read_at IS NULL',
+        'SELECT count(*) FILTER(WHERE read_at IS NULL)::int unread,count(*)::int total FROM notifications WHERE user_id=$1',
         [actor.id],
       );
-      return { items, unread: unread.unread };
+      return { items, unread: counts.unread, total: counts.total };
     },
   });
   add({

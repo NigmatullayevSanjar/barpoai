@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T11:02:52.372Z",
+  "executed_at": "2026-10-04T12:06:57.107Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -25,6 +25,12 @@
     "Task assignment creates in-app notification and durable Telegram outbox job",
     "Telegram multi-step material request creates a pending request; admin resolves it via API",
     "Telegram multi-step progress flow creates a daily report linked to a work line",
+    "Company settings save name/phone/address with optimistic version; muted Telegram category keeps the in-app notification and closes the outbox job",
+    "Dashboard blocks follow permissions: admin totals equal the project journal, brigadier sees no finance/employees/prices",
+    "Audit list filters by action prefix with actor names; project-wide file listing carries task/report context",
+    "Finance summary, plan-actual (with zones), forecast and financial reports respond with monthly rows",
+    "Excel exports (plan-actual, tasks, stock, audit) respect scope and price permission; every export is audited",
+    "Support staff reads diagnostics (queue, errors, tenants, migration); a support response notifies the requesting admin",
     "OpenAPI generated from registered API routes"
   ]
 }

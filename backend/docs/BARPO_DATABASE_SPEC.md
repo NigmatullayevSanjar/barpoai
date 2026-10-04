@@ -652,6 +652,27 @@ CREATE POLICY tenant_isolation ON progress_corrections USING (tenant_id = nullif
 
 ```
 
+## 012_settings_support_diagnostics.sql
+
+```sql
+-- 09-bosqich: kompaniya sozlamalari, support javobi, texnik panel uchun xato jurnali.
+ALTER TABLE tenants
+ ADD COLUMN address text,
+ ADD COLUMN phone text CHECK (phone ~ '^\+998[0-9]{9}$'),
+ ADD COLUMN settings jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE support_requests
+ ADD COLUMN response text,
+ ADD COLUMN responded_by uuid REFERENCES users(id),
+ ADD COLUMN responded_at timestamptz;
+-- 5xx javoblar; faqat platforma texnik xodimi o'qiydi. Tenant ma'lumotlari saqlanmaydi.
+CREATE TABLE error_events (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), request_id text NOT NULL, method text NOT NULL, path text NOT NULL,
+ status integer NOT NULL CHECK(status>=500), code text NOT NULL, message text, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX error_events_created_idx ON error_events(created_at DESC);
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

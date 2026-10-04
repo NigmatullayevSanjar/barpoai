@@ -19,6 +19,7 @@ import {
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
+import { ExportButton } from '@/features/common/ExportButton';
 import { normalizeNumber } from '@/features/estimates/model';
 import type { Employee } from '@/features/projects/types';
 import { ProjectFilter, useProjectFilter } from './pages';
@@ -940,6 +941,15 @@ export function PlanActualPage() {
           fact_qty: string;
           fact_value: string | null;
         }[];
+        by_zone: {
+          zone_name: string;
+          kind: string;
+          lines: number;
+          plan_qty: string;
+          plan_value: string;
+          fact_qty: string;
+          percent: string | null;
+        }[];
         monthly: { month: string; plan_value: string; fact_value: string; budget: string }[];
       }>(`/v1/finance/plan-actual?project_id=${sel.projectId}`),
     enabled: Boolean(sel.projectId),
@@ -953,7 +963,15 @@ export function PlanActualPage() {
   );
   return (
     <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('fin.pa.title')} description={t('fin.pa.sub')} />
+      <PageHeader
+        title={t('fin.pa.title')}
+        description={t('fin.pa.sub')}
+        actions={
+          sel.projectId && (
+            <ExportButton path={`/v1/finance/plan-actual/export?project_id=${sel.projectId}`} />
+          )
+        }
+      />
       <div className="toolbar">
         <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
       </div>
@@ -986,6 +1004,40 @@ export function PlanActualPage() {
               </div>
             ))}
           </div>
+          <section className="card">
+            <div className="card-header">
+              <h3>{t('fin.pa.by_zone')}</h3>
+            </div>
+            <table className="summary-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>{t('est.col.zone')}</th>
+                  <th style={{ textAlign: 'left' }}>{t('est.col.kind')}</th>
+                  <th className="num">{t('fin.pa.lines_count')}</th>
+                  <th className="num">{t('fin.pa.percent')}</th>
+                  <th className="num">{t('fin.pa.plan')} (UZS)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.by_zone.map((z, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td>{z.zone_name === '—' ? t('fin.pa.no_zone') : z.zone_name}</td>
+                    <td>{t(`est.kind.${z.kind}`)}</td>
+                    <td className="num">{z.lines}</td>
+                    <td className="num">{z.percent === null ? '—' : `${Math.round(Number(z.percent))}%`}</td>
+                    <td className="num">{formatMoney(z.plan_value, lang, false)}</td>
+                  </tr>
+                ))}
+                {d.by_zone.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="muted" style={{ padding: 16, textAlign: 'center' }}>
+                      {t('fin.pa.empty')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
           <section className="card">
             <div className="card-header">
               <h3>{t('fin.pa.by_month')}</h3>

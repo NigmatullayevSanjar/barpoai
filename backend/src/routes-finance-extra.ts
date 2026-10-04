@@ -18,18 +18,73 @@ import { postFinance } from './finance.js';
 import { notify, projectRecipients } from './notify.js';
 import { dec, money } from './money.js';
 
-const payableKinds = ['supplier_invoice', 'opening_debt', 'labor', 'equipment', 'service'];
+export const payableKinds = ['supplier_invoice', 'opening_debt', 'labor', 'equipment', 'service'];
 /** Hujjatning to'lanmagan qoldig'i: amount − bog'langan (teskari qilinmagan) to'lovlar. */
-const outstandingSql = `(f.amount-coalesce((SELECT sum(p.amount) FROM finance_documents p WHERE p.tenant_id=f.tenant_id AND p.allocated_invoice_id=f.id AND NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=p.tenant_id AND r.reverses_id=p.id)),0))`;
-const notReversedSql = `NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=f.tenant_id AND r.reverses_id=f.id)`;
+export const outstandingSql = `(f.amount-coalesce((SELECT sum(p.amount) FROM finance_documents p WHERE p.tenant_id=f.tenant_id AND p.allocated_invoice_id=f.id AND NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=p.tenant_id AND r.reverses_id=p.id)),0))`;
+export const notReversedSql = `NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=f.tenant_id AND r.reverses_id=f.id)`;
 
-async function projectIds(db: Db, actor: Row) {
+export async function projectIds(db: Db, actor: Row) {
   return (
     await db.query(
       `SELECT p.id FROM projects p WHERE p.tenant_id=$1 AND p.archived_at IS NULL AND ($2='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND a.user_id=$3))`,
       [actor.tenant_id, actor.role, actor.id],
     )
   ).rows.map((r) => r.id as string);
+}
+/** Reja–fakt hisobi: tur, zona, qator va oy kesimida. Fakt — qabul qilingan sarf va tasdiqlangan progress (tuzatishlar bilan). */
+export async function planActual(db: Db, actor: Row, projectId: string) {
+  await projectScope(db, actor, projectId);
+  const byKind = (
+    await db.query(
+      `WITH plan AS (SELECT l.kind,sum(l.total) plan_value,sum(l.effective_quantity) plan_qty FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL GROUP BY l.kind),
+       fact_material AS (SELECT coalesce(-sum(j.amount),0) v FROM journal_entries j JOIN stock_commands c ON c.id=j.stock_command_id WHERE j.tenant_id=$1 AND j.project_id=$2 AND j.account='inventory' AND c.kind IN ('consumption','adjustment') AND j.amount<0),
+       fact_docs AS (SELECT f.kind,sum(f.amount) v FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.kind IN ('labor','equipment','service') AND ${notReversedSql} GROUP BY f.kind)
+       SELECT k.kind,coalesce(p.plan_value,0)::text plan_value,coalesce(p.plan_qty,0)::text plan_qty,
+              CASE k.kind WHEN 'material' THEN (SELECT v FROM fact_material) ELSE coalesce((SELECT v FROM fact_docs d WHERE d.kind=k.kind),0) END::text fact_value
+       FROM (VALUES ('material'),('labor'),('equipment'),('service')) k(kind) LEFT JOIN plan p ON p.kind=k.kind`,
+      [actor.tenant_id, projectId],
+    )
+  ).rows;
+  const lines = (
+    await db.query(
+      `SELECT l.id,l.kind,l.category,l.description,l.unit_id,l.effective_quantity::text plan_qty,l.total::text plan_value,z.name zone_name,e.name estimate_name,
+              CASE WHEN l.kind='material'
+                THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_qty,
+              CASE WHEN l.kind='material'
+                THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
+                ELSE NULL END fact_value
+       FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
+       WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL ORDER BY e.name,l.position,l.id`,
+      [actor.tenant_id, projectId],
+    )
+  ).rows;
+  const monthly = (
+    await db.query(
+      `WITH plan AS (SELECT m.month,sum(m.quantity*l.unit_price) v FROM estimate_months m JOIN estimate_lines l ON l.tenant_id=m.tenant_id AND l.id=m.line_id JOIN estimates e ON e.id=l.estimate_id WHERE m.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL GROUP BY m.month),
+       fact AS (SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,sum(amount) v FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1),
+       budget AS (SELECT month,amount FROM budgets WHERE tenant_id=$1 AND project_id=$2)
+       SELECT coalesce(p.month,f.month,b.month) AS month,coalesce(p.v,0)::text plan_value,coalesce(f.v,0)::text fact_value,coalesce(b.amount,0)::text budget
+       FROM plan p FULL JOIN fact f ON f.month=p.month FULL JOIN budget b ON b.month=coalesce(p.month,f.month) ORDER BY 1`,
+      [actor.tenant_id, projectId],
+    )
+  ).rows;
+  const byZone = (
+    await db.query(
+      `SELECT coalesce(z.name,'—') zone_name,l.kind,count(*)::int lines,sum(l.effective_quantity)::text plan_qty,sum(l.total)::text plan_value,
+              sum(CASE WHEN l.kind='material'
+                THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                ELSE (SELECT coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0) FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END)::text fact_qty,
+              avg(CASE WHEN l.effective_quantity>0 THEN least(100,100*(CASE WHEN l.kind='material'
+                THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                ELSE (SELECT coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0) FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END)/l.effective_quantity) END)::numeric(5,1)::text percent
+       FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
+       WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL
+       GROUP BY z.name,l.kind ORDER BY z.name NULLS LAST,l.kind`,
+      [actor.tenant_id, projectId],
+    )
+  ).rows;
+  return { by_kind: byKind, by_zone: byZone, lines, monthly };
 }
 async function ensureEmployeeCounterparty(db: Db, actor: Row, employeeId: string) {
   const user = await one(db, 'SELECT id,display_name FROM users WHERE tenant_id=$1 AND id=$2', [
@@ -235,13 +290,13 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       const monthly = (
         await db.query(
           `WITH months AS (
-             SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date month,
+             SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,
                     coalesce(sum(amount) FILTER(WHERE account='expense'),0) expense,
                     coalesce(sum(amount) FILTER(WHERE account='cash' AND amount<0),0) cash_out,
                     coalesce(sum(amount) FILTER(WHERE account='cash' AND amount>0),0) cash_in
              FROM journal_entries WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) GROUP BY 1),
            budget AS (SELECT month,sum(amount) amount FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) GROUP BY month)
-           SELECT coalesce(m.month,b.month) month,coalesce(m.expense,0)::text expense,coalesce(m.cash_out,0)::text cash_out,coalesce(m.cash_in,0)::text cash_in,coalesce(b.amount,0)::text budget
+           SELECT coalesce(m.month,b.month) AS month,coalesce(m.expense,0)::text expense,coalesce(m.cash_out,0)::text cash_out,coalesce(m.cash_in,0)::text cash_in,coalesce(b.amount,0)::text budget
            FROM months m FULL JOIN budget b ON b.month=m.month ORDER BY 1`,
           [actor.tenant_id, projects],
         )
@@ -773,45 +828,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
     permission: 'finance.read',
     page: 'plan_actual',
     query: z.object({ project_id: uuid }),
-    handler: async ({ db, actor, query }) => {
-      await projectScope(db, actor, query.project_id);
-      const byKind = (
-        await db.query(
-          `WITH plan AS (SELECT l.kind,sum(l.total) plan_value,sum(l.effective_quantity) plan_qty FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL GROUP BY l.kind),
-           fact_material AS (SELECT coalesce(-sum(j.amount),0) v FROM journal_entries j JOIN stock_commands c ON c.id=j.stock_command_id WHERE j.tenant_id=$1 AND j.project_id=$2 AND j.account='inventory' AND c.kind IN ('consumption','adjustment') AND j.amount<0),
-           fact_docs AS (SELECT f.kind,sum(f.amount) v FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.kind IN ('labor','equipment','service') AND ${notReversedSql} GROUP BY f.kind)
-           SELECT k.kind,coalesce(p.plan_value,0)::text plan_value,coalesce(p.plan_qty,0)::text plan_qty,
-                  CASE k.kind WHEN 'material' THEN (SELECT v FROM fact_material) ELSE coalesce((SELECT v FROM fact_docs d WHERE d.kind=k.kind),0) END::text fact_value
-           FROM (VALUES ('material'),('labor'),('equipment'),('service')) k(kind) LEFT JOIN plan p ON p.kind=k.kind`,
-          [actor.tenant_id, query.project_id],
-        )
-      ).rows;
-      const lines = (
-        await db.query(
-          `SELECT l.id,l.kind,l.category,l.description,l.unit_id,l.effective_quantity::text plan_qty,l.total::text plan_value,z.name zone_name,e.name estimate_name,
-                  CASE WHEN l.kind='material'
-                    THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
-                    ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_qty,
-                  CASE WHEN l.kind='material'
-                    THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
-                    ELSE NULL END fact_value
-           FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
-           WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL ORDER BY e.name,l.position,l.id`,
-          [actor.tenant_id, query.project_id],
-        )
-      ).rows;
-      const monthly = (
-        await db.query(
-          `WITH plan AS (SELECT m.month,sum(m.quantity*l.unit_price) v FROM estimate_months m JOIN estimate_lines l ON l.tenant_id=m.tenant_id AND l.id=m.line_id JOIN estimates e ON e.id=l.estimate_id WHERE m.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL GROUP BY m.month),
-           fact AS (SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date month,sum(amount) v FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1),
-           budget AS (SELECT month,amount FROM budgets WHERE tenant_id=$1 AND project_id=$2)
-           SELECT coalesce(p.month,f.month,b.month) month,coalesce(p.v,0)::text plan_value,coalesce(f.v,0)::text fact_value,coalesce(b.amount,0)::text budget
-           FROM plan p FULL JOIN fact f ON f.month=p.month FULL JOIN budget b ON b.month=coalesce(p.month,f.month) ORDER BY 1`,
-          [actor.tenant_id, query.project_id],
-        )
-      ).rows;
-      return { by_kind: byKind, lines, monthly };
-    },
+    handler: ({ db, actor, query }) => planActual(db, actor, query.project_id),
   });
   add({
     method: 'GET',
@@ -835,7 +852,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       );
       const months = (
         await db.query(
-          `SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01') month,sum(amount)::text expense FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1 ORDER BY 1 DESC LIMIT 3`,
+          `SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01') AS month,sum(amount)::text expense FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1 ORDER BY 1 DESC LIMIT 3`,
           [actor.tenant_id, query.project_id],
         )
       ).rows;
@@ -889,14 +906,14 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         : await projectIds(db, actor);
       const cashFlow = (
         await db.query(
-          `SELECT to_char(date_trunc('month',j.created_at),'YYYY-MM-01') month,c.name account,c.kind,coalesce(sum(j.amount) FILTER(WHERE j.amount>0),0)::text inflow,coalesce(sum(-j.amount) FILTER(WHERE j.amount<0),0)::text outflow
+          `SELECT to_char(date_trunc('month',j.created_at),'YYYY-MM-01') AS month,c.name account,c.kind,coalesce(sum(j.amount) FILTER(WHERE j.amount>0),0)::text inflow,coalesce(sum(-j.amount) FILTER(WHERE j.amount<0),0)::text outflow
          FROM journal_entries j JOIN cash_accounts c ON c.id=j.cash_account_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='cash' AND j.created_at::date BETWEEN $3 AND $4 GROUP BY 1,2,3 ORDER BY 1,2`,
           [actor.tenant_id, projects, query.from, query.to],
         )
       ).rows;
       const expenses = (
         await db.query(
-          `SELECT p.name project,to_char(date_trunc('month',j.created_at),'YYYY-MM-01') month,
+          `SELECT p.name project,to_char(date_trunc('month',j.created_at),'YYYY-MM-01') AS month,
                 coalesce(sum(j.amount) FILTER(WHERE j.stock_command_id IS NOT NULL),0)::text material,coalesce(sum(j.amount) FILTER(WHERE j.finance_document_id IS NOT NULL),0)::text other,sum(j.amount)::text total
          FROM journal_entries j JOIN projects p ON p.id=j.project_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='expense' AND j.created_at::date BETWEEN $3 AND $4 GROUP BY 1,2 ORDER BY 1,2`,
           [actor.tenant_id, projects, query.from, query.to],
@@ -910,8 +927,8 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
                 coalesce(sum(${outstandingSql}) FILTER(WHERE f.due_date<current_date-30 AND f.due_date>=current_date-90),0)::text d90,
                 coalesce(sum(${outstandingSql}) FILTER(WHERE f.due_date<current_date-90),0)::text older,
                 coalesce(sum(${outstandingSql}),0)::text total
-         FROM finance_documents f JOIN counterparties c ON c.id=f.counterparty_id WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($5::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 GROUP BY c.name ORDER BY 6 DESC`,
-          [actor.tenant_id, projects, query.from, query.to, payableKinds],
+         FROM finance_documents f JOIN counterparties c ON c.id=f.counterparty_id WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($3::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 GROUP BY c.name ORDER BY 6 DESC`,
+          [actor.tenant_id, projects, payableKinds],
         )
       ).rows;
       const income = await one(

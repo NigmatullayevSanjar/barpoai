@@ -742,6 +742,94 @@ try {
   await adminPage.getByRole('button', { name: 'UZ', exact: true }).click();
   checks.push('Profile issues one-time Telegram deep link; UI switches between UZ and RU');
 
+  // 6b. 09-bosqich: dashboard bloklari, sozlamalar, bildirishnomalar, audit, fayllar, eksport, texnik panel
+  const projectId = projectUrl.split('/').pop()!;
+  await adminPage.goto(webURL + '/app');
+  await adminPage.getByText('Ochiq vazifalar', { exact: true }).waitFor();
+  await adminPage.getByText('Qolgan budjet', { exact: true }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Yaqin vazifalarim' }).waitFor();
+  await brigadierPage.goto(webURL + '/app');
+  await brigadierPage.getByRole('heading', { name: 'Yaqin vazifalarim' }).waitFor();
+  assert.equal(await brigadierPage.getByText('Qolgan budjet', { exact: true }).count(), 0);
+  checks.push(
+    'Dashboard blocks follow permissions in the browser: admin sees finance, brigadier does not',
+  );
+  await adminPage.goto(webURL + '/app/settings');
+  await adminPage.getByLabel('Kompaniya nomi').fill('UI Sinov Qurilish MCHJ');
+  await adminPage.getByLabel('Telefon').fill('+998 71 200 00 11');
+  await adminPage.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await adminPage.getByText('Sozlamalar saqlandi').first().waitFor();
+  await adminPage.locator('.sidebar-tenant', { hasText: 'UI Sinov Qurilish MCHJ' }).waitFor();
+  await adminPage.getByRole('switch', { name: /Vazifalar/ }).click();
+  let tenantSettings: any = {};
+  for (let i = 0; i < 40 && tenantSettings.tasks !== 'false'; i++) {
+    tenantSettings = (
+      await owner.query(
+        "SELECT settings->'telegram'->>'tasks' tasks,phone FROM tenants WHERE registration_key=$1",
+        ['UI-TEST-001'],
+      )
+    ).rows[0];
+    if (tenantSettings.tasks !== 'false') await delay(250);
+  }
+  assert.deepEqual([tenantSettings.tasks, tenantSettings.phone], ['false', '+998712000011']);
+  checks.push(
+    'Settings page saves company name/phone (sidebar updates) and mutes a Telegram category',
+  );
+  await brigadierPage.goto(webURL + '/notifications');
+  await brigadierPage.getByRole('heading', { name: 'Bildirishnomalar' }).waitFor();
+  await brigadierPage.getByText('Yangi vazifa', { exact: false }).first().waitFor();
+  await brigadierPage.getByRole('button', { name: 'Hammasini o‘qilgan qilish' }).click();
+  await brigadierPage
+    .getByRole('button', { name: 'O‘qildi' })
+    .first()
+    .waitFor({ state: 'detached' });
+  checks.push('Notifications page lists history and marks everything read');
+  await adminPage.goto(webURL + '/app/audit');
+  await adminPage.getByPlaceholder('Amal bo‘yicha (masalan, task.)').fill('company.');
+  await adminPage.getByText('company.settings').first().waitFor();
+  await adminPage.goto(webURL + '/app/files?project=' + projectId);
+  await adminPage.getByRole('button', { name: 'foto.png' }).first().waitFor();
+  checks.push('Audit page filters by action prefix; files page shows report photos by project');
+  await adminPage.goto(webURL + '/app/finance/plan-actual?project=' + projectId);
+  await adminPage.getByRole('heading', { name: 'Zonalar bo‘yicha' }).waitFor();
+  const [download] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    adminPage.getByRole('button', { name: 'Excel' }).click(),
+  ]);
+  assert.match(download.suggestedFilename(), /reja-fakt\.xlsx$/);
+  checks.push('Plan–actual page renders the zone rollup and downloads the Excel export');
+  await owner.query(
+    "INSERT INTO users(login,display_name,password_hash,role) VALUES('ui_tech','Texnik xodim',$1,'super_admin')",
+    [await hashPassword(password)],
+  );
+  const techPage = await newPage();
+  await login(techPage, 'ui_tech', password);
+  await techPage.getByRole('heading', { name: 'Murojaatlar' }).waitFor();
+  await techPage.goto(webURL + '/admin/diagnostics');
+  await techPage.getByText('Worker navbati', { exact: true }).waitFor();
+  await techPage.getByText(/Oxirgi migratsiya: 012_settings_support_diagnostics\.sql/).waitFor();
+  await adminPage.goto(webURL + '/app/billing');
+  await adminPage.getByRole('button', { name: 'Yordam so‘rovi yuborish' }).click();
+  await adminPage.getByRole('dialog').getByLabel('Xabar').fill('UI sinov: eksport qayerda?');
+  await adminPage.getByRole('dialog').locator('.modal-footer button').last().click();
+  await adminPage.getByRole('dialog').waitFor({ state: 'detached' });
+  await techPage.goto(webURL + '/admin/support');
+  await techPage.getByText('UI sinov: eksport qayerda?').waitFor();
+  await techPage.getByRole('button', { name: 'Javob yozish' }).first().click();
+  await techPage
+    .getByRole('dialog')
+    .getByLabel('Javob')
+    .fill('UI sinov: eksport tugmasi reja–fakt sahifasida.');
+  await techPage.getByRole('dialog').getByRole('button', { name: 'Javob berib yopish' }).click();
+  await techPage.getByRole('dialog').waitFor({ state: 'detached' });
+  await techPage.getByRole('button', { name: 'Yopiq', exact: true }).first().click();
+  await techPage.getByText('Javob: UI sinov: eksport tugmasi').waitFor();
+  await adminPage.goto(webURL + '/notifications');
+  await adminPage.getByText('BARPO AI support javobi').first().waitFor();
+  checks.push(
+    'Super admin reads diagnostics (queue, migration) and answers a support request; the admin receives the reply as a notification',
+  );
+
   // 7. Platforma egasi: tarif biriktirish, invoys, to'lov, holat
   await ownerPage.reload();
   await ownerPage.getByText('Sinov Admini').waitFor();

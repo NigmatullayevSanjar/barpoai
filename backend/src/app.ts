@@ -13,8 +13,15 @@ import { permissionRoutes } from './routes-permissions.js';
 import { operationRoutes } from './routes-operations.js';
 import { workRoutes } from './routes-work.js';
 import { lifecycleRoutes } from './routes-lifecycle.js';
+import { dashboardRoutes } from './routes-dashboard.js';
 export async function buildApp(pool: pg.Pool, logging = false) {
-  const app = await baseApp(logging);
+  // 5xx javoblar texnik panel (error_events) uchun yoziladi; yozuv xatosi javobni buzmaydi.
+  const app = await baseApp(logging, async (e) => {
+    await pool.query(
+      'INSERT INTO error_events(request_id,method,path,status,code,message) VALUES($1,$2,$3,$4,$5,$6)',
+      [e.request_id, e.method, e.path, e.status, e.code, e.message],
+    );
+  });
   const definitions: Endpoint[] = [];
   const add = router(app, pool, definitions);
   app.get('/health/live', async () => ({ status: 'ok' }));
@@ -22,7 +29,7 @@ export async function buildApp(pool: pg.Pool, logging = false) {
     try {
       await pool.query('SELECT 1 FROM schema_migrations LIMIT 1');
       return { status: 'ok' };
-    } catch {
+    } catch (e) {
       return reply.code(503).send({ status: 'unavailable' });
     }
   });
@@ -39,6 +46,7 @@ export async function buildApp(pool: pg.Pool, logging = false) {
   operationRoutes(add);
   workRoutes(add);
   lifecycleRoutes(add);
+  dashboardRoutes(add);
   app.get('/openapi.json', async () => openapi(definitions));
   return { app, definitions };
 }

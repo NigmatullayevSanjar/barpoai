@@ -16,7 +16,6 @@ import {
   RegisterPage,
   ResetPasswordPage,
 } from '@/features/auth/pages';
-import { ComingSoon } from '@/features/common/ComingSoon';
 
 const ProfilePage = lazy(() =>
   import('@/features/profile/ProfilePage').then((m) => ({
@@ -82,6 +81,20 @@ const ReportsPage = lazy(() =>
 const EmployeesPage = lazy(() =>
   import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })),
 );
+const SettingsPage = lazy(() =>
+  import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
+const NotificationsPage = lazy(() =>
+  import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
+);
+const FilesPage = lazy(() => import('@/features/files/FilesPage').then((m) => ({ default: m.FilesPage })));
+const IntegrationsPage = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
+);
+const CameraPage = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.CameraPage })),
+);
+const AuditPage = lazy(() => import('@/features/audit/AuditPage').then((m) => ({ default: m.AuditPage })));
 const Platform = {
   Dashboard: lazy(() =>
     import('@/features/platform/pages').then((m) => ({
@@ -132,8 +145,8 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Hali o'z sahifasi yozilmagan kompaniya bo'limlari: halol "keyingi bosqich" holati. */
-const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
+/** Sahifa kaliti → kompaniya sahifasi; ruxsat RequirePage orqali tekshiriladi. */
+const tenantPages: Record<Page, React.ReactNode> = {
   dashboard: <TenantDashboard />,
   projects: <ProjectsPage />,
   employees: <EmployeesPage />,
@@ -141,6 +154,11 @@ const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
   stock: <StockPage />,
   tasks: <TasksPage />,
   reports: <ReportsPage />,
+  files: <FilesPage />,
+  integrations: <IntegrationsPage />,
+  camera: <CameraPage />,
+  settings: <SettingsPage />,
+  audit: <AuditPage />,
   finance: <Fin.Hub />,
   accounting_documents: <Fin.Docs page="accounting_documents" />,
   invoices: <Fin.Docs page="invoices" />,
@@ -188,16 +206,14 @@ export function App() {
                     </Route>
                     <Route element={<AppShell />}>
                       <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/notifications" element={<NotificationsPage />} />
                     </Route>
                   </Route>
                   <Route element={<RequireAuth platform={false} />}>
                     <Route element={<AppShell />}>
                       {pages.map((page) => (
                         <Route key={page} element={<RequirePage page={page} />}>
-                          <Route
-                            path={pageRoutes[page]}
-                            element={implementedTenantPages[page] ?? <ComingSoon titleKey={`page.${page}`} />}
-                          />
+                          <Route path={pageRoutes[page]} element={tenantPages[page]} />
                         </Route>
                       ))}
                       <Route element={<RequirePage page="projects" />}>

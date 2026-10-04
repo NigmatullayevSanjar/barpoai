@@ -155,7 +155,18 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
     });
   };
 }
-export async function baseApp(logging = false) {
+export type ServerErrorInfo = {
+  request_id: string;
+  method: string;
+  path: string;
+  status: number;
+  code: string;
+  message: string;
+};
+export async function baseApp(
+  logging = false,
+  onServerError?: (info: ServerErrorInfo) => Promise<void>,
+) {
   const app = Fastify({
     logger: logging
       ? {
@@ -201,8 +212,18 @@ export async function baseApp(logging = false) {
     if (error.statusCode === 400)
       return reply.code(400).send({ error: { code: 'INVALID_JSON' }, request_id: request.id });
     const mapped = mapDatabaseError(error);
-    if (mapped.status === 500)
+    if (mapped.status === 500) {
       request.log.error({ code: error.code, name: error.name }, 'Request failed');
+      // Texnik panel uchun yozuv; muvaffaqiyatsiz bo'lsa javobga ta'sir qilmaydi.
+      void onServerError?.({
+        request_id: request.id,
+        method: request.method,
+        path: request.url.split('?')[0]!.slice(0, 200),
+        status: 500,
+        code: String(error?.code ?? error?.name ?? 'INTERNAL_ERROR').slice(0, 60),
+        message: String(error?.message ?? '').slice(0, 300),
+      }).catch(() => undefined);
+    }
     return reply.code(mapped.status).send({
       error: { code: mapped.code, details: (mapped as any).details ?? undefined },
       request_id: request.id,

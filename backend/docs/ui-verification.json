@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T10:59:59.665Z",
+  "executed_at": "2026-10-04T12:28:42.526Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -28,6 +28,12 @@
     "Brigadier submits a daily report with work progress and uploads a photo",
     "Report acceptance posts progress once; a signed correction adjusts the effective fact without editing history",
     "Profile issues one-time Telegram deep link; UI switches between UZ and RU",
+    "Dashboard blocks follow permissions in the browser: admin sees finance, brigadier does not",
+    "Settings page saves company name/phone (sidebar updates) and mutes a Telegram category",
+    "Notifications page lists history and marks everything read",
+    "Audit page filters by action prefix; files page shows report photos by project",
+    "Plan–actual page renders the zone rollup and downloads the Excel export",
+    "Super admin reads diagnostics (queue, migration) and answers a support request; the admin receives the reply as a notification",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
     "Logout clears the session cookie and protected routes redirect to login",
     "No uncaught React/browser errors"

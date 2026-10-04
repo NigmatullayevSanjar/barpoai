@@ -77,11 +77,16 @@ function NotificationsBell() {
         <div className="dropdown notif-panel">
           <header>
             <span>{t('notif.title')}</span>
-            {unread > 0 && (
-              <Button size="sm" variant="ghost" onClick={markAll}>
-                {t('notif.mark_all')}
-              </Button>
-            )}
+            <span className="row">
+              {unread > 0 && (
+                <Button size="sm" variant="ghost" onClick={markAll}>
+                  {t('notif.mark_all')}
+                </Button>
+              )}
+              <Link to="/notifications" className="text-sm" onClick={() => setOpen(false)}>
+                {t('notifpage.see_all')}
+              </Link>
+            </span>
           </header>
           <div className="notif-list">
             {query.data?.items.length ? (

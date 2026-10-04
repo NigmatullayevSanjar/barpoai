@@ -105,3 +105,13 @@ test('Telegram bot ignores updates without text or sender', async () => {
   await handleUpdate({} as never, { update_id: 2 } as never);
   assert.ok(true);
 });
+test('notification kinds map to company Telegram categories', async () => {
+  const { notificationCategory } = await import('../src/notify.js');
+  assert.equal(notificationCategory('task.assigned'), 'tasks');
+  assert.equal(notificationCategory('task.overdue'), 'tasks');
+  assert.equal(notificationCategory('report.returned'), 'reports');
+  assert.equal(notificationCategory('progress.corrected'), 'reports');
+  assert.equal(notificationCategory('stock.request.fulfilled'), 'stock');
+  assert.equal(notificationCategory('payment.request.approved'), 'finance');
+  assert.equal(notificationCategory('support.response'), 'other');
+});

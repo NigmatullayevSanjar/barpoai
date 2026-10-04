@@ -74,3 +74,15 @@ UySot receipt bank cash eventiga reconciliation orqali bog‘lanishi kerak; bu i
 Task: todo→in_progress→submitted→accepted yoki returned→in_progress/submitted. Assignee yuboradi, reviewer yoki tenant admin qabul qiladi; reviewer=assignee taqiqlangan. Qaytarishda reason, optimistic version va audit kerak. Accepted/submitted taskni oddiy tahrirlash/archive yopiq.
 
 Report: submitted→accepted/returned, returned→submitted. Daily/weekly alohida kind. Qabulda non-material estimate line uchun progress_entries unique(report_id), forecast_end projectga yoziladi. planned_end o‘zgarmaydi. Qabul qilingan hisobotga photo qo‘shish/o‘chirish yopiq. Returned report matnini tuzatishdan oldingi content auditda. Accepted progressni tuzatish uchun explicit reversal/supersession hali implementatsiya gate; yangi report bilan eski progressni ikki marta hisoblash mumkin emas.
+
+## Sozlamalar, bildirishnoma toifalari va texnik panel (2026-10-04)
+
+Kompaniya nomi, manzili va telefonini kompaniya admini o‘zi tahrirlaydi (`settings` sahifasi); platforma egasidagi alias alohida qoladi. Logotip saqlanmaydi. Telegram bildirishnoma toifalari kompaniya darajasida (`tenants.settings.telegram`): o‘chirilgan toifa ilova ichidagi yozuvni to‘xtatmaydi, faqat Telegramga yubormaydi; dedup saqlanishi uchun outbox yozuvi `done/DISABLED_BY_SETTINGS` bilan yoziladi.
+
+Dashboard har bir blokni foydalanuvchining haqiqiy ruxsati bilan hisoblaydi; ruxsat yo‘q blok `null`, yolg‘on nol ko‘rsatilmaydi. Ko‘rsatkich manbalari `BARPO_DASHBOARD_METRICS.md` da. Eksport faqat o‘sha ro‘yxatni ko‘rish huquqi bilan ishlaydi va auditga yoziladi; narx huquqi bo‘lmasa summa ustunlari chiqmaydi.
+
+Texnik panel faqat bazadagi haqiqiy holatni ko‘rsatadi (5xx xatolar `error_events`, worker navbati, sessiyalar); CPU/RAM/backup hosting bilan birga. Support javobi murojaat egasiga bildirishnoma sifatida boradi va biznes/moliya ma’lumotini o‘zgartirmaydi.
+
+**Egasi qarori (2026-10-04):** AI yordamchi mahsulot doirasidan chiqarildi; kontrakt ham, UI ham rejalashtirilmaydi.
+
+Tuzatilgan xatolar: moliya yig‘masi, reja–fakt, prognoz va moliyaviy hisobotlardagi oylik so‘rovlar (`month` yalang‘och alias) hamda qarz yoshi so‘rovidagi ortiqcha parametr 500 qaytarar edi — integration testga regressiya tekshiruvi qo‘shildi; super admin uchun murojaatlar ro‘yxati va support xodimi uchun diagnostika ruxsati menyu bilan moslashtirildi.

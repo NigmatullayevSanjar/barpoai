@@ -36,9 +36,6 @@ export const uz: Record<string, string> = {
   'common.reason': 'Sabab',
   'common.reason_hint': 'Kamida 5 ta belgi; audit jurnaliga yoziladi',
   'common.version_conflict': 'Ma’lumot boshqa oynada o‘zgargan. Sahifani yangilang.',
-  'common.coming_soon': 'Bu bo‘lim keyingi bosqichda ulanadi',
-  'common.coming_soon_desc':
-    'Backend tayyor bo‘lgach bu sahifa real ma’lumot bilan ishlaydi. Statik raqamlar ko‘rsatilmaydi.',
   'common.not_found': 'Sahifa topilmadi',
   'common.not_found_desc': 'Siz so‘ragan manzil mavjud emas yoki ko‘chirilgan.',
   'common.go_home': 'Bosh sahifaga',

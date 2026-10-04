@@ -11,12 +11,14 @@ import { financeUz } from '@/locales/finance.uz';
 import { financeRu } from '@/locales/finance.ru';
 import { workUz } from '@/locales/work.uz';
 import { workRu } from '@/locales/work.ru';
+import { opsUz } from '@/locales/ops.uz';
+import { opsRu } from '@/locales/ops.ru';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
 const dictionaries: Record<Lang, Dict> = {
-  uz: { ...uz, ...erpUz, ...estimatesUz, ...stockUz, ...financeUz, ...workUz },
-  ru: { ...ru, ...erpRu, ...estimatesRu, ...stockRu, ...financeRu, ...workRu },
+  uz: { ...uz, ...erpUz, ...estimatesUz, ...stockUz, ...financeUz, ...workUz, ...opsUz },
+  ru: { ...ru, ...erpRu, ...estimatesRu, ...stockRu, ...financeRu, ...workRu, ...opsRu },
 };
 const STORAGE_KEY = 'barpo.lang';
 

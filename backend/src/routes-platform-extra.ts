@@ -3,6 +3,7 @@ import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
 import { uuid, idParams, pageQuery } from './schemas.js';
 import { accessState } from './auth.js';
+import { notify } from './notify.js';
 const owner = ['platform_owner'];
 /** Platforma egasi va texnik xodimlar uchun o'qish/ko'rish endpointlari (frontend kartalari uchun). */
 export function platformExtraRoutes(add: (r: Endpoint) => void) {
@@ -102,16 +103,38 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'PATCH',
     path: '/v1/platform/support/:id',
-    summary: 'Murojaatni yopish yoki qayta ochish',
+    summary:
+      'Murojaatni yopish yoki qayta ochish; javob yozilsa murojaat egasiga bildirishnoma ketadi',
     platform: ['support', 'platform_owner', 'super_admin'],
     params: idParams,
-    body: z.strictObject({ status: z.enum(['open', 'closed']) }),
+    body: z.strictObject({
+      status: z.enum(['open', 'closed']),
+      response: z.string().trim().min(2).max(2000).optional(),
+    }),
     handler: async ({ db, actor, params, body }) => {
-      const row = await one(db, 'UPDATE support_requests SET status=$2 WHERE id=$1 RETURNING *', [
-        params.id,
-        body.status,
-      ]);
-      await audit(db, actor, `support.${body.status}`, row.id);
+      const row = await one(
+        db,
+        `UPDATE support_requests SET status=$2,
+           response=coalesce($3,response),responded_by=CASE WHEN $3 IS NULL THEN responded_by ELSE $4 END,
+           responded_at=CASE WHEN $3 IS NULL THEN responded_at ELSE now() END
+         WHERE id=$1 RETURNING *`,
+        [params.id, body.status, body.response ?? null, actor.id],
+      );
+      await audit(db, actor, `support.${body.status}`, row.id, {
+        responded: Boolean(body.response),
+      });
+      if (body.response) {
+        await db.query("SELECT set_config('app.tenant_id',$1,true)", [row.tenant_id]);
+        await notify(db, {
+          tenant_id: row.tenant_id,
+          user_id: row.user_id,
+          kind: 'support.response',
+          title: 'BARPO AI support javobi',
+          body: `${row.message.slice(0, 120)}${row.message.length > 120 ? '…' : ''}\n\nJavob: ${body.response}`,
+          payload: { support_request_id: row.id, status: body.status },
+        });
+        await db.query("SELECT set_config('app.tenant_id','',true)");
+      }
       return row;
     },
   });

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { uuid, idParams, reason } from './schemas.js';
+import { uuid, idParams, reason, pageQuery } from './schemas.js';
 import { projectScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { notify } from './notify.js';
@@ -143,26 +143,50 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/files',
-    summary: 'Hisobot yoki vazifa fayllari ro‘yxati (mazmunsiz)',
+    summary:
+      'Hisobot, vazifa yoki butun obyekt fayllari ro‘yxati (mazmunsiz, manba konteksti bilan)',
     permission: 'files.read',
-    query: z.object({ report_id: uuid.optional(), task_id: uuid.optional() }),
+    query: pageQuery.extend({
+      report_id: uuid.optional(),
+      task_id: uuid.optional(),
+      project_id: uuid.optional(),
+    }),
     handler: async ({ db, actor, query }) => {
-      invariant(query.report_id || query.task_id, 'REPORT_OR_TASK_REQUIRED', 400);
+      invariant(
+        query.report_id || query.task_id || query.project_id,
+        'REPORT_OR_TASK_REQUIRED',
+        400,
+      );
       const parent = query.report_id
         ? await one(db, 'SELECT project_id,author_id FROM reports WHERE tenant_id=$1 AND id=$2', [
             actor.tenant_id,
             query.report_id,
           ])
-        : await one(db, 'SELECT project_id FROM tasks WHERE tenant_id=$1 AND id=$2', [
-            actor.tenant_id,
-            query.task_id,
-          ]);
+        : query.task_id
+          ? await one(db, 'SELECT project_id FROM tasks WHERE tenant_id=$1 AND id=$2', [
+              actor.tenant_id,
+              query.task_id,
+            ])
+          : { project_id: query.project_id };
       await projectScope(db, actor, parent.project_id);
+      const byProject = !query.report_id && !query.task_id;
       return {
         items: (
           await db.query(
-            'SELECT f.id,f.name,f.mime_type,f.size,f.created_at,u.display_name uploaded_by_name FROM files f JOIN users u ON u.id=f.uploaded_by WHERE f.tenant_id=$1 AND f.archived_at IS NULL AND ($2::uuid IS NULL OR f.report_id=$2) AND ($3::uuid IS NULL OR f.task_id=$3) ORDER BY f.created_at',
-            [actor.tenant_id, query.report_id ?? null, query.task_id ?? null],
+            `SELECT f.id,f.name,f.mime_type,f.size,f.created_at,f.report_id,f.task_id,u.display_name uploaded_by_name,
+                    r.report_date,r.status report_status,t.title task_title
+             FROM files f JOIN users u ON u.id=f.uploaded_by LEFT JOIN reports r ON r.id=f.report_id LEFT JOIN tasks t ON t.id=f.task_id
+             WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.archived_at IS NULL AND ($3::uuid IS NULL OR f.report_id=$3) AND ($4::uuid IS NULL OR f.task_id=$4)
+             ORDER BY CASE WHEN $5 THEN f.created_at END DESC,f.created_at LIMIT $6 OFFSET $7`,
+            [
+              actor.tenant_id,
+              parent.project_id,
+              query.report_id ?? null,
+              query.task_id ?? null,
+              byProject,
+              query.limit,
+              query.offset,
+            ],
           )
         ).rows,
       };

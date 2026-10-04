@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { createPool, transaction, one } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
@@ -948,6 +949,205 @@ try {
     ['submitted', 'daily', '7.500000'],
   );
   passed.push('Telegram multi-step progress flow creates a daily report linked to a work line');
+  // ---- 09: kompaniya sozlamalari, dashboard, audit, fayllar, eksport, texnik panel, support javobi
+  const company = await call('GET', '/v1/company', undefined, adminAgain);
+  assert.equal(company.settings.telegram.tasks, true);
+  await call('GET', '/v1/company', undefined, brigadierAgain2, undefined, 403);
+  const savedCompany = await call(
+    'PATCH',
+    '/v1/company',
+    {
+      legal_name: 'Sinov korxona MCHJ',
+      phone: '+998 90 123 45 67',
+      address: 'Toshkent, Chilonzor',
+      settings: { telegram: { tasks: false } },
+      version: company.version,
+    },
+    adminAgain,
+  );
+  assert.equal(savedCompany.phone, '+998901234567');
+  assert.equal(savedCompany.settings.telegram.tasks, false);
+  assert.equal(savedCompany.settings.telegram.stock, true);
+  await call(
+    'PATCH',
+    '/v1/company',
+    { address: 'eski versiya', version: company.version },
+    adminAgain,
+    undefined,
+    409,
+  );
+  const mutedTask = await call(
+    'POST',
+    '/v1/tasks',
+    {
+      project_id: project.id,
+      title: 'Telegram o‘chirilgan sinov',
+      assignee_id: brigadier.id,
+      reviewer_id: foreman.id,
+      priority: 'normal',
+    },
+    adminAgain,
+  );
+  const mutedNotif = (
+    await admin.query(
+      "SELECT id FROM notifications WHERE kind='task.assigned' AND payload->>'task_id'=$1",
+      [mutedTask.id],
+    )
+  ).rows[0];
+  assert(mutedNotif, 'in-app notification is still written when Telegram category is muted');
+  const mutedJob = (
+    await admin.query("SELECT status,error_code FROM outbox WHERE payload->>'notification_id'=$1", [
+      mutedNotif.id,
+    ])
+  ).rows[0];
+  assert.deepEqual([mutedJob.status, mutedJob.error_code], ['done', 'DISABLED_BY_SETTINGS']);
+  passed.push(
+    'Company settings save name/phone/address with optimistic version; muted Telegram category keeps the in-app notification and closes the outbox job',
+  );
+  const dash = await call('GET', '/v1/dashboard', undefined, adminAgain);
+  const dashProject = dash.projects.items.find((p: any) => p.id === project.id);
+  assert(dashProject && dashProject.open_tasks >= 2, 'project row with open task count');
+  assert(dash.tasks.open >= 2 && dash.stock && dash.employees.active >= 5);
+  assert.equal(dash.finance.actual_cost, final.actual_cost);
+  const brigDash = await call('GET', '/v1/dashboard', undefined, brigadierAgain2);
+  assert.equal(brigDash.finance, null);
+  assert.equal(brigDash.employees, null);
+  assert.equal(brigDash.reports.pending_review, null);
+  assert(brigDash.tasks.my_open >= 2 && brigDash.tasks.items.every((x: any) => x.mine));
+  assert.equal(brigDash.stock.inventory_value, null);
+  await call('GET', '/v1/dashboard', undefined, ownerToken, undefined, 403);
+  passed.push(
+    'Dashboard blocks follow permissions: admin totals equal the project journal, brigadier sees no finance/employees/prices',
+  );
+  const audits = await call('GET', '/v1/audit?action=company.&limit=10', undefined, adminAgain);
+  assert(audits.total >= 1 && audits.items.every((a: any) => a.action.startsWith('company.')));
+  assert(audits.items[0].actor_name);
+  await call('GET', '/v1/audit', undefined, brigadierAgain2, undefined, 403);
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  await call(
+    'POST',
+    '/v1/files',
+    {
+      project_id: project.id,
+      task_id: mutedTask.id,
+      name: 'joy.png',
+      mime_type: 'image/png',
+      base64: png,
+    },
+    adminAgain,
+  );
+  const projectFiles = await call(
+    'GET',
+    `/v1/files?project_id=${project.id}`,
+    undefined,
+    adminAgain,
+  );
+  assert(projectFiles.items.some((f: any) => f.task_id === mutedTask.id && f.task_title));
+  passed.push(
+    'Audit list filters by action prefix with actor names; project-wide file listing carries task/report context',
+  );
+  // 07 regressiya: oylik so'rovlar (yalang'och "month" alias) — yig'ma, reja–fakt, prognoz, hisobotlar 200 qaytaradi
+  const finSummary = await call('GET', '/v1/finance/summary', undefined, adminAgain);
+  assert(Array.isArray(finSummary.monthly));
+  const pa = await call(
+    'GET',
+    `/v1/finance/plan-actual?project_id=${project.id}`,
+    undefined,
+    adminAgain,
+  );
+  assert(Array.isArray(pa.monthly) && Array.isArray(pa.by_zone) && pa.by_kind.length === 4);
+  await call('GET', `/v1/finance/forecast?project_id=${project.id}`, undefined, adminAgain);
+  const finReports = await call(
+    'GET',
+    '/v1/finance/reports?from=2026-01-01&to=2026-12-31',
+    undefined,
+    adminAgain,
+  );
+  assert(finReports);
+  passed.push(
+    'Finance summary, plan-actual (with zones), forecast and financial reports respond with monthly rows',
+  );
+  const load = async (res: any) => {
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(Buffer.from(res.base64, 'base64'));
+    return book;
+  };
+  const paBook = await load(
+    await call(
+      'GET',
+      `/v1/finance/plan-actual/export?project_id=${project.id}`,
+      undefined,
+      adminAgain,
+    ),
+  );
+  assert.deepEqual(
+    paBook.worksheets.map((w) => w.name),
+    ['Qatorlar', 'Zonalar', 'Oylar'],
+  );
+  assert.equal(paBook.getWorksheet('Qatorlar')!.getRow(1).getCell(1).value, 'Turi');
+  const taskBook = await load(
+    await call('GET', `/v1/tasks/export?project_id=${project.id}`, undefined, brigadierAgain2),
+  );
+  assert(taskBook.getWorksheet('Vazifalar')!.rowCount >= 3);
+  const stockBook = await load(
+    await call(
+      'GET',
+      `/v1/stock/overview/export?project_id=${project.id}`,
+      undefined,
+      brigadierAgain2,
+    ),
+  );
+  const stockHeaders = (stockBook.getWorksheet('Qoldiqlar')!.getRow(1).values as any[]).filter(
+    Boolean,
+  );
+  assert(!stockHeaders.includes('Qiymat (UZS)'), 'brigadier export has no value column');
+  await load(await call('GET', '/v1/audit/export?action=export.', undefined, adminAgain));
+  await call('GET', '/v1/audit/export', undefined, brigadierAgain2, undefined, 403);
+  assert(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action LIKE 'export.%'"))
+      .rows[0].n >= 4,
+  );
+  passed.push(
+    'Excel exports (plan-actual, tasks, stock, audit) respect scope and price permission; every export is audited',
+  );
+  await admin.query(
+    "INSERT INTO users(login,display_name,password_hash,role) VALUES('tech','Texnik xodim',$1,'support')",
+    [await hashPassword(pass)],
+  );
+  const supportToken = (await call('POST', '/v1/auth/login', { login: 'tech', password: pass }))
+    .access_token;
+  const diag = await call('GET', '/v1/platform/diagnostics', undefined, supportToken);
+  assert.equal(diag.database.ok, true);
+  assert(diag.worker.pending >= 1 && Array.isArray(diag.worker.failed_jobs));
+  assert(typeof diag.errors.last_24h === 'number' && Array.isArray(diag.errors.items));
+  assert(diag.tenants.active >= 1 && diag.sessions_active >= 1);
+  assert.equal(diag.database.last_migration, '012_settings_support_diagnostics.sql');
+  await call('GET', '/v1/platform/diagnostics', undefined, ownerToken, undefined, 403);
+  const sr = await call(
+    'POST',
+    '/v1/support-requests',
+    { kind: 'support', message: 'Hisobotni eksport qilib bo‘lmayapti' },
+    adminAgain,
+  );
+  const answered = await call(
+    'PATCH',
+    `/v1/platform/support/${sr.id}`,
+    { status: 'closed', response: 'Eksport tugmasi reja–fakt sahifasida.' },
+    supportToken,
+  );
+  assert.equal(answered.status, 'closed');
+  assert(answered.responded_at);
+  const srNotif = await call('GET', '/v1/me/notifications?unread=true', undefined, adminAgain);
+  assert(
+    srNotif.items.some(
+      (n: any) => n.kind === 'support.response' && n.payload.support_request_id === sr.id,
+    ),
+  );
+  assert.equal(typeof srNotif.total, 'number');
+  passed.push(
+    'Support staff reads diagnostics (queue, errors, tenants, migration); a support response notifies the requesting admin',
+  );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');
@@ -965,6 +1165,18 @@ try {
     ),
   );
   console.log(JSON.stringify({ passed: passed.length, checks: passed }, null, 2));
+} catch (error) {
+  // Diagnostika: 5xx xatolar matni error_events jadvalida.
+  if (admin)
+    console.error(
+      'ERROR_EVENTS',
+      (
+        await admin.query(
+          'SELECT code,message,path FROM error_events ORDER BY created_at DESC LIMIT 5',
+        )
+      ).rows,
+    );
+  throw error;
 } finally {
   if (app) await app.close();
   if (appPool) await appPool.end();

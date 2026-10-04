@@ -1306,6 +1306,8 @@ type SupportRow = {
   kind: 'support' | 'plan_change';
   message: string;
   status: 'open' | 'closed';
+  response: string | null;
+  responded_at: string | null;
   created_at: string;
 };
 export function SupportPage() {
@@ -1317,13 +1319,19 @@ export function SupportPage() {
     queryKey: ['platform-support'],
     queryFn: () => api<ListResponse<SupportRow>>('/v1/platform/support?limit=100'),
   });
-  const toggle = useMutation({
-    mutationFn: (r: SupportRow) =>
-      api(`/v1/platform/support/${r.id}`, {
+  const [reply, setReply] = useState<SupportRow | null>(null);
+  const [text, setText] = useState('');
+  const update = useMutation({
+    mutationFn: (v: { id: string; status: 'open' | 'closed'; response?: string }) =>
+      api(`/v1/platform/support/${v.id}`, {
         method: 'PATCH',
-        body: { status: r.status === 'open' ? 'closed' : 'open' },
+        body: { status: v.status, ...(v.response ? { response: v.response } : {}) },
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-support'] }),
+    onSuccess: () => {
+      setReply(null);
+      setText('');
+      return queryClient.invalidateQueries({ queryKey: ['platform-support'] });
+    },
     onError,
   });
   const rows = query.data?.items.filter((r) => tab === 'all' || r.status === tab);
@@ -1348,7 +1356,16 @@ export function SupportPage() {
     {
       key: 'message',
       header: t('support.message'),
-      render: (r) => <span style={{ whiteSpace: 'pre-wrap' }}>{r.message}</span>,
+      render: (r) => (
+        <>
+          <div style={{ whiteSpace: 'pre-wrap' }}>{r.message}</div>
+          {r.response && (
+            <div className="cell-sub" style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>
+              {t('support.response')}: {r.response}
+            </div>
+          )}
+        </>
+      ),
     },
     {
       key: 'created',
@@ -1368,9 +1385,27 @@ export function SupportPage() {
       header: '',
       className: 'actions',
       render: (r) => (
-        <Button size="sm" variant="secondary" onClick={() => toggle.mutate(r)}>
-          {r.status === 'open' ? t('support.closed') : t('support.open')}
-        </Button>
+        <span className="row">
+          {r.status === 'open' && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setReply(r);
+                setText('');
+              }}
+            >
+              {t('support.respond')}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={update.isPending && update.variables?.id === r.id && !update.variables?.response}
+            onClick={() => update.mutate({ id: r.id, status: r.status === 'open' ? 'closed' : 'open' })}
+          >
+            {r.status === 'open' ? t('support.closed') : t('support.reopen')}
+          </Button>
+        </span>
       ),
     },
   ];
@@ -1392,6 +1427,39 @@ export function SupportPage() {
         error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
         onRetry={query.refetch}
       />
+      <Modal
+        open={Boolean(reply)}
+        onClose={() => setReply(null)}
+        title={t('support.respond')}
+        description={reply ? `${reply.legal_name} · ${reply.display_name}` : undefined}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setReply(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              loading={update.isPending}
+              disabled={text.trim().length < 2}
+              onClick={() =>
+                reply && update.mutate({ id: reply.id, status: 'closed', response: text.trim() })
+              }
+            >
+              {t('support.close_with_response')}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          {reply && <Alert tone="info">{reply.message}</Alert>}
+          <Textarea
+            label={t('support.response')}
+            rows={4}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <p className="muted text-xs">{t('support.response_hint')}</p>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1534,38 +1602,178 @@ export function StaffPage() {
     </div>
   );
 }
+type Diagnostics = {
+  database: { ok: boolean; latency_ms: number; server_time: string; last_migration: string | null };
+  worker: {
+    pending: number;
+    dead: number;
+    done_24h: number;
+    oldest_pending_at: string | null;
+    failed_jobs: {
+      id: string;
+      kind: string;
+      status: string;
+      attempts: number;
+      error_code: string | null;
+      created_at: string;
+      tenant_name: string | null;
+    }[];
+  };
+  errors: {
+    last_24h: number;
+    total: number;
+    items: {
+      id: string;
+      request_id: string;
+      method: string;
+      path: string;
+      status: number;
+      code: string;
+      message: string | null;
+      created_at: string;
+    }[];
+  };
+  sessions_active: number;
+  telegram: { configured: boolean; linked_accounts: number };
+  tenants: { active: number; pending: number; blocked: number; archived: number };
+  break_glass_enabled: boolean;
+  integrations_release_ready: boolean;
+};
+/** Texnik panel: baza, worker navbati, 5xx xatolar, Telegram va kompaniyalar — faqat bazadagi haqiqiy holat. */
 export function DiagnosticsPage() {
-  const { t } = useT();
+  const { t, lang } = useT();
   const query = useQuery({
     queryKey: ['platform-diagnostics'],
-    queryFn: () =>
-      api<{
-        database: boolean;
-        break_glass_enabled: boolean;
-        integrations_release_ready: boolean;
-      }>('/v1/platform/diagnostics'),
+    queryFn: () => api<Diagnostics>('/v1/platform/diagnostics'),
     retry: false,
+    refetchInterval: 30000,
   });
   const d = query.data;
   return (
     <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('diag.title')} description={t('diag.sub')} />
-      {query.isError ? (
+      <PageHeader
+        title={t('diag.title')}
+        description={t('diag.sub')}
+        actions={
+          <Button variant="secondary" loading={query.isFetching} onClick={() => query.refetch()}>
+            {t('common.refresh')}
+          </Button>
+        }
+      />
+      {query.isError && (
         <Alert tone="danger">
           {errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
         </Alert>
-      ) : (
-        <div className="grid-3">
-          <Stat label={t('diag.database')} value={d ? (d.database ? t('diag.ok') : '—') : '…'} />
-          <Stat
-            label={t('diag.break_glass')}
-            value={d ? (d.break_glass_enabled ? t('common.yes') : t('diag.off')) : '…'}
-          />
-          <Stat
-            label={t('diag.integrations')}
-            value={d ? (d.integrations_release_ready ? t('common.yes') : t('common.no')) : '…'}
-          />
-        </div>
+      )}
+      {d && (
+        <>
+          <div className="grid-4">
+            <Stat
+              accent
+              label={t('diag.database')}
+              value={d.database.ok ? t('diag.ok') : '—'}
+              sub={`${t('diag.latency')}: ${d.database.latency_ms} ms · ${t('diag.last_migration')}: ${d.database.last_migration ?? '—'}`}
+            />
+            <Stat
+              label={t('diag.worker')}
+              value={d.worker.pending}
+              sub={`${t('diag.pending')} · ${t('diag.dead')}: ${d.worker.dead} · ${t('diag.done_24h')}: ${d.worker.done_24h}`}
+            />
+            <Stat
+              label={t('diag.errors_24h')}
+              value={d.errors.last_24h}
+              sub={`${t('common.total')}: ${d.errors.total}`}
+            />
+            <Stat
+              label={t('diag.sessions')}
+              value={d.sessions_active}
+              sub={
+                d.telegram.configured
+                  ? `${t('diag.telegram_linked')}: ${d.telegram.linked_accounts}`
+                  : t('diag.telegram_off')
+              }
+            />
+          </div>
+          <div className="grid-4">
+            <Stat label={`${t('diag.tenants')} · ${t('tenants.state.pending')}`} value={d.tenants.pending} />
+            <Stat label={`${t('diag.tenants')} · ${t('common.active')}`} value={d.tenants.active} />
+            <Stat label={`${t('diag.tenants')} · ${t('tenants.state.blocked')}`} value={d.tenants.blocked} />
+            <Stat
+              label={`${t('diag.tenants')} · ${t('tenants.state.archived')}`}
+              value={d.tenants.archived}
+            />
+          </div>
+          <div className="grid-2" style={{ alignItems: 'start' }}>
+            <section className="card">
+              <div className="card-header">
+                <h3>{t('diag.failed_jobs')}</h3>
+                {d.worker.oldest_pending_at && (
+                  <small className="muted">
+                    {t('diag.oldest')}: {formatDateTime(d.worker.oldest_pending_at, lang)}
+                  </small>
+                )}
+              </div>
+              {d.worker.failed_jobs.length === 0 ? (
+                <div className="card-pad muted text-sm">{t('diag.no_failed')}</div>
+              ) : (
+                <table className="summary-table" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>{t('diag.company')}</th>
+                      <th style={{ textAlign: 'left' }}>{t('common.status')}</th>
+                      <th className="num">{t('diag.attempts')}</th>
+                      <th style={{ textAlign: 'left' }}>{t('integr.error_code')}</th>
+                      <th style={{ textAlign: 'left' }}>{t('common.date')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.worker.failed_jobs.map((j) => (
+                      <tr key={j.id} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td>{j.tenant_name ?? t('diag.platform')}</td>
+                        <td>
+                          <Badge tone={j.status === 'dead' ? 'danger' : 'warning'}>{j.status}</Badge>
+                        </td>
+                        <td className="num">{j.attempts}</td>
+                        <td className="mono text-xs">{j.error_code ?? '—'}</td>
+                        <td className="text-xs">{formatDateTime(j.created_at, lang)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+            <section className="card">
+              <div className="card-header">
+                <h3>{t('diag.errors')}</h3>
+              </div>
+              {d.errors.items.length === 0 ? (
+                <div className="card-pad muted text-sm">{t('diag.no_errors')}</div>
+              ) : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {d.errors.items.map((e) => (
+                    <li key={e.id} style={{ padding: '8px 20px', borderBottom: '1px solid var(--border)' }}>
+                      <div className="row-between text-sm">
+                        <span className="mono">
+                          {e.method} {e.path}
+                        </span>
+                        <Badge tone="danger">{e.code}</Badge>
+                      </div>
+                      <small className="muted">
+                        {t('diag.request')}: {e.request_id} · {formatDateTime(e.created_at, lang)}
+                      </small>
+                      {e.message && (
+                        <div className="text-xs muted" style={{ wordBreak: 'break-word' }}>
+                          {e.message}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+          <p className="muted text-xs">{t('diag.note')}</p>
+        </>
       )}
     </div>
   );

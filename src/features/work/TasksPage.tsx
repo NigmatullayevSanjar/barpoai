@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Archive, Pencil, Plus } from 'lucide-react';
-import { api, ApiError, type ListResponse } from '@/lib/api';
+import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
+import { ExportButton } from '@/features/common/ExportButton';
 import { useZones } from '@/features/estimates/model';
 import type { Employee } from '@/features/projects/types';
 import { PhotoGallery } from './Files';
@@ -128,10 +129,17 @@ export function TasksPage() {
         title={t('tasks.title')}
         description={t('tasks.sub')}
         actions={
-          can('tasks', 'create') && sel.projectId ? (
-            <Button icon={<Plus />} onClick={() => setCreate(true)}>
-              {t('tasks.new')}
-            </Button>
+          sel.projectId ? (
+            <>
+              <ExportButton
+                path={`/v1/tasks/export${qs({ project_id: sel.projectId, status: status || undefined, mine: mine || undefined })}`}
+              />
+              {can('tasks', 'create') && (
+                <Button icon={<Plus />} onClick={() => setCreate(true)}>
+                  {t('tasks.new')}
+                </Button>
+              )}
+            </>
           ) : undefined
         }
       />

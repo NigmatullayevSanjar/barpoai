@@ -28,6 +28,7 @@ import {
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
+import { ExportButton } from '@/features/common/ExportButton';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
 import { normalizeNumber, useMaterials, useZones } from '@/features/estimates/model';
 import {
@@ -74,6 +75,7 @@ export function StockPage() {
         actions={
           sel.projectId && (
             <>
+              <ExportButton path={`/v1/stock/overview/export?project_id=${sel.projectId}`} />
               {has('stock.receive') && (
                 <Button
                   variant="secondary"

@@ -1,7 +1,19 @@
 import { type Db, type Row } from './db.js';
+export const notificationCategories = ['tasks', 'reports', 'stock', 'finance'] as const;
+export type NotificationCategory = (typeof notificationCategories)[number] | 'other';
+/** Bildirishnoma turi → kompaniya sozlamalaridagi toifa (Telegramga yuborishni o'chirish uchun). */
+export function notificationCategory(kind: string): NotificationCategory {
+  const head = kind.split('.')[0];
+  if (head === 'task') return 'tasks';
+  if (head === 'report' || head === 'progress') return 'reports';
+  if (head === 'stock') return 'stock';
+  if (head === 'payment') return 'finance';
+  return 'other';
+}
 /**
  * Ilova ichidagi bildirishnoma + Telegram yetkazish uchun outbox vazifasi.
  * Bir xil dedup kaliti takror yozmaydi. Telegram ulanmagan bo'lsa worker vazifani jimgina yopadi.
+ * Kompaniya sozlamasida toifa o'chirilgan bo'lsa, ilova ichidagi yozuv qoladi, outbox yozilmaydi.
  */
 export async function notify(
   db: Db,
@@ -38,14 +50,24 @@ export async function notify(
       ],
     )
   ).rows[0];
+  let deliver = true;
+  if (input.tenant_id) {
+    const settings = (await db.query('SELECT settings FROM tenants WHERE id=$1', [input.tenant_id]))
+      .rows[0]?.settings;
+    deliver = settings?.telegram?.[notificationCategory(input.kind)] !== false;
+  }
+  // O'chirilgan toifa ham outboxga yoziladi (dedup saqlanadi), lekin darhol yopiq holatda.
   await db.query(
-    "INSERT INTO outbox(tenant_id,project_id,recipient_id,kind,payload,dedup_key) VALUES($1,$2,$3,'notification',$4,$5)",
+    `INSERT INTO outbox(tenant_id,project_id,recipient_id,kind,payload,dedup_key,status,error_code)
+     VALUES($1,$2,$3,'notification',$4,$5,$6,$7)`,
     [
       input.tenant_id,
       input.project_id ?? null,
       input.user_id,
       { notification_id: row.id, title: input.title, body: input.body },
       dedup,
+      deliver ? 'pending' : 'done',
+      deliver ? null : 'DISABLED_BY_SETTINGS',
     ],
   );
   return row;

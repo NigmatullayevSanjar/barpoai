@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, Download, History, Pencil } from 'lucide-react';
+import { saveBase64File } from '@/lib/download';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
@@ -70,15 +71,7 @@ export function EstimateDetailPage() {
   const exportMutation = useMutation({
     mutationFn: () =>
       api<{ filename: string; mime_type: string; base64: string }>(`/v1/estimates/${id}/export`),
-    onSuccess: (file) => {
-      const bytes = Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: file.mime_type }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    },
+    onSuccess: saveBase64File,
     onError: (e: ApiError) => toast.error(errorMessage(t, e.code, e.status)),
   });
   if (query.isError)

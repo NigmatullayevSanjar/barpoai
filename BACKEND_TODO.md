@@ -164,12 +164,12 @@ Bog‘liqlik: 04–06; miqdorlar va tannarx mosligi uchun 07 bilan birga tekshir
 **09 — Dashboard, prognoz va qolgan sahifa imkoniyatlari**
 
 - [x] Obyekt tannarxi, sof pul oqimi, yetkazib beruvchi qarzi va avans yig‘indisi endpointi mavjud.
-- [ ] Dashboarddagi har bir ko‘rsatkich uchun manba va hisoblash qoidasini belgilash; umumiy moliya huquqi bilan sahifa ruxsatlarining mosligini tekshirish.
-- [ ] Reja–fakt, to‘lov kalendari, prognoz va moliyaviy hisobotlar uchun yetishmayotgan hisoblar/APIlarni yozish.
-- [ ] To‘liq kontragent solishtiruvi va kerakli hujjat/Excel/PDF eksportlarini ishlab chiqish.
-- [ ] Texnik paneldagi CPU/RAM/xatolik/backup ko‘rsatkichlari va support suhbatlari uchun zarur backendni yozish; mavjud diagnostics va support ro‘yxati bu ekranlarning hamma funksiyasini qoplamaydi.
-- [ ] Sozlamalar, bildirishnomalar va profilning saqlanadigan maydonlarini aniqlab ulash; talab doirasidagi AI yordamchi uchun alohida kontrakt belgilash.
-- [ ] Ushbu oqimlarda qolgan statik raqamlar va faqat muvaffaqiyat xabari chiqaradigan tugmalarni haqiqiy natijaga ulash.
+- [x] 2026-10-04: `GET /v1/dashboard` — obyektlar (progress, jadvaldan orqada), vazifalar, hisobotlar, ombor (kam qoldiq, so‘rovlar, bugungi kirim/sarf), moliya (budjet, xarajat, qarz, muddati o‘tgan qarz, to‘lov so‘rovlari), xodimlar bloklari; har blok faqat haqiqiy ruxsat bilan, aks holda `null`. Manba va qoidalar `backend/docs/BARPO_DASHBOARD_METRICS.md`. Rolga mos bosh sahifa UI (admin/prorab/brigadir/ombor/finansist bir sahifa, bloklar ruxsatga qarab).
+- [x] 2026-10-04: reja–faktga zona kesimi (`by_zone`) qo‘shildi; moliya yig‘masi, reja–fakt, prognoz va moliyaviy hisobotlardagi oylik so‘rovlar (`month` yalang‘och alias) va qarz yoshi parametri xatosi tuzatildi (ilgari 500 qaytarar edi), integration testda regressiya tekshiruvi bor.
+- [x] 2026-10-04: Excel eksportlar — reja–fakt (qatorlar/zonalar/oylar), vazifalar, ombor qoldiqlari, audit; narx huquqisiz summa ustunlari yo‘q, har eksport auditga yoziladi. PDF spec bo‘yicha keyingi bosqich. Kontragent solishtiruvi 07-bosqichdagi `statement` bilan qoladi.
+- [x] 2026-10-04: texnik panel — baza (latency, oxirgi migratsiya), worker navbati (pending/dead/24 soat, muvaffaqiyatsiz vazifalar), 5xx xatolar jurnali (`error_events`, migratsiya 012), sessiyalar, Telegram, kompaniyalar; super admin va support ko‘radi. Support murojaatiga javob (`response`) — egasiga bildirishnoma. CPU/RAM/backup hosting bilan (12-bosqich).
+- [x] 2026-10-04: Sozlamalar sahifasi (`GET/PATCH /v1/company`: nom, manzil, telefon, Telegram bildirishnoma toifalari; logotip yo‘q), Bildirishnomalar sahifasi (`/notifications`, sahifalash, o‘qildi), Fayllar (obyekt bo‘yicha), Integratsiyalar va Kamera (halol `not_configured`), Audit (filtr, ijrochi, eksport). «Tez kunda» sahifalar qolmadi. **AI yordamchi egasi qarori bilan rejadan chiqarildi (2026-10-04).**
+- [x] 2026-10-04: tekshirildi — kompaniya UI da statik raqam yoki faqat toast chiqaradigan tugma qolmadi (barcha tugmalar API natijasiga bog‘langan; e2e 35/35, integration 30/30).
 
 Bog‘liqlik: 05–08. Qabul mezoni: har bir ko‘rsatkichni bazadagi manba yozuvlari bilan tekshirish mumkin; mavjud bo‘lmagan ma’lumot yolg‘on nol yoki foyda sifatida chiqmaydi.
 

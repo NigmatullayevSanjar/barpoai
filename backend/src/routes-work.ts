@@ -3,7 +3,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { type Endpoint } from './http.js';
-import { one, audit } from './db.js';
+import { one, audit, type Db, type Row } from './db.js';
 import {
   uuid,
   text,
@@ -18,6 +18,64 @@ import {
 import { projectScope, assignedUser, allowed } from './permissions.js';
 import { notify, projectRecipients } from './notify.js';
 import { invariant } from './errors.js';
+/** Ruxsat doirasidagi vazifalar ro'yxati; eksport ham shu so'rovdan foydalanadi. */
+export async function listTasks(db: Db, actor: Row, query: Row) {
+  await projectScope(db, actor, query.project_id);
+  return {
+    items: (
+      await db.query(
+        `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,z.name zone_name,
+                (t.deadline IS NOT NULL AND t.deadline<now() AND t.status<>'accepted') overdue,
+                (SELECT count(*)::int FROM files f WHERE f.tenant_id=t.tenant_id AND f.task_id=t.id AND f.archived_at IS NULL) file_count
+         FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id LEFT JOIN zones z ON z.id=t.zone_id
+         WHERE t.tenant_id=$1 AND t.project_id=$2 AND t.archived_at IS NULL AND (($3 AND NOT $7::boolean) OR t.assignee_id=$4 OR t.reviewer_id=$4)
+           AND ($8::text IS NULL OR ($8='open' AND t.status<>'accepted') OR t.status=$8)
+         ORDER BY CASE t.status WHEN 'accepted' THEN 1 ELSE 0 END,t.deadline NULLS LAST,t.created_at LIMIT $5 OFFSET $6`,
+        [
+          actor.tenant_id,
+          query.project_id,
+          await allowed(db, actor, 'tasks.manage'),
+          actor.id,
+          query.limit,
+          query.offset,
+          query.mine ?? false,
+          query.status ?? null,
+        ],
+      )
+    ).rows,
+  };
+}
+export const auditQuery = pageQuery.extend({
+  action: z.string().trim().max(100).optional(),
+  actor_id: uuid.optional(),
+  from: date.optional(),
+  to: date.optional(),
+});
+/** Audit yozuvlari: amal prefiksi, ijrochi va sana bo'yicha filtr; jami son bilan. */
+export async function listAudit(db: Db, actor: Row, query: Row) {
+  const where = `a.tenant_id=$1 AND ($2::text IS NULL OR a.action ILIKE $2||'%') AND ($3::uuid IS NULL OR a.actor_id=$3)
+    AND ($4::date IS NULL OR a.created_at>=$4) AND ($5::date IS NULL OR a.created_at<($5::date+1))`;
+  const params = [
+    actor.tenant_id,
+    query.action || null,
+    query.actor_id ?? null,
+    query.from ?? null,
+    query.to ?? null,
+  ];
+  const items = (
+    await db.query(
+      `SELECT a.id,a.actor_id,u.display_name actor_name,u.role actor_role,a.action,a.resource_id,a.details,a.created_at
+       FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE ${where} ORDER BY a.created_at DESC,a.id LIMIT $6 OFFSET $7`,
+      [...params, query.limit, query.offset],
+    )
+  ).rows;
+  const total = await one(
+    db,
+    `SELECT count(*)::int total FROM audit_events a WHERE ${where}`,
+    params,
+  );
+  return { items, total: total.total };
+}
 export function workRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -84,32 +142,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
         .optional(),
       mine: z.coerce.boolean().optional(),
     }),
-    handler: async ({ db, actor, query }) => {
-      await projectScope(db, actor, query.project_id);
-      return {
-        items: (
-          await db.query(
-            `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,z.name zone_name,
-                    (t.deadline IS NOT NULL AND t.deadline<now() AND t.status<>'accepted') overdue,
-                    (SELECT count(*)::int FROM files f WHERE f.tenant_id=t.tenant_id AND f.task_id=t.id AND f.archived_at IS NULL) file_count
-             FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id LEFT JOIN zones z ON z.id=t.zone_id
-             WHERE t.tenant_id=$1 AND t.project_id=$2 AND t.archived_at IS NULL AND (($3 AND NOT $7::boolean) OR t.assignee_id=$4 OR t.reviewer_id=$4)
-               AND ($8::text IS NULL OR ($8='open' AND t.status<>'accepted') OR t.status=$8)
-             ORDER BY CASE t.status WHEN 'accepted' THEN 1 ELSE 0 END,t.deadline NULLS LAST,t.created_at LIMIT $5 OFFSET $6`,
-            [
-              actor.tenant_id,
-              query.project_id,
-              await allowed(db, actor, 'tasks.manage'),
-              actor.id,
-              query.limit,
-              query.offset,
-              query.mine ?? false,
-              query.status ?? null,
-            ],
-          )
-        ).rows,
-      };
-    },
+    handler: ({ db, actor, query }) => listTasks(db, actor, query),
   });
   add({
     method: 'POST',
@@ -509,17 +542,10 @@ export function workRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/audit',
-    summary: 'Kompaniya admini uchun audit; maxfiy kalitlarsiz',
+    summary: 'Kompaniya admini uchun audit; ijrochi nomi va filtrlar bilan, maxfiy kalitlarsiz',
     permission: 'audit.read',
     adminOnly: true,
-    query: pageQuery,
-    handler: async ({ db, actor, query }) => ({
-      items: (
-        await db.query(
-          'SELECT id,actor_id,action,resource_id,details,created_at FROM audit_events WHERE tenant_id=$1 ORDER BY created_at DESC,id LIMIT $2 OFFSET $3',
-          [actor.tenant_id, query.limit, query.offset],
-        )
-      ).rows,
-    }),
+    query: auditQuery,
+    handler: ({ db, actor, query }) => listAudit(db, actor, query),
   });
 }

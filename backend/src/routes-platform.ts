@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
-import { one, audit } from './db.js';
+import { one, audit, type Row } from './db.js';
 import {
   uuid,
   text,
@@ -18,6 +18,7 @@ import { token, digest, hashPassword } from './security.js';
 import { invariant } from './errors.js';
 import { dec } from './money.js';
 import { accessState } from './auth.js';
+import { telegramConfigured } from './telegram.js';
 const owner = ['platform_owner'];
 export function platformRoutes(add: (r: Endpoint) => void) {
   add({
@@ -286,8 +287,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/support',
-    summary: 'Support va tarif almashtirish so‘rovlari',
-    platform: ['support', 'platform_owner'],
+    summary: 'Support va tarif almashtirish so‘rovlari (javob bilan)',
+    platform: ['support', 'platform_owner', 'super_admin'],
     query: pageQuery,
     handler: async ({ db, query }) => ({
       items: (
@@ -301,13 +302,93 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/diagnostics',
-    summary: 'Texnik holat; tenant moliyasi ochilmaydi',
-    platform: ['super_admin'],
-    handler: async ({ db }) => ({
-      database: (await db.query('SELECT 1')).rowCount === 1,
-      break_glass_enabled: false,
-      integrations_release_ready: false,
-    }),
+    summary:
+      'Texnik holat: baza, worker navbati, so‘nggi 5xx xatolar, integratsiyalar; tenant moliyasi ochilmaydi',
+    platform: ['super_admin', 'support'],
+    handler: async ({ db }) => {
+      const started = Date.now();
+      const dbRow = await one(
+        db,
+        'SELECT now() server_time,(SELECT max(name) FROM schema_migrations) last_migration',
+        [],
+      );
+      const latency = Date.now() - started;
+      const tenants = (
+        await db.query('SELECT id,legal_name,status FROM tenants ORDER BY created_at')
+      ).rows;
+      // Outbox FORCE RLS ostida: har kompaniya konteksti alohida o'rnatilib yig'iladi.
+      const worker = { pending: 0, dead: 0, done_24h: 0, oldest_pending_at: null as string | null };
+      const deadJobs: Row[] = [];
+      for (const tenant of [...tenants.map((t) => t.id as string), null]) {
+        await db.query("SELECT set_config('app.tenant_id',$1,true)", [tenant ?? '']);
+        const s = await one(
+          db,
+          `SELECT count(*) FILTER(WHERE status='pending')::int pending,count(*) FILTER(WHERE status='dead')::int dead,
+                  count(*) FILTER(WHERE status='done' AND created_at>now()-interval '24 hours')::int done_24h,
+                  min(available_at) FILTER(WHERE status='pending') oldest
+           FROM outbox WHERE tenant_id IS NOT DISTINCT FROM $1`,
+          [tenant],
+        );
+        worker.pending += s.pending;
+        worker.dead += s.dead;
+        worker.done_24h += s.done_24h;
+        if (
+          s.oldest &&
+          (!worker.oldest_pending_at || s.oldest < new Date(worker.oldest_pending_at))
+        )
+          worker.oldest_pending_at = s.oldest.toISOString();
+        for (const job of (
+          await db.query(
+            `SELECT id,kind,status,attempts,error_code,created_at,available_at FROM outbox
+             WHERE tenant_id IS NOT DISTINCT FROM $1 AND (status='dead' OR (status='pending' AND attempts>0)) ORDER BY created_at DESC LIMIT 20`,
+            [tenant],
+          )
+        ).rows)
+          deadJobs.push({
+            ...job,
+            tenant_name: tenants.find((t) => t.id === tenant)?.legal_name ?? null,
+          });
+      }
+      await db.query("SELECT set_config('app.tenant_id','',true)");
+      deadJobs.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      const errors = await one(
+        db,
+        "SELECT count(*) FILTER(WHERE created_at>now()-interval '24 hours')::int last_24h,count(*)::int total FROM error_events",
+        [],
+      );
+      const recentErrors = (
+        await db.query(
+          'SELECT id,request_id,method,path,status,code,message,created_at FROM error_events ORDER BY created_at DESC LIMIT 20',
+        )
+      ).rows;
+      const sessions = await one(
+        db,
+        'SELECT count(*)::int active FROM sessions WHERE revoked_at IS NULL AND expires_at>now()',
+        [],
+      );
+      const telegram = await one(db, 'SELECT count(*)::int linked FROM telegram_accounts', []);
+      const byStatus = (status: string) => tenants.filter((t) => t.status === status).length;
+      return {
+        database: {
+          ok: true,
+          latency_ms: latency,
+          server_time: dbRow.server_time,
+          last_migration: dbRow.last_migration,
+        },
+        worker: { ...worker, failed_jobs: deadJobs.slice(0, 20) },
+        errors: { ...errors, items: recentErrors },
+        sessions_active: sessions.active,
+        telegram: { configured: telegramConfigured(), linked_accounts: telegram.linked },
+        tenants: {
+          active: byStatus('active'),
+          pending: byStatus('pending'),
+          blocked: byStatus('blocked'),
+          archived: byStatus('archived'),
+        },
+        break_glass_enabled: false,
+        integrations_release_ready: false,
+      };
+    },
   });
   add({
     method: 'POST',
