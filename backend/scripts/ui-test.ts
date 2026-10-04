@@ -206,6 +206,57 @@ try {
   await managerPage.getByRole('link', { name: 'Obyektlar', exact: true }).waitFor();
   checks.push('Existing employee session picks up permission changes on focus');
 
+  // 5b. Obyekt, zona, xodim va biriktirish (stage 04)
+  await adminPage.goto(webURL + '/app/projects');
+  await adminPage.getByRole('button', { name: 'Obyekt qo‘shish' }).first().click();
+  await adminPage.getByRole('dialog').getByLabel('Obyekt nomi').fill('Navoiy 28 turar-joy');
+  await adminPage.getByRole('dialog').getByLabel('Loyiha kodi').fill('NAV-28');
+  await adminPage.getByRole('dialog').getByLabel('Buyurtmachi').fill('Toshkent Invest');
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Yaratish', exact: true })
+    .click();
+  await adminPage.getByRole('heading', { name: /Navoiy 28 turar-joy/ }).waitFor();
+  await adminPage.getByRole('tab', { name: /Zonalar/ }).click();
+  await adminPage.getByRole('button', { name: 'Zona qo‘shish' }).click();
+  await adminPage
+    .getByRole('dialog')
+    .getByLabel(/Zona nomi/)
+    .fill('A blok');
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Qo‘shish', exact: true })
+    .click();
+  await adminPage.getByText('A blok').waitFor();
+  const projectUrl = adminPage.url();
+  checks.push('Admin creates a project with code and customer and adds a zone from the UI');
+  await adminPage.goto(webURL + '/app/employees');
+  await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).first().click();
+  const dlg = adminPage.getByRole('dialog');
+  await dlg.getByLabel('Ism va familiya').fill('Sinov brigadiri');
+  await dlg.locator('input[name=login]').fill('ui.brigadier');
+  await dlg.locator('select[name=role]').selectOption('brigadier');
+  await dlg.getByLabel('Navoiy 28 turar-joy').check();
+  await dlg.getByRole('button', { name: 'Yaratish', exact: true }).click();
+  await dlg.getByText('Login: ui.brigadier').waitFor();
+  await dlg.getByRole('button', { name: 'Yopish' }).click();
+  await adminPage.getByRole('cell', { name: /Sinov brigadiri/ }).waitFor();
+  await adminPage.getByRole('cell', { name: /Sinov brigadiri/ }).click();
+  await adminPage
+    .getByRole('dialog')
+    .getByText('Navoiy 28 turar-joy', { exact: true })
+    .first()
+    .waitFor();
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'close' }).click();
+  await adminPage.goto(projectUrl);
+  await adminPage.getByRole('tab', { name: /Xodimlar/ }).click();
+  await adminPage.getByRole('cell', { name: 'Sinov brigadiri' }).waitFor();
+  checks.push(
+    'Employee created from the UI with project assignment; project members tab and employee card agree',
+  );
+  await adminPage.goto(webURL + '/app');
+  await adminPage.getByRole('link', { name: /Navoiy 28 turar-joy/ }).waitFor();
+  checks.push('Company dashboard lists real projects and counters');
   // 6. Profil va Telegram havolasi, til almashtirish
   await adminPage.goto(webURL + '/profile');
   await adminPage.getByRole('button', { name: 'Telegramni ulash' }).click();

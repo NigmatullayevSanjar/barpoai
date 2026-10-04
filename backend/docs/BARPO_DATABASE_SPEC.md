@@ -507,6 +507,22 @@ ALTER TABLE sessions ADD COLUMN channel text NOT NULL DEFAULT 'bearer' CHECK (ch
 
 ```
 
+## 007_project_profile.sql
+
+```sql
+-- Obyekt kartasi: kod, manzil, buyurtmachi, tavsif va ish holati (arxivlash alohida ustun).
+ALTER TABLE projects
+ ADD COLUMN code text,
+ ADD COLUMN address text,
+ ADD COLUMN customer_name text,
+ ADD COLUMN description text,
+ ADD COLUMN status text NOT NULL DEFAULT 'planning' CHECK (status IN ('planning','active','paused','completed'));
+CREATE UNIQUE INDEX projects_code_unique ON projects(tenant_id, lower(code)) WHERE code IS NOT NULL AND archived_at IS NULL;
+-- Xodim lavozimi (erkin matn) va ish boshlagan sana; rol alohida qoladi.
+ALTER TABLE users ADD COLUMN position text, ADD COLUMN hired_at date;
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

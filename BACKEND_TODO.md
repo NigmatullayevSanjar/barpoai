@@ -114,7 +114,7 @@ Bog‘liqlik: 02. Qabul mezoni: ruxsatsiz amal UI, bevosita URL va API orqali ha
 
 - [x] Kompaniya yaratish/bloklash, xodim yaratish/yangilash, obyekt/zona va biriktirish endpointlari mavjud.
 - [x] Xodimni deaktivatsiya qilishda ochiq vazifa va materialni topshirish tekshiruvlari mavjud.
-- [ ] Platforma kompaniyalari, xodimlar, obyektlar va bloklar ekranlarini real ro‘yxatlar bilan ulash.
+- [x] 2026-10-04: platforma kompaniyalari (ro‘yxat, karta, taklif, tarif, invoys, to‘lov, bloklash), xodimlar (ro‘yxat, yaratish, karta, biriktirish, parol tiklash havolasi, individual ruxsatlar, adminlikni topshirish) va obyektlar (ro‘yxat, karta, zonalar, xodimlar, omborlar, tahrir, arxiv) real API bilan ulangan; migratsiya 007 (obyekt kodi/manzil/buyurtmachi/holat, xodim lavozimi). Brauzer e2e 14/14.
 - [ ] Frontend talab qiladigan, API katalogida yo‘q amallarni aniqlab qo‘shish; masalan, kerak bo‘lsa zona tahriri va ro‘yxat tafsilotlari.
 - [ ] Demo formalaridagi eski tanlangan yozuv holatini tozalash, noto‘g‘ri faol-xodim filtrini tuzatish.
 

@@ -33,6 +33,18 @@ const TenantBillingPage = lazy(() =>
     default: m.TenantBillingPage,
   })),
 );
+const TenantDashboard = lazy(() =>
+  import('@/features/dashboard/TenantDashboard').then((m) => ({ default: m.TenantDashboard })),
+);
+const ProjectsPage = lazy(() =>
+  import('@/features/projects/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
+);
+const ProjectDetailPage = lazy(() =>
+  import('@/features/projects/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })),
+);
+const EmployeesPage = lazy(() =>
+  import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })),
+);
 const Platform = {
   Dashboard: lazy(() =>
     import('@/features/platform/pages').then((m) => ({
@@ -85,6 +97,9 @@ const queryClient = new QueryClient({
 
 /** Hali o'z sahifasi yozilmagan kompaniya bo'limlari: halol "keyingi bosqich" holati. */
 const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
+  dashboard: <TenantDashboard />,
+  projects: <ProjectsPage />,
+  employees: <EmployeesPage />,
   permissions: <RolePermissionsPage />,
   billing: <TenantBillingPage />,
 };
@@ -130,6 +145,9 @@ export function App() {
                           />
                         </Route>
                       ))}
+                      <Route element={<RequirePage page="projects" />}>
+                        <Route path="/app/projects/:id" element={<ProjectDetailPage />} />
+                      </Route>
                     </Route>
                   </Route>
                   <Route element={<RequireAuth platform />}>

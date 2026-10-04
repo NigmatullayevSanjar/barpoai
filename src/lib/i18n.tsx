@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { uz } from '@/locales/uz';
 import { ru } from '@/locales/ru';
+import { erpUz } from '@/locales/erp.uz';
+import { erpRu } from '@/locales/erp.ru';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
-const dictionaries: Record<Lang, Dict> = { uz, ru };
+const dictionaries: Record<Lang, Dict> = { uz: { ...uz, ...erpUz }, ru: { ...ru, ...erpRu } };
 const STORAGE_KEY = 'barpo.lang';
 
 type I18n = {

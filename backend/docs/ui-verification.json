@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T08:55:55.994Z",
+  "executed_at": "2026-10-04T09:10:51.844Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -9,6 +9,9 @@
     "Admin saves per-role page CRUD matrix",
     "Employee forced password change; disabled page hidden from menu and denied by direct URL",
     "Existing employee session picks up permission changes on focus",
+    "Admin creates a project with code and customer and adds a zone from the UI",
+    "Employee created from the UI with project assignment; project members tab and employee card agree",
+    "Company dashboard lists real projects and counters",
     "Profile issues one-time Telegram deep link; UI switches between UZ and RU",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
     "Logout clears the session cookie and protected routes redirect to login",

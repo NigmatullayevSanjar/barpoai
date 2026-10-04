@@ -40,10 +40,16 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       ).rows,
     }),
   });
+  const projectStatus = z.enum(['planning', 'active', 'paused', 'completed']);
   const projectBody = z.strictObject({
     name: text,
-    planned_start: date.optional(),
-    planned_end: date.optional(),
+    code: z.string().trim().min(1).max(40).nullable().optional(),
+    address: z.string().trim().max(500).nullable().optional(),
+    customer_name: z.string().trim().max(200).nullable().optional(),
+    description: z.string().trim().max(4000).nullable().optional(),
+    status: projectStatus.optional(),
+    planned_start: date.nullable().optional(),
+    planned_end: date.nullable().optional(),
   });
   add({
     method: 'POST',
@@ -55,8 +61,18 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, body }) => {
       const row = await one(
         db,
-        'INSERT INTO projects(tenant_id,name,planned_start,planned_end) VALUES($1,$2,$3,$4) RETURNING *',
-        [actor.tenant_id, body.name, body.planned_start ?? null, body.planned_end ?? null],
+        'INSERT INTO projects(tenant_id,name,code,address,customer_name,description,status,planned_start,planned_end) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+        [
+          actor.tenant_id,
+          body.name,
+          body.code || null,
+          body.address || null,
+          body.customer_name || null,
+          body.description || null,
+          body.status ?? 'planning',
+          body.planned_start ?? null,
+          body.planned_end ?? null,
+        ],
       );
       await db.query('INSERT INTO project_assignments VALUES($1,$2,$3)', [
         actor.tenant_id,
@@ -73,23 +89,31 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     summary: 'Obyekt va alohida forecastni yangilash',
     permission: 'projects.write',
     params: idParams,
-    body: z.strictObject({
+    body: projectBody.extend({
       version,
-      name: text,
       forecast_end: date.nullable().optional(),
       actual_start: date.nullable().optional(),
       actual_end: date.nullable().optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, body, params }) => {
-      await projectScope(db, actor, params.id);
+      const current = await projectScope(db, actor, params.id);
+      invariant(current.version === body.version, 'VERSION_CONFLICT');
       const row = await one(
         db,
-        'UPDATE projects SET name=$3,forecast_end=$4,actual_start=$5,actual_end=$6,version=version+1 WHERE id=$1 AND version=$2 RETURNING *',
+        `UPDATE projects SET name=$3,code=$4,address=$5,customer_name=$6,description=$7,status=$8,planned_start=$9,planned_end=$10,
+           forecast_end=$11,actual_start=$12,actual_end=$13,version=version+1 WHERE id=$1 AND version=$2 RETURNING *`,
         [
           params.id,
           body.version,
           body.name,
+          body.code || null,
+          body.address || null,
+          body.customer_name || null,
+          body.description || null,
+          body.status ?? current.status,
+          body.planned_start ?? null,
+          body.planned_end ?? null,
           body.forecast_end ?? null,
           body.actual_start ?? null,
           body.actual_end ?? null,
@@ -143,7 +167,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          `SELECT u.id,u.login,u.display_name,u.phone,u.role,u.active,u.must_change_password,u.version,u.created_at,
+          `SELECT u.id,u.login,u.display_name,u.phone,u.role,u.active,u.must_change_password,u.position,u.hired_at,u.version,u.created_at,
              (SELECT coalesce(json_agg(json_build_object('project_id',a.project_id,'project_name',p.name) ORDER BY p.name),'[]') FROM project_assignments a JOIN projects p ON p.id=a.project_id WHERE a.tenant_id=u.tenant_id AND a.user_id=u.id AND p.archived_at IS NULL) projects,
              EXISTS(SELECT 1 FROM telegram_accounts ta WHERE ta.user_id=u.id) telegram_linked
            FROM users u WHERE u.tenant_id=$1 ORDER BY u.display_name,u.id LIMIT $2 OFFSET $3`,
@@ -172,13 +196,16 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       display_name: text,
       role: employeeRole,
       phone: phone.optional(),
+      position: z.string().trim().max(120).nullable().optional(),
+      hired_at: date.nullable().optional(),
+      project_ids: z.array(uuid).max(50).optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
       await delegatableRole(db, actor, body.role);
       const row = await one(
         db,
-        'INSERT INTO users(tenant_id,login,password_hash,display_name,role,must_change_password,phone) VALUES($1,$2,$3,$4,$5,true,$6) RETURNING id,login,role,display_name,phone,must_change_password,version',
+        'INSERT INTO users(tenant_id,login,password_hash,display_name,role,must_change_password,phone,position,hired_at) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8) RETURNING id,login,role,display_name,phone,position,hired_at,must_change_password,version',
         [
           actor.tenant_id,
           body.login.toLowerCase(),
@@ -186,8 +213,18 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.display_name,
           body.role,
           body.phone ?? null,
+          body.position || null,
+          body.hired_at ?? null,
         ],
       );
+      for (const projectId of body.project_ids ?? []) {
+        await projectScope(db, actor, projectId);
+        await db.query('INSERT INTO project_assignments VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [
+          actor.tenant_id,
+          projectId,
+          row.id,
+        ]);
+      }
       await audit(db, actor, 'employee.create', row.id);
       return row;
     },
@@ -204,6 +241,8 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       role: employeeRole,
       active: z.boolean(),
       phone: phone.nullable().optional(),
+      position: z.string().trim().max(120).nullable().optional(),
+      hired_at: date.nullable().optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
@@ -232,7 +271,9 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       }
       const row = await one(
         db,
-        'UPDATE users SET display_name=$3,role=$4,active=$5,phone=CASE WHEN $6::boolean THEN $7 ELSE phone END,version=version+1 WHERE tenant_id=$1 AND id=$2 RETURNING id,display_name,role,active,phone,version',
+        `UPDATE users SET display_name=$3,role=$4,active=$5,phone=CASE WHEN $6::boolean THEN $7 ELSE phone END,
+           position=CASE WHEN $8::boolean THEN $9 ELSE position END,hired_at=CASE WHEN $10::boolean THEN $11 ELSE hired_at END,version=version+1
+         WHERE tenant_id=$1 AND id=$2 RETURNING id,display_name,role,active,phone,position,hired_at,version`,
         [
           actor.tenant_id,
           user.id,
@@ -241,9 +282,15 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.active,
           body.phone !== undefined,
           body.phone ?? null,
+          body.position !== undefined,
+          body.position || null,
+          body.hired_at !== undefined,
+          body.hired_at ?? null,
         ],
       );
-      await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
+      // Rol yoki faollik o'zgarsa sessiyalar bekor qilinadi; ism/telefon tahriri xodimni chiqarib yubormaydi.
+      if (!body.active || user.role !== body.role)
+        await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
       await audit(db, actor, 'employee.update', user.id);
       return row;
     },
