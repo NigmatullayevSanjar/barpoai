@@ -52,6 +52,29 @@ const EstimateEditorPage = lazy(() =>
   import('@/features/estimates/EstimateEditor').then((m) => ({ default: m.EstimateEditorPage })),
 );
 const StockPage = lazy(() => import('@/features/stock/StockPage').then((m) => ({ default: m.StockPage })));
+const Fin = {
+  Hub: lazy(() => import('@/features/finance/pages').then((m) => ({ default: m.FinanceHubPage }))),
+  Docs: lazy(() => import('@/features/finance/pages').then((m) => ({ default: m.DocumentsPage }))),
+  Counterparties: lazy(() =>
+    import('@/features/finance/pages').then((m) => ({ default: m.CounterpartiesPage })),
+  ),
+  Budgets: lazy(() => import('@/features/finance/pages').then((m) => ({ default: m.BudgetsPage }))),
+  Reconciliation: lazy(() =>
+    import('@/features/finance/pages').then((m) => ({ default: m.ReconciliationPage })),
+  ),
+  PaymentRequests: lazy(() =>
+    import('@/features/finance/workflow').then((m) => ({ default: m.PaymentRequestsPage })),
+  ),
+  Calendar: lazy(() =>
+    import('@/features/finance/workflow').then((m) => ({ default: m.PaymentCalendarPage })),
+  ),
+  Payroll: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PayrollPage }))),
+  PlanActual: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PlanActualPage }))),
+  Forecast: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.ForecastPage }))),
+  Reports: lazy(() =>
+    import('@/features/finance/workflow').then((m) => ({ default: m.FinancialReportsPage })),
+  ),
+};
 const EmployeesPage = lazy(() =>
   import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })),
 );
@@ -112,6 +135,20 @@ const implementedTenantPages: Partial<Record<Page, React.ReactNode>> = {
   employees: <EmployeesPage />,
   estimates: <EstimatesPage />,
   stock: <StockPage />,
+  finance: <Fin.Hub />,
+  accounting_documents: <Fin.Docs page="accounting_documents" />,
+  invoices: <Fin.Docs page="invoices" />,
+  bank_cash: <Fin.Docs page="bank_cash" />,
+  allocations: <Fin.Docs page="allocations" />,
+  counterparties: <Fin.Counterparties />,
+  budgets: <Fin.Budgets />,
+  reconciliation: <Fin.Reconciliation />,
+  payment_requests: <Fin.PaymentRequests />,
+  payment_calendar: <Fin.Calendar />,
+  payroll: <Fin.Payroll />,
+  plan_actual: <Fin.PlanActual />,
+  forecast: <Fin.Forecast />,
+  financial_reports: <Fin.Reports />,
   permissions: <RolePermissionsPage />,
   billing: <TenantBillingPage />,
 };

@@ -31,10 +31,11 @@ export function useStockMutation<T>(fn: (v: T) => Promise<unknown>, onDone?: () 
 
 /** Smeta qatorlarini (material turi) tanlash uchun joriy obyekt smetalari */
 function useMaterialLines(projectId: string, materialId: string) {
+  const { can } = useAuth();
   const estimates = useQuery({
     queryKey: ['estimates', projectId],
     queryFn: () => api<ListResponse<EstimateSummary>>(`/v1/estimates?project_id=${projectId}&limit=100`),
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && can('estimates'),
   });
   const first = estimates.data?.items[0];
   const detail = useQuery({

@@ -445,14 +445,31 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     summary: 'Yetkazib beruvchi, pudratchi yoki mijoz',
     permission: 'finance.post',
     page: 'counterparties',
-    body: z.strictObject({ name: text, kind: z.enum(['supplier', 'contractor', 'customer']) }),
+    body: z.strictObject({
+      name: text,
+      kind: z.enum(['supplier', 'contractor', 'customer', 'employee']),
+      inn: z.string().trim().max(20).optional(),
+      phone: z.string().trim().max(40).optional(),
+      contact: z.string().trim().max(200).optional(),
+      bank_details: z.string().trim().max(1000).optional(),
+      note: z.string().trim().max(1000).optional(),
+    }),
     idempotent: true,
     handler: async ({ db, actor, body }) =>
-      one(db, 'INSERT INTO counterparties(tenant_id,name,kind) VALUES($1,$2,$3) RETURNING *', [
-        actor.tenant_id,
-        body.name,
-        body.kind,
-      ]),
+      one(
+        db,
+        'INSERT INTO counterparties(tenant_id,name,kind,inn,phone,contact,bank_details,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+        [
+          actor.tenant_id,
+          body.name,
+          body.kind,
+          body.inn || null,
+          body.phone || null,
+          body.contact || null,
+          body.bank_details || null,
+          body.note || null,
+        ],
+      ),
   });
   add({
     method: 'GET',
@@ -464,8 +481,13 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          'SELECT * FROM counterparties WHERE tenant_id=$1 ORDER BY name,id LIMIT $2 OFFSET $3',
-          [actor.tenant_id, query.limit, query.offset],
+          `SELECT c.*,
+             (-coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='payable'
+               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0))::text debt,
+             coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='advance'
+               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0)::text advance
+           FROM counterparties c WHERE c.tenant_id=$1 ORDER BY c.archived_at NULLS FIRST,c.name,c.id LIMIT $2 OFFSET $3`,
+          [actor.tenant_id, query.limit, query.offset, actor.role, actor.id],
         )
       ).rows,
     }),
@@ -514,8 +536,14 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/finance/documents',
-    summary: 'Faqat ruxsat berilgan moliyaviy sahifalarga tegishli hujjatlar',
-    query: projectQuery,
+    summary:
+      'Faqat ruxsat berilgan moliyaviy sahifalarga tegishli hujjatlar; nomlar, qoldiq va filtrlar bilan',
+    query: projectQuery.extend({
+      kind: z.string().max(200).optional(),
+      counterparty_id: uuid.optional(),
+      from: date.optional(),
+      to: date.optional(),
+    }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       const kinds: string[] = [];
@@ -526,11 +554,38 @@ export function operationRoutes(add: (r: Endpoint) => void) {
         )
           kinds.push(kind);
       invariant(kinds.length, 'FORBIDDEN', 403);
+      const wanted = query.kind
+        ? String(query.kind)
+            .split(',')
+            .filter((k: string) => kinds.includes(k))
+        : kinds;
       return {
         items: (
           await db.query(
-            "SELECT f.* FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.kind=ANY($5::text[]) AND (f.kind<>'reversal' OR EXISTS(SELECT 1 FROM finance_documents original WHERE original.tenant_id=f.tenant_id AND original.id=f.reverses_id AND original.kind=ANY($5::text[]))) ORDER BY f.created_at DESC,f.id LIMIT $3 OFFSET $4",
-            [actor.tenant_id, query.project_id, query.limit, query.offset, kinds],
+            `SELECT f.*,f.amount::text,c.name counterparty_name,c.kind counterparty_kind,ca.name cash_account_name,ta.name target_cash_account_name,u.display_name created_by_name,z.name zone_name,
+                    m.name matched_material_name,inv.description allocated_invoice_description,inv.kind allocated_invoice_kind,
+                    CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN
+                      (f.amount-coalesce((SELECT sum(p.amount) FROM finance_documents p WHERE p.tenant_id=f.tenant_id AND p.allocated_invoice_id=f.id AND NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=p.tenant_id AND r.reverses_id=p.id)),0))::text END outstanding,
+                    EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=f.tenant_id AND r.reverses_id=f.id) reversed
+             FROM finance_documents f
+             LEFT JOIN counterparties c ON c.id=f.counterparty_id LEFT JOIN cash_accounts ca ON ca.id=f.cash_account_id LEFT JOIN cash_accounts ta ON ta.id=f.target_cash_account_id
+             LEFT JOIN users u ON u.id=f.created_by LEFT JOIN zones z ON z.id=f.zone_id
+             LEFT JOIN stock_commands sc ON sc.id=f.matched_receipt_id LEFT JOIN materials m ON m.id=sc.material_id
+             LEFT JOIN finance_documents inv ON inv.id=f.allocated_invoice_id
+             WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.kind=ANY($5::text[])
+               AND (f.kind<>'reversal' OR EXISTS(SELECT 1 FROM finance_documents original WHERE original.tenant_id=f.tenant_id AND original.id=f.reverses_id AND original.kind=ANY($5::text[])))
+               AND ($6::uuid IS NULL OR f.counterparty_id=$6) AND ($7::date IS NULL OR f.document_date>=$7) AND ($8::date IS NULL OR f.document_date<=$8)
+             ORDER BY f.document_date DESC,f.created_at DESC,f.id LIMIT $3 OFFSET $4`,
+            [
+              actor.tenant_id,
+              query.project_id,
+              query.limit,
+              query.offset,
+              wanted.length ? wanted : ['__none__'],
+              query.counterparty_id ?? null,
+              query.from ?? null,
+              query.to ?? null,
+            ],
           )
         ).rows,
       };

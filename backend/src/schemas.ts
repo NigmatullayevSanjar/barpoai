@@ -79,6 +79,8 @@ export const financeInput = z.strictObject({
   matched_receipt_id: uuid.optional(),
   allocated_invoice_id: uuid.optional(),
   external_ref: z.string().min(1).max(200).optional(),
+  reference: z.string().trim().min(1).max(120).optional(),
+  due_date: date.optional(),
   description: reason,
   document_date: date,
 });

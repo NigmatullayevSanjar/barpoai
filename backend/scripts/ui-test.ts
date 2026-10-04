@@ -102,6 +102,19 @@ try {
         !/Failed to load resource/.test(m.text()) &&
         errors.push('console: ' + m.text()),
     );
+    page.on('response', async (r) => {
+      if (r.url().includes('/v1/') && r.status() >= 400 && r.status() !== 401 && r.status() !== 404)
+        errors.push(
+          'http ' +
+            r.status() +
+            ' ' +
+            r.request().method() +
+            ' ' +
+            r.url().split('/v1')[1] +
+            ' ' +
+            (await r.text().catch(() => '')).slice(0, 300),
+        );
+    });
     pages.push(page);
     return page;
   };
@@ -459,6 +472,132 @@ try {
   await adminPage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
   checks.push(
     'Material request from brigadier is fulfilled by a transfer created from the request',
+  );
+  // 5e. Moliya: kontragent, kassa, invoys (kirimga bog'langan), to'lov, to'lov so'rovi, ish haqi (stage 07)
+  const dialog = () => adminPage.getByRole('dialog');
+  await adminPage.goto(webURL + '/app/finance/counterparties');
+  await adminPage.getByRole('button', { name: 'Kontragent qo‘shish' }).first().click();
+  await dialog().getByLabel(/^Nomi/).fill('Qurilish Savdo MChJ');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('cell', { name: /Qurilish Savdo MChJ/ }).waitFor();
+  await adminPage.goto(webURL + '/app/finance/bank-cash?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Hisob qo‘shish' }).click();
+  await dialog().getByLabel('Hisob nomi').fill('Asosiy kassa');
+  await dialog().getByLabel('Turi').selectOption('cash');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByText('Asosiy kassa').first().waitFor();
+  checks.push('Counterparty and cash account created from the UI');
+  await adminPage.goto(webURL + '/app/finance/invoices?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Invoys / dalolatnoma' }).first().click();
+  await dialog().getByLabel('Turi').selectOption('supplier_invoice');
+  await dialog()
+    .getByLabel(/^Kontragent/)
+    .selectOption({ index: 1 });
+  await dialog()
+    .getByLabel(/Bog‘lanadigan ombor kirimi/)
+    .selectOption({ index: 1 });
+  await dialog().getByLabel('To‘lov muddati').fill('2026-10-20');
+  await dialog().getByLabel('Tavsif').fill('Sement M500 uchun invoys');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'To‘lash', exact: true }).first().click();
+  await dialog()
+    .getByLabel(/Bank\/kassa hisobi/)
+    .selectOption({ index: 1 });
+  await dialog().getByLabel('Tavsif').fill('Invoys bo‘yicha to‘lov');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  const fin1 = (
+    await owner.query(
+      "SELECT (-coalesce(sum(amount) FILTER(WHERE account='payable'),0))::text debt,coalesce(sum(amount) FILTER(WHERE account='cash'),0)::text cash,coalesce(sum(amount) FILTER(WHERE account='clearing'),0)::text clearing FROM journal_entries",
+    )
+  ).rows[0];
+  assert.equal(fin1.debt, '0.00');
+  assert.equal(fin1.cash, '-1200000.00');
+  assert.equal(fin1.clearing, '0.00');
+  checks.push(
+    'Supplier invoice matched to the receipt clears GR/IR; payment settles the debt and reduces cash',
+  );
+  await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Hujjat yaratish' }).first().click();
+  await dialog().getByLabel('Turi').selectOption('service');
+  await dialog()
+    .getByLabel(/^Kontragent/)
+    .selectOption({ index: 1 });
+  await dialog()
+    .getByLabel(/^Summa/)
+    .fill('500000');
+  await dialog().getByLabel('To‘lov muddati').fill('2026-10-25');
+  await dialog().getByLabel('Tavsif').fill('Kran ijarasi xizmati');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.goto(webURL + '/app/finance/payment-requests');
+  await adminPage.getByRole('button', { name: 'To‘lov so‘rovi' }).first().click();
+  await dialog()
+    .getByLabel(/^Kontragent/)
+    .selectOption({ index: 1 });
+  await dialog()
+    .getByLabel(/Bog‘langan hujjat/)
+    .selectOption({ index: 1 });
+  await dialog().getByLabel('Maqsad').fill('Kran ijarasi uchun to‘lov');
+  await dialog().getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'Tasdiqlash', exact: true }).first().click();
+  await dialog().getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'To‘lash', exact: true }).first().click();
+  await dialog()
+    .getByLabel(/Bank\/kassa hisobi/)
+    .selectOption({ index: 1 });
+  await dialog().getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('cell', { name: 'To‘langan' }).first().waitFor();
+  const fin2 = (
+    await owner.query(
+      "SELECT (-coalesce(sum(amount) FILTER(WHERE account='payable'),0))::text debt,coalesce(sum(amount) FILTER(WHERE account='cash'),0)::text cash,coalesce(sum(amount) FILTER(WHERE account='expense'),0)::text expense FROM journal_entries",
+    )
+  ).rows[0];
+  assert.equal(fin2.debt, '0.00');
+  assert.equal(fin2.cash, '-1700000.00');
+  assert.equal(fin2.expense, '680000.00');
+  checks.push('Payment request → approve → pay settles a service act; expense is booked once');
+  await adminPage.goto(webURL + '/app/finance/payroll?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Davr ochish' }).first().click();
+  await dialog().getByRole('button', { name: 'Yaratish', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).click();
+  const brigadierOption = await dialog()
+    .getByLabel('Xodim', { exact: true })
+    .locator('option', { hasText: 'Sinov brigadiri' })
+    .getAttribute('value');
+  await dialog().getByLabel('Xodim', { exact: true }).selectOption(brigadierOption!);
+  await dialog().getByLabel('Oklad').fill('3000000');
+  await dialog().getByLabel('Bonus').fill('200000');
+  await dialog().getByLabel('Ushlanma').fill('100000');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: /Davrni yopish/ }).click();
+  await dialog().getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'To‘lash', exact: true }).first().click();
+  await dialog()
+    .getByLabel(/Bank\/kassa hisobi/)
+    .selectOption({ index: 1 });
+  await dialog().getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  const fin3 = (
+    await owner.query(
+      "SELECT (-coalesce(sum(amount) FILTER(WHERE account='payable'),0))::text debt,coalesce(sum(amount) FILTER(WHERE account='cash'),0)::text cash,coalesce(sum(amount) FILTER(WHERE account='expense'),0)::text expense,(SELECT count(*)::int FROM counterparties WHERE kind='employee') employee_cps FROM journal_entries",
+    )
+  ).rows[0];
+  assert.equal(fin3.debt, '0.00');
+  assert.equal(fin3.cash, '-4800000.00');
+  assert.equal(fin3.expense, '3780000.00');
+  assert.equal(fin3.employee_cps, 1);
+  checks.push(
+    'Payroll period posts labor expense per employee and payment clears it through the cash account',
   );
   // 6. Profil va Telegram havolasi, til almashtirish
   await adminPage.goto(webURL + '/profile');

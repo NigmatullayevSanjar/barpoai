@@ -124,8 +124,8 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
   }
   const doc = await one(
     db,
-    `INSERT INTO finance_documents(tenant_id,project_id,zone_id,counterparty_id,kind,amount,cash_account_id,target_cash_account_id,matched_receipt_id,allocated_invoice_id,external_ref,description,document_date,created_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+    `INSERT INTO finance_documents(tenant_id,project_id,zone_id,counterparty_id,kind,amount,cash_account_id,target_cash_account_id,matched_receipt_id,allocated_invoice_id,external_ref,description,document_date,created_by,due_date,reference)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
     [
       actor.tenant_id,
       input.project_id,
@@ -141,6 +141,8 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
       input.description,
       input.document_date,
       actor.id,
+      input.due_date ?? null,
+      input.reference ?? null,
     ],
   );
   const positive = money(input.amount),
