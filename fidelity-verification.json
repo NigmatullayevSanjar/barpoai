@@ -1,0 +1,615 @@
+{
+  "date": "2026-09-28",
+  "scope": "Figma layout and shared control corrections; later admin pages preserved",
+  "reference": "37 cached original Figma screens",
+  "checks": {
+    "errors": [],
+    "results": [
+      {
+        "n": 0,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1024
+      },
+      {
+        "n": 1,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1024
+      },
+      {
+        "n": 2,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1024
+      },
+      {
+        "n": 3,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1024
+      },
+      {
+        "n": 4,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1070
+      },
+      {
+        "n": 5,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1070
+      },
+      {
+        "n": 6,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1070
+      },
+      {
+        "n": 7,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1318
+      },
+      {
+        "n": 8,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 960
+      },
+      {
+        "n": 9,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 971
+      },
+      {
+        "n": 10,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 962
+      },
+      {
+        "n": 11,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 962
+      },
+      {
+        "n": 12,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1127
+      },
+      {
+        "n": 13,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1867
+      },
+      {
+        "n": 14,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1867
+      },
+      {
+        "n": 15,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 960
+      },
+      {
+        "n": 16,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 960
+      },
+      {
+        "n": 17,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 960
+      },
+      {
+        "n": 18,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1096
+      },
+      {
+        "n": 19,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1096
+      },
+      {
+        "n": 20,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1365
+      },
+      {
+        "n": 21,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1716
+      },
+      {
+        "n": 22,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1718
+      },
+      {
+        "n": 23,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1055
+      },
+      {
+        "n": 24,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1125
+      },
+      {
+        "n": 25,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 828
+      },
+      {
+        "n": 26,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1004
+      },
+      {
+        "n": 27,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 844
+      },
+      {
+        "n": 28,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 844
+      },
+      {
+        "n": 29,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 888
+      },
+      {
+        "n": 30,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1522
+      },
+      {
+        "n": 31,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1522
+      },
+      {
+        "n": 32,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 969
+      },
+      {
+        "n": 33,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 994
+      },
+      {
+        "n": 34,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1190
+      },
+      {
+        "n": 35,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1100
+      },
+      {
+        "n": 36,
+        "width": 1440,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1100
+      },
+      {
+        "n": 0,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1080
+      },
+      {
+        "n": 1,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1188
+      },
+      {
+        "n": 2,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 844
+      },
+      {
+        "n": 3,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1322
+      },
+      {
+        "n": 4,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1344
+      },
+      {
+        "n": 5,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1344
+      },
+      {
+        "n": 6,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1344
+      },
+      {
+        "n": 7,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1565
+      },
+      {
+        "n": 8,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1016
+      },
+      {
+        "n": 9,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1027
+      },
+      {
+        "n": 10,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1018
+      },
+      {
+        "n": 11,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1018
+      },
+      {
+        "n": 12,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1374
+      },
+      {
+        "n": 13,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 3040
+      },
+      {
+        "n": 14,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 3040
+      },
+      {
+        "n": 15,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1149
+      },
+      {
+        "n": 16,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1016
+      },
+      {
+        "n": 17,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1149
+      },
+      {
+        "n": 18,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1152
+      },
+      {
+        "n": 19,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1152
+      },
+      {
+        "n": 20,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1421
+      },
+      {
+        "n": 21,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1772
+      },
+      {
+        "n": 22,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1774
+      },
+      {
+        "n": 23,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1111
+      },
+      {
+        "n": 24,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1165
+      },
+      {
+        "n": 25,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 914
+      },
+      {
+        "n": 26,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 2731
+      },
+      {
+        "n": 27,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 900
+      },
+      {
+        "n": 28,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 900
+      },
+      {
+        "n": 29,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 921
+      },
+      {
+        "n": 30,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1578
+      },
+      {
+        "n": 31,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1658
+      },
+      {
+        "n": 32,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1025
+      },
+      {
+        "n": 33,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1050
+      },
+      {
+        "n": 34,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1281
+      },
+      {
+        "n": 35,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1156
+      },
+      {
+        "n": 36,
+        "width": 390,
+        "overflow": false,
+        "missing": [],
+        "zeroImages": [],
+        "height": 1170
+      }
+    ]
+  },
+  "interaction_checks": [
+    "24 search placeholders",
+    "Notification opening preserves page dimensions; close button/Escape/outside close",
+    "17 mobile form routes fit horizontally",
+    "Profile chip removal, editing and password visibility"
+  ],
+  "intentional_differences": [
+    "Fixed sidebar and bottom profile",
+    "Support removed",
+    "Role preview and later admin navigation",
+    "Native interactive date/select controls",
+    "Notification overlay and responsive 404"
+  ]
+}

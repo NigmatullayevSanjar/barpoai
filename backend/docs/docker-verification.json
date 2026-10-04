@@ -1,0 +1,12 @@
+{
+  "executed_at": "2026-10-01T13:04:49.104Z",
+  "image": "barpo-backend:local",
+  "checks": [
+    "Docker database init script",
+    "Compiled migration runner",
+    "Non-root production API with restricted DB role",
+    "Ready health endpoint",
+    "OpenAPI endpoint",
+    "Unauthenticated API denied"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "executed_at": "2026-10-01T13:02:56.650Z",
+  "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
+  "passed": [
+    "Fresh migration and repeated migration",
+    "Preview does not consume invite; concurrent signup creates one admin/trial",
+    "Employee first login requires password change; sessions revoked",
+    "Concurrent transfers cannot over-reserve stock",
+    "Partial acceptance retry is idempotent; only reviewed consumption posts cost; prices redacted",
+    "Ledger immutable and remainder cancellation releases reservation",
+    "Financier imports estimates with norms/months but cannot delete by default",
+    "Report acceptance retries post progress once and preserve original plan",
+    "Assignee and reviewer task transitions",
+    "Role page CRUD is independent; live permission changes deny existing sessions",
+    "Individual deny overrides baseline role grant",
+    "Real PostgreSQL RLS under non-superuser; absent tenant context returns no rows",
+    "Deferred database checks reject divergent balance and month totals",
+    "Allocation, cost, cash payment and payable are not counted twice",
+    "Individual financial pages filter both menus and document data",
+    "Admin delegates billing read independently; employee cannot manage role permissions",
+    "Blocking revokes sessions; new admin session only reaches billing/support",
+    "OpenAPI generated from registered API routes"
+  ]
+}

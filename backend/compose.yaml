@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: barpo_owner
+      POSTGRES_DB: barpo
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?Set DB_OWNER_PASSWORD}
+      APP_DB_PASSWORD: ${DB_APP_PASSWORD:?Set DB_APP_PASSWORD}
+    ports: ["127.0.0.1:${DB_PORT:-5433}:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sh:/docker-entrypoint-initdb.d/01-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barpo_owner -d barpo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  migrate:
+    build: .
+    command: ["node", "dist/migrate.js"]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://barpo_owner:${DB_OWNER_PASSWORD}@db:5432/barpo
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://barpo_app:${DB_APP_PASSWORD}@db:5432/barpo
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+    ports: ["127.0.0.1:3001:3001"]
+    volumes: ["private_files:/app/storage"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+  worker:
+    build: .
+    command: ["node", "dist/worker.js"]
+    environment:
+      DATABASE_URL: postgresql://barpo_app:${DB_APP_PASSWORD}@db:5432/barpo
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  private_files:

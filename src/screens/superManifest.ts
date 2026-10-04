@@ -1,0 +1,15 @@
+export const superManifest=[
+ {id:'2339:38',name:'Super admin · Kompaniyalar',width:1440,height:1040,key:'screen41'},
+ {id:'2373:1034',name:'Super admin · Kompaniya qo‘shish 1',width:1440,height:653,key:'screen42'},
+ {id:'2374:1458',name:'Super admin · Kompaniya qo‘shish 2',width:1440,height:653,key:'screen43'},
+ {id:'2374:1676',name:'Super admin · Kompaniya qo‘shish 3',width:1440,height:653,key:'screen44'},
+ {id:'2394:268',name:'Super admin · Kompaniyani tahrirlash',width:1440,height:1040,key:'screen45'},
+ {id:'2339:506',name:'Super admin · Administratorlar',width:1440,height:689,key:'screen46'},
+ {id:'2339:736',name:'Super admin · Administrator qo‘shish',width:1440,height:689,key:'screen47'},
+ {id:'2395:3852',name:'Super admin · Administrator tahrirlash',width:1440,height:689,key:'screen48'},
+ {id:'2322:34177',name:'Super admin · Integratsiyalar',width:1440,height:960,key:'screen49'},
+ {id:'2322:34301',name:'Super admin · Tizim jurnali',width:1440,height:817,key:'screen50'},
+ {id:'2322:18813',name:'Super admin · Sozlamalar',width:1440,height:1024,key:'screen51'},
+ {id:'2322:19901',name:'Super admin · Profil',width:1440,height:1024,key:'screen52'},
+ {id:'2322:20038',name:'Super admin · 404',width:1440,height:1024,key:'screen53'},
+];

@@ -1,0 +1,15 @@
+{
+  "executed_at": "2026-10-01T13:07:09.269Z",
+  "browser": "Headless Chrome",
+  "checks": [
+    "Real login through browser",
+    "Admin saves role-specific page permissions",
+    "Disabled read removes navigation link",
+    "Direct disabled URL is denied",
+    "Existing session updates permissions on focus",
+    "Read-only role cannot open create form",
+    "No uncaught React/browser errors",
+    "Delegated pages appear outside the original role menu",
+    "Create button follows separate live CRUD permission"
+  ]
+}

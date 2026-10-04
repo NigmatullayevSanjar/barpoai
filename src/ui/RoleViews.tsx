@@ -1,0 +1,6 @@
+﻿import {Sidebar,useApp} from './App';
+import {roles} from './roles';
+const links:[number,string,string][]=[[26,'Obyektlar','Qurilish obyektlari va bloklarini ko‘rish'],[12,'Smetalar','Smetalarni yaratish va tahrirlash'],[8,'Vazifalar','Ish vazifalari va bajarilishini nazorat qilish'],[7,'Xomashyolar','Materiallar va buyurtmalarni ko‘rish'],[29,'Hisobotlar','Qurilish va xarajatlar hisobotlari']];
+export function RoleHome(){const a=useApp();return <div className="role-layout"><Sidebar/><section className="role-content"><h1>{roles[a.role].label} ish maydoni</h1><p>{roles[a.role].description}</p><div className="role-cards">{links.filter(([n])=>a.canAccess(n)).map(([n,title,description])=><button key={n} onClick={()=>a.go(n)}><h2>{title}</h2><p>{description}</p><small>{a.canWrite(n)?'Ko‘rish va boshqarish':'Faqat ko‘rish'} &rarr;</small></button>)}</div></section></div>}
+export function AccessDenied(){const a=useApp();return <div className="role-layout"><Sidebar/><section className="role-content role-denied"><h1>Bu sahifaga ruxsat yo‘q</h1><p>{roles[a.role].label} roli uchun ushbu bo‘lim yoki amal ochiq emas.</p><button onClick={()=>a.go(13)}>Bosh sahifaga qaytish</button></section></div>}
+

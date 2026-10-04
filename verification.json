@@ -1,0 +1,15 @@
+{
+  "screens": 37,
+  "errors": [],
+  "missing": [],
+  "desktopOverflow": [],
+  "flows": [
+    "Object → blocks → block detail",
+    "Create record → list → edit prefill",
+    "Search and empty result",
+    "Estimate create and save",
+    "Weekly report and Escape",
+    "Demo login and password visibility",
+    "Mobile navigation"
+  ]
+}

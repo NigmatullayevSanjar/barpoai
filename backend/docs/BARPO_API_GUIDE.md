@@ -1,0 +1,54 @@
+# API bilan tez boshlash
+
+HTTP bazasi: `/v1`. Auth: `Authorization: Bearer <access_token>`. Operatsion commandlar `Idempotency-Key` talab qiladi (8–128 belgi, odatda UUID). Qayta yuborishda ayni key va ayni payload. Bir keyni yangi ma’lumotga ishlatmang. DTOlar qat’iy: noma’lum field 400. Pul va quantity JSON string: `"100.50"`, `"25.000000"`.
+
+## Asosiy DTO namunalari
+
+Login input: `{ "login":"owner", "password":"..." }`.
+Login output: `{ "access_token":"...", "token_type":"Bearer", "expires_in":43200, "user":{"id":"uuid","tenant_id":"uuid yoki null","role":"tenant_admin","display_name":"...","must_change_password":false} }`.
+
+Error: `{ "error":{"code":"PAGE_ACTION_FORBIDDEN"}, "request_id":"req-..." }`. Validation error `fields:[{path:["amount"],message:"..."}]` oladi. Xato kodlari: UNAUTHORIZED/INVALID_CREDENTIALS (401), SUBSCRIPTION_REQUIRED (402), FORBIDDEN/PAGE_ACTION_FORBIDDEN/TENANT_BLOCKED/PASSWORD_CHANGE_REQUIRED (403), NOT_FOUND (404), VERSION_CONFLICT/IDEMPOTENCY_CONFLICT/INVARIANT_VIOLATION/INSUFFICIENT_AVAILABLE_STOCK (409), INVITE_UNAVAILABLE/PREVIEW_EXPIRED (410), RATE_LIMITED (429), PROVIDER_NOT_CONFIGURED/PAYMENT_PROVIDER_NOT_CONFIGURED (503).
+
+Listlar: `{items:[...]}`, query `limit=30&offset=0`; limit max100. Domain listlari `project_id` oladi va server assignmentni tekshiradi. Tenant IDni querydan almashtirib access olish mumkin emas. Narx maydonlari vakolatsiz userlarda response’dan tushiriladi. Barcha row field type va nullability [database spec](BARPO_DATABASE_SPEC.md)da; operatsion route inputlari [OpenAPI](BARPO_API_OPENAPI.yaml)da.
+
+## Role CRUD
+
+`GET /v1/me/permissions`:
+
+```json
+{
+  "role":"manager",
+  "version":2,
+  "pages":{"projects":{"create":true,"read":true,"update":false,"delete":false}},
+  "permissions":["projects.read","projects.write"]
+}
+```
+
+Yuqoridagi misol qisqartirilgan; real response barcha page keylarni beradi. Domain permissions yordamchi ma’lumot; UI aynan page/action flagini tekshiradi. `GET /v1/company/role-permissions` barcha kompaniya rollari, `version`, `locked_pages` qaytaradi. Saqlash:
+
+```json
+{
+  "version":2,
+  "role":"manager",
+  "rules":[{"page":"projects","read":true,"create":true,"update":false,"delete":false}]
+}
+```
+
+Yangi version bilan response keladi; eski versiya 409. read=false bo‘lsa qolgan uchta flag false bo‘lishi kerak. Moliya ichida bank_cash, invoices, payroll, budgets, allocations va boshqalar mustaqil. Platforma roli/tenant_admin ushbu endpoint orqali o‘zgartirilmaydi.
+
+## Ombor commandlari
+
+1. POST /materials: `{name,unit_id}`.
+2. POST /warehouses: `{project_id,name}` → `{warehouse,account}`.
+3. POST /stock/custody: `{project_id,custodian_id}` → stock_account.
+4. POST /stock/commands receipt/opening: `{project_id,kind,material_id,to_account_id,quantity,unit_cost,reason}`.
+5. Transfer: `{project_id,kind:"transfer",material_id,from_account_id,to_account_id,quantity,reason}` → pending/version1.
+6. POST /stock/commands/{id}/actions: `{version:1,action:"accept",quantity:"40"}` → partial/version2.
+7. Consumption: `kind:"consumption",from_account_id` va quantity; prorab `{version:1,action:"review"}`.
+8. Return: `kind:"return",from_account_id:custody,to_account_id:warehouse`; warehouse accept.
+
+Command output: id, tenant_id, project_id, kind, material_id, from_account_id/to_account_id nullable, quantity string, accepted_quantity string, status, version, created_by/reviewed_by, reason, timestamp. unit_cost narx huquqiga bog‘liq. Reversal alohida `/reverse` va reason bilan, eski yozuv o‘zgarmaydi.
+
+## Hujjat va frontend chegaralari
+
+OpenAPI runtime route registridan generatsiya qilinadi. Input/permission/idempotency/pathlar kod bilan bir manbadan. Response schema hozir ayrim operatsiyalarda generic object: fieldlarni qat’iy avtomatik serialize qilish full R1 hardening gate sifatida qayd etilgan. Frontend auth va permissions real ishlaydi; biznes ekranlarining qolgan demo formalarini ushbu endpointlarga ulash hali tugallanmagan.

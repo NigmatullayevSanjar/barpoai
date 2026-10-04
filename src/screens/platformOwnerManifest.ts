@@ -1,0 +1,17 @@
+export const platformOwnerManifest=[
+ {id:'2543:2728',name:'Platforma egasi · Bosh sahifa',width:1440,height:1262,key:'screen61'},
+ {id:'2555:4',name:'Platforma egasi · Daromad va qarzdorlik',width:1440,height:1137,key:'screen62'},
+ {id:'2543:3571',name:'Platforma egasi · Kompaniyalar',width:1440,height:1040,key:'screen63'},
+ {id:'2543:3682',name:'Platforma egasi · Kompaniya qo‘shish 1',width:1440,height:653,key:'screen64'},
+ {id:'2543:3827',name:'Platforma egasi · Kompaniya qo‘shish 2',width:1440,height:653,key:'screen65'},
+ {id:'2543:3967',name:'Platforma egasi · Kompaniya qo‘shish 3',width:1440,height:653,key:'screen66'},
+ {id:'2543:4579',name:'Platforma egasi · Kompaniyani tahrirlash',width:1440,height:1040,key:'screen67'},
+ {id:'2552:8745',name:'Platforma egasi · Xodimlar',width:1440,height:1024,key:'screen68'},
+ {id:'2552:8908',name:'Platforma egasi · Xodimni tahrirlash',width:1440,height:1070,key:'screen69'},
+ {id:'2552:9186',name:'Platforma egasi · Xodim qo‘shish',width:1440,height:1070,key:'screen70'},
+ {id:'2552:9447',name:'Platforma egasi · Xodimni ko‘rish',width:1440,height:1070,key:'screen71'},
+ {id:'2552:9707',name:'Platforma egasi · Tariflar',width:1440,height:960,key:'screen72'},
+ {id:'2543:3199',name:'Platforma egasi · Sozlamalar',width:1440,height:1024,key:'screen73'},
+ {id:'2543:3070',name:'Platforma egasi · Profil',width:1440,height:1024,key:'screen74'},
+ {id:'2543:3063',name:'Platforma egasi · 404',width:1440,height:1024,key:'screen75'},
+];

@@ -1,0 +1,27 @@
+/* Figma geometry corrections. Keep runtime behavior in the shared components. */
+.d228{font-family:Inter,sans-serif;font-weight:600}.d251{font-family:Inter,sans-serif;font-weight:400}
+.sidebar .brand{margin-left:0;margin-right:0}.sidebar nav a[aria-current]{font-weight:600}
+.screen-view [data-name=table-section]{flex:1 0 auto;height:auto}
+.native-field{background:revert-layer;font-size:14px!important;line-height:16px;min-height:42px;flex-shrink:0!important}
+.native-field.d79{background:#fff}.native-field.d105{background:#e2e8f0}
+.native-field::placeholder{color:inherit}.native-field.d105::placeholder{color:#33081c}
+select.native-field{line-height:16px;min-height:42px}
+.native-filter{font-size:13px;line-height:16px;padding:8px 12px;height:34px}
+.object-search-field{gap:8px;height:34px}.object-search-field>input{font-size:13px;line-height:16px;height:16px}
+.language-dropdown{width:66px;min-width:66px;height:34px}.language-dropdown select{min-height:0;height:32px;line-height:16px;padding:8px 28px 8px 12px;font-size:12px}.language-dropdown>span{width:7px;height:7px;right:14px}
+.password-field{height:42px;padding:0!important;min-height:42px}.password-field input{height:40px;min-height:0;border:0;background:transparent;line-height:16px;padding:12px 40px 12px 12px}.password-field button{top:10px;right:12px}
+.chip-remove{display:flex;align-items:center;justify-content:center;background:transparent;padding:0;width:16px;height:16px;flex-shrink:0}.chip-remove img{width:16px;height:16px;object-fit:contain}
+.screen-27>div,.screen-28>div{min-height:max(844px,100dvh)}
+@media(min-width:761px){.screen-27 [data-node-id="2050:151"],.screen-28 [data-node-id="2042:2"]{top:260px}.screen-27 [data-node-id="2050:155"],.screen-28 [data-name="form-content"]:nth-of-type(3){top:260px}}
+@media(max-width:760px){.screen-view [data-name=table-section]{width:100%;min-width:0}.screen-view [data-name=section-header]{flex-wrap:wrap;gap:12px}.screen-view [data-name=section-header]>div{flex-wrap:wrap;max-width:100%}.object-search-field{max-width:100%}}
+.screen-view [data-name=main-content]{min-height:100dvh}
+select.native-field{height:42px}
+@media(max-width:760px){.screen-view [data-name=main-content]{min-height:calc(100dvh - 56px)}}
+/* Dialogs must remain above the fixed navigation. */
+.screen-view [data-name=modal-container],.screen-view [data-name=form-body],.screen-view .d19.d79:has([data-name=Multiply]){z-index:110}
+@media(max-width:760px){
+ .screen-view .d19.d79:has([data-name=Multiply]){left:16px!important;right:auto!important;top:24px!important;width:calc(100% - 32px)!important;max-width:calc(100vw - 32px);translate:none!important;padding:20px;min-width:0}
+ .screen-view .d19.d79:has([data-name=Multiply]) [data-name=fields-row]{flex-wrap:wrap}
+ .screen-view .d19.d79:has([data-name=Multiply]) [data-name=fields-row]>div{flex-basis:100%;min-width:0}
+}
+.native-field.d0{background:#f8fafc}

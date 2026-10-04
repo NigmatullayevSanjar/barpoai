@@ -1,0 +1,2 @@
+import type {RoleConfig} from './types';
+export const accountantRole:RoleConfig={label:'Buxgalter',description:'Buxgalteriya hujjatlari, hisob-kitoblar, bank, ish haqi va moliyaviy hisobotlar',sections:[76,77,78,79,80,81,82,83,84,85,86],write:[76,77,78,79,80,81,82,83,84,85,86]};
