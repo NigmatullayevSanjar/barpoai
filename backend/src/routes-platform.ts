@@ -292,7 +292,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, query }) => ({
       items: (
         await db.query(
-          'SELECT * FROM support_requests ORDER BY created_at DESC,id LIMIT $1 OFFSET $2',
+          'SELECT s.*,t.legal_name,u.display_name FROM support_requests s JOIN tenants t ON t.id=s.tenant_id JOIN users u ON u.id=s.user_id ORDER BY s.status,s.created_at DESC,s.id LIMIT $1 OFFSET $2',
           [query.limit, query.offset],
         )
       ).rows,

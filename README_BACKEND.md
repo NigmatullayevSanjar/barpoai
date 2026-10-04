@@ -1,7 +1,10 @@
-# Backend va real ruxsatlar
+# Backend va frontendni birga ishga tushirish
 
-Backendning ishlash mantiqi, mavjud imkoniyatlari va bajarish ketma-ketligi: [qadamma-qadam to-do reja](BACKEND_TODO.md).
+Backendning ishlash mantiqi, mavjud imkoniyatlari va bajarish ketma-ketligi: [qadamma-qadam to-do reja](BACKEND_TODO.md). Node.js/TypeScript + PostgreSQL backend [backend/README.md](backend/README.md) da, texnik hujjatlar [backend/docs](backend/docs/BARPO_BACKEND_INDEX.md) da.
 
-Node.js/TypeScript + PostgreSQL backend [backend/README.md](backend/README.md) da. [Texnik hujjatlar](backend/docs/BARPO_BACKEND_INDEX.md) arxitektura, schema, OpenAPI, biznes qoidalari va tekshiruvlarni o‘z ichiga oladi.
+1. `backend/.env` ni to‘ldiring (DB parollari, `APP_ORIGIN=http://localhost:5173`, Telegram bot tokeni) va `docker compose up --build -d` bilan API, worker va bazani ko‘taring.
+2. Birinchi platforma egasini `npm run bootstrap` bilan yarating (backend/README.md, 3-band).
+3. Loyiha ildizida `pnpm install && pnpm dev`. Frontend `http://localhost:5173` da ochiladi; `/v1` so‘rovlari Vite orqali API ga proxy qilinadi, sessiya httpOnly cookie’da saqlanadi.
+4. Platforma egasi sifatida kiring → Mijozlar → yangi kompaniya → taklif havolasi. Havolani boshqa brauzer oynasida ochib kompaniya adminini yarating; 14 kunlik sinov signupda boshlanadi.
 
-`.env.example` ni `.env.local` ga ko‘chirib, `VITE_API_URL=http://localhost:3001` bilan frontendni qayta ishga tushiring. Shunda haqiqiy login, mijoz adminining rol–sahifa–CRUD matritsasi va server ruxsatlari asosida menyu/formalar filtri ishlaydi. 10 rol mavjud; har bir moliya sahifasi ham alohida sozlanadi. Qolgan Figma ekranlarining ma’lumotlari hali demo — live rejimda bu banner bilan ko‘rsatiladi.
+Barcha sahifalar real API bilan ishlaydi; hali ulanmagan bo‘limlar “keyingi bosqich” bo‘sh holatini ko‘rsatadi, statik raqam yo‘q. Brauzer e2e sinovi: `cd backend && npm run test:ui`.

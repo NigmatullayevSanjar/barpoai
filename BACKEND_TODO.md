@@ -104,7 +104,7 @@ Bog‘liqlik: 01. Qabul mezoni: toza va avvalgi sxemali test bazasida migratsiya
 - [x] 10 rol, kompaniya roli uchun sahifa–CRUD matritsasi va obyekt/ombor doirasi mavjud.
 - [x] Frontend login va ruxsatlar sahifasi serverga ulangan.
 - [x] 2026-10-04: login foydalanuvchi nomi yoki telefon bilan; httpOnly cookie sessiya (Origin tekshiruvi) va Bearer parallel; profil tahriri (`PATCH /v1/auth/profile`); trial tugashi avtomatik bloklamaydi — `access_state`/`days_overdue` platforma ro‘yxatida ko‘rinadi, bloklash qo‘lda.
-- [ ] Taklifni ochish, signup, reset va profil oqimlarining qolgan frontend qismlarini real APIga ulash.
+- [x] 2026-10-04: yangi frontend poydevori (Vite + React, feature-based, TanStack Query, RHF+Zod, UZ/RU i18n, cookie sessiya, DataTable/Modal/Form komponentlari). Login, taklif orqali signup, parol almashtirish/tiklash, profil, Telegram ulash, bildirishnomalar, ruxsatlar matritsasi va platforma egasi sahifalari (kompaniyalar, taklif, tarif, invoys, to‘lov, qarzdorlar, murojaatlar, texnik xodimlar) real APIga ulangan. Brauzer e2e: `npm run test:ui`.
 - [ ] Kompaniya adminini tiklash uchun shaxsni tekshirish jarayonini yakunlash.
 - [ ] Sessiya tugashi, bloklanish va har rolning to‘g‘ri bosh sahifaga qaytishini tekshirish.
 

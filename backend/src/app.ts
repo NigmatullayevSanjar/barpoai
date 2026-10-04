@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { baseApp, router, openapi, type Endpoint } from './http.js';
 import { authRoutes } from './routes-auth.js';
 import { platformRoutes } from './routes-platform.js';
+import { platformExtraRoutes } from './routes-platform-extra.js';
 import { companyRoutes } from './routes-company.js';
 import { permissionRoutes } from './routes-permissions.js';
 import { operationRoutes } from './routes-operations.js';
@@ -22,6 +23,7 @@ export async function buildApp(pool: pg.Pool, logging = false) {
   });
   authRoutes(add);
   platformRoutes(add);
+  platformExtraRoutes(add);
   companyRoutes(add);
   permissionRoutes(add);
   operationRoutes(add);

@@ -1,15 +1,17 @@
 {
-  "executed_at": "2026-10-01T13:07:09.269Z",
+  "executed_at": "2026-10-04T08:55:55.994Z",
   "browser": "Headless Chrome",
   "checks": [
-    "Real login through browser",
-    "Admin saves role-specific page permissions",
-    "Disabled read removes navigation link",
-    "Direct disabled URL is denied",
-    "Existing session updates permissions on focus",
-    "Read-only role cannot open create form",
-    "No uncaught React/browser errors",
-    "Delegated pages appear outside the original role menu",
-    "Create button follows separate live CRUD permission"
+    "Platform owner logs in with cookie session and sees the platform dashboard",
+    "Plan version created from the UI",
+    "Tenant created and one-time registration link issued",
+    "Invite registration creates tenant admin, starts trial and opens the company workspace",
+    "Admin saves per-role page CRUD matrix",
+    "Employee forced password change; disabled page hidden from menu and denied by direct URL",
+    "Existing employee session picks up permission changes on focus",
+    "Profile issues one-time Telegram deep link; UI switches between UZ and RU",
+    "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
+    "Logout clears the session cookie and protected routes redirect to login",
+    "No uncaught React/browser errors"
   ]
 }
