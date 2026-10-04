@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-01T13:02:56.650Z",
+  "executed_at": "2026-10-04T07:40:50.556Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
