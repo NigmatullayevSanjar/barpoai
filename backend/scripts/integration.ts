@@ -15,6 +15,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { createPool, transaction, one } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
+import { issueDueInvoices, periodEnd } from '../src/billing.js';
 import { hashPassword, digest } from '../src/security.js';
 import {
   createLinkToken,
@@ -1122,7 +1123,7 @@ try {
   assert(diag.worker.pending >= 1 && Array.isArray(diag.worker.failed_jobs));
   assert(typeof diag.errors.last_24h === 'number' && Array.isArray(diag.errors.items));
   assert(diag.tenants.active >= 1 && diag.sessions_active >= 1);
-  assert.equal(diag.database.last_migration, '012_settings_support_diagnostics.sql');
+  assert.match(String(diag.database.last_migration), /^\d{3}_[a-z_]+\.sql$/);
   await call('GET', '/v1/platform/diagnostics', undefined, ownerToken, undefined, 403);
   const sr = await call(
     'POST',
@@ -1148,6 +1149,159 @@ try {
   passed.push(
     'Support staff reads diagnostics (queue, errors, tenants, migration); a support response notifies the requesting admin',
   );
+  // ---- 10: avtomatik 30 kunlik invoys, ortiqcha to'lov krediti, qoplanish zanjiri
+  const plan = await call(
+    'POST',
+    '/v1/platform/plans',
+    { code: 'standard', version: 1, monthly_price: '450000.00', limits: { users: 20 } },
+    ownerToken,
+  );
+  const sub = await call(
+    'POST',
+    '/v1/platform/subscriptions',
+    { tenant_id: t.id, plan_version_id: plan.id },
+    ownerToken,
+  );
+  const trialEnd = (await admin.query('SELECT trial_ends_at FROM tenants WHERE id=$1', [t.id]))
+    .rows[0].trial_ends_at;
+  assert.equal(new Date(sub.next_period_start).toISOString(), new Date(trialEnd).toISOString());
+  const dayMs = 86400000;
+  assert.equal(
+    await issueDueInvoices(appPool!, new Date(new Date(trialEnd).getTime() - 10 * dayMs)),
+    0,
+  );
+  assert.equal(
+    await issueDueInvoices(appPool!, new Date(new Date(trialEnd).getTime() - 2 * dayMs)),
+    1,
+  );
+  assert.equal(
+    await issueDueInvoices(appPool!, new Date(new Date(trialEnd).getTime() - 2 * dayMs)),
+    0,
+  );
+  const inv1 = (
+    await admin.query('SELECT * FROM billing_invoices WHERE tenant_id=$1 ORDER BY period_start', [
+      t.id,
+    ])
+  ).rows;
+  assert.equal(inv1.length, 1);
+  assert.equal(inv1[0].source, 'auto');
+  assert.equal(new Date(inv1[0].period_start).toISOString(), new Date(trialEnd).toISOString());
+  assert.equal(new Date(inv1[0].period_end).toISOString(), periodEnd(trialEnd).toISOString());
+  assert.equal(inv1[0].amount, '450000.00');
+  const subAfter = (
+    await admin.query('SELECT next_period_start FROM subscriptions WHERE tenant_id=$1', [t.id])
+  ).rows[0];
+  assert.equal(
+    new Date(subAfter.next_period_start).toISOString(),
+    periodEnd(trialEnd).toISOString(),
+  );
+  const invoiceNotif = await call('GET', '/v1/me/notifications?unread=true', undefined, adminAgain);
+  assert(
+    invoiceNotif.items.some(
+      (n: any) => n.kind === 'billing.invoice' && n.payload.invoice_id === inv1[0].id,
+    ),
+  );
+  passed.push(
+    'Worker issues the first 30-day invoice 3 days before the trial ends, once, and notifies the admin',
+  );
+  const over = await call(
+    'POST',
+    '/v1/platform/billing/entries',
+    {
+      invoice_id: inv1[0].id,
+      kind: 'payment',
+      amount: '550000.00',
+      external_ref: 'BANK-OVER-1',
+      reason: 'Bank o‘tkazmasi, ortiqcha',
+    },
+    ownerToken,
+  );
+  assert.equal(over.credit, '100000.00');
+  let billingView = await call('GET', '/v1/billing', undefined, adminAgain);
+  assert.equal(billingView.credit_balance, '100000.00');
+  assert.equal(billingView.invoices[0].covered, '550000.00');
+  assert.equal(
+    new Date(billingView.tenant.paid_until).toISOString(),
+    periodEnd(trialEnd).toISOString(),
+  );
+  await call(
+    'POST',
+    '/v1/platform/billing/entries',
+    {
+      invoice_id: inv1[0].id,
+      kind: 'credit',
+      amount: '1.00',
+      external_ref: 'MANUAL-CREDIT-1',
+      reason: 'Chegirma sinovi',
+    },
+    ownerToken,
+    undefined,
+    409,
+  );
+  passed.push(
+    'Overpayment records real cash, moves the excess to tenant credit and extends paid_until by the covered period',
+  );
+  const secondStart = periodEnd(trialEnd);
+  assert.equal(await issueDueInvoices(appPool!, new Date(secondStart.getTime() - dayMs)), 1);
+  const inv2 = (
+    await admin.query('SELECT * FROM billing_invoices WHERE tenant_id=$1 ORDER BY period_start', [
+      t.id,
+    ])
+  ).rows;
+  assert.equal(inv2.length, 2);
+  const applied = (
+    await admin.query(
+      "SELECT amount::text,external_ref FROM billing_entries WHERE invoice_id=$1 AND kind='credit'",
+      [inv2[1].id],
+    )
+  ).rows;
+  assert.deepEqual(
+    applied.map((a) => a.amount),
+    ['100000.00'],
+  );
+  billingView = await call('GET', '/v1/billing', undefined, adminAgain);
+  assert.equal(billingView.credit_balance, '0.00');
+  assert.equal(billingView.invoices[0].covered, '100000.00');
+  assert.equal(
+    new Date(billingView.tenant.paid_until).toISOString(),
+    periodEnd(trialEnd).toISOString(),
+  );
+  const summary = await call('GET', '/v1/platform/billing/summary', undefined, ownerToken);
+  assert.equal(summary.debt, '350000.00');
+  assert.equal(summary.credit_balance, '0.00');
+  assert.equal(summary.cash_received, '550000.00');
+  const card = await call('GET', `/v1/platform/tenants/${t.id}`, undefined, ownerToken);
+  assert.equal(card.credit_balance, '0.00');
+  assert.equal(card.credits.length, 2);
+  assert.equal(
+    await issueDueInvoices(appPool!, new Date(periodEnd(secondStart).getTime() + dayMs)),
+    1,
+  );
+  const overdueNotif = await call('GET', '/v1/me/notifications?unread=true', undefined, adminAgain);
+  assert(
+    overdueNotif.items.some(
+      (n: any) => n.kind === 'billing.overdue' && n.payload.invoice_id === inv2[1].id,
+    ),
+  );
+  passed.push(
+    'Next auto invoice consumes the carried credit; debt is computed per invoice; overdue invoice notifies the admin once without blocking',
+  );
+  const manual = await call(
+    'POST',
+    '/v1/platform/billing/invoices',
+    {
+      tenant_id: t.id,
+      plan_version_id: plan.id,
+      period_start: periodEnd(periodEnd(secondStart)).toISOString(),
+    },
+    ownerToken,
+  );
+  assert.equal(manual.source, 'manual');
+  assert.equal(
+    new Date(manual.period_end).toISOString(),
+    periodEnd(periodEnd(periodEnd(secondStart))).toISOString(),
+  );
+  passed.push('Owner issues a manual invoice from the platform (default 30-day period)');
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

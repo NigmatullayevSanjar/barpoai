@@ -115,3 +115,13 @@ test('notification kinds map to company Telegram categories', async () => {
   assert.equal(notificationCategory('payment.request.approved'), 'finance');
   assert.equal(notificationCategory('support.response'), 'other');
 });
+test('billing period is a 30-day chain anchored on the given start', async () => {
+  const { periodEnd, PERIOD_DAYS, INVOICE_LEAD_DAYS } = await import('../src/billing.js');
+  assert.equal(PERIOD_DAYS, 30);
+  assert.equal(INVOICE_LEAD_DAYS, 3);
+  assert.equal(periodEnd('2026-10-18T00:00:00.000Z').toISOString(), '2026-11-17T00:00:00.000Z');
+  assert.equal(
+    periodEnd(periodEnd('2026-10-18T00:00:00.000Z')).toISOString(),
+    '2026-12-17T00:00:00.000Z',
+  );
+});

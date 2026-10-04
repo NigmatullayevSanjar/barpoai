@@ -646,7 +646,7 @@ paths:
               additionalProperties: false
   /v1/platform/subscriptions:
     post:
-      summary: Korxonaga aniq tarif versiyasi biriktirish
+      summary: Korxonaga tarif versiyasi biriktirish; davr boshlanishi berilmasa trial tugashi yoki oxirgi qoplangan sana
       operationId: post_v1_platform_subscriptions
       security:
         - bearerAuth: []
@@ -699,7 +699,6 @@ paths:
               required:
                 - tenant_id
                 - plan_version_id
-                - next_period_start
               additionalProperties: false
   /v1/platform/tenants:
     get:
@@ -1096,7 +1095,7 @@ paths:
         "503": *a23
   /v1/platform/billing/invoices:
     post:
-      summary: Tarifdan oylik SaaS invoys yaratish
+      summary: Tarifdan SaaS invoys qo‘lda yaratish (standart davr 30 kun); mavjud kredit avtomatik qo‘llanadi
       operationId: post_v1_platform_billing_invoices
       security:
         - bearerAuth: []
@@ -1158,8 +1157,6 @@ paths:
                 - tenant_id
                 - plan_version_id
                 - period_start
-                - period_end
-                - due_at
               additionalProperties: false
     get:
       summary: Barcha SaaS invoyslar, qoplanish va kompaniya nomi bilan
@@ -1222,7 +1219,8 @@ paths:
         "503": *a25
   /v1/platform/billing/entries:
     post:
-      summary: SaaS to‘lov, kredit yoki refund; real callbackdan alohida manual hisob
+      summary: SaaS to‘lov, kredit yoki refund; invoysdan ortiqcha to‘lov kompaniya kreditiga o‘tadi va keyingi invoysga
+        qo‘llanadi
       operationId: post_v1_platform_billing_entries
       security:
         - bearerAuth: []
@@ -1290,7 +1288,7 @@ paths:
               additionalProperties: false
   /v1/platform/billing/summary:
     get:
-      summary: Invoys, pul tushumi va qarz alohida
+      summary: Invoys, pul tushumi, qarz (invoys kesimida) va kompaniyalar kredit qoldig‘i alohida
       operationId: get_v1_platform_billing_summary
       security:
         - bearerAuth: []

@@ -18,20 +18,38 @@ import { token, digest, hashPassword } from './security.js';
 import { invariant } from './errors.js';
 import { dec } from './money.js';
 import { accessState } from './auth.js';
+import { issueInvoice, applyCredit, recomputeCoverage, periodEnd } from './billing.js';
 import { telegramConfigured } from './telegram.js';
 const owner = ['platform_owner'];
 export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/platform/subscriptions',
-    summary: 'Korxonaga aniq tarif versiyasi biriktirish',
+    summary:
+      'Korxonaga tarif versiyasi biriktirish; davr boshlanishi berilmasa trial tugashi yoki oxirgi qoplangan sana',
     platform: owner,
-    body: z.strictObject({ tenant_id: uuid, plan_version_id: uuid, next_period_start: timestamp }),
+    body: z.strictObject({
+      tenant_id: uuid,
+      plan_version_id: uuid,
+      next_period_start: timestamp.optional(),
+    }),
     handler: async ({ db, actor, body }) => {
+      const tenant = await one(db, 'SELECT trial_ends_at,paid_until FROM tenants WHERE id=$1', [
+        body.tenant_id,
+      ]);
+      const start =
+        body.next_period_start ??
+        new Date(
+          Math.max(
+            tenant.trial_ends_at ? new Date(tenant.trial_ends_at).getTime() : 0,
+            tenant.paid_until ? new Date(tenant.paid_until).getTime() : 0,
+            Date.now(),
+          ),
+        ).toISOString();
       const row = await one(
         db,
         'INSERT INTO subscriptions(tenant_id,plan_version_id,next_period_start) VALUES($1,$2,$3) ON CONFLICT(tenant_id) DO UPDATE SET plan_version_id=excluded.plan_version_id,next_period_start=excluded.next_period_start RETURNING *',
-        [body.tenant_id, body.plan_version_id, body.next_period_start],
+        [body.tenant_id, body.plan_version_id, start],
       );
       await audit(db, actor, 'subscription.set', body.tenant_id);
       return row;
@@ -176,37 +194,34 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/platform/billing/invoices',
-    summary: 'Tarifdan oylik SaaS invoys yaratish',
+    summary:
+      'Tarifdan SaaS invoys qo‘lda yaratish (standart davr 30 kun); mavjud kredit avtomatik qo‘llanadi',
     platform: owner,
     body: z.strictObject({
       tenant_id: uuid,
       plan_version_id: uuid,
       period_start: timestamp,
-      period_end: timestamp,
-      due_at: timestamp,
+      period_end: timestamp.optional(),
+      due_at: timestamp.optional(),
     }),
     handler: async ({ db, body, actor }) => {
-      const plan = await one(db, 'SELECT * FROM plan_versions WHERE id=$1', [body.plan_version_id]);
-      const row = await one(
-        db,
-        'INSERT INTO billing_invoices(tenant_id,plan_version_id,period_start,period_end,due_at,amount) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
-        [
-          body.tenant_id,
-          body.plan_version_id,
-          body.period_start,
-          body.period_end,
-          body.due_at,
-          plan.monthly_price,
-        ],
-      );
-      await audit(db, actor, 'billing.invoice', row.id);
-      return row;
+      await one(db, 'SELECT id FROM tenants WHERE id=$1 FOR UPDATE', [body.tenant_id]);
+      return issueInvoice(db, {
+        tenant_id: body.tenant_id,
+        plan_version_id: body.plan_version_id,
+        period_start: new Date(body.period_start),
+        period_end: body.period_end ? new Date(body.period_end) : periodEnd(body.period_start),
+        due_at: body.due_at ? new Date(body.due_at) : new Date(body.period_start),
+        source: 'manual',
+        actor,
+      });
     },
   });
   add({
     method: 'POST',
     path: '/v1/platform/billing/entries',
-    summary: 'SaaS to‘lov, kredit yoki refund; real callbackdan alohida manual hisob',
+    summary:
+      'SaaS to‘lov, kredit yoki refund; invoysdan ortiqcha to‘lov kompaniya kreditiga o‘tadi va keyingi invoysga qo‘llanadi',
     platform: owner,
     body: z.strictObject({
       invoice_id: uuid,
@@ -240,10 +255,11 @@ export function platformRoutes(add: (r: Endpoint) => void) {
         "SELECT coalesce(sum(CASE WHEN kind='refund' THEN -amount ELSE amount END),0)::text covered,coalesce(sum(CASE WHEN kind='payment' THEN amount WHEN kind='refund' THEN -amount ELSE 0 END),0)::text cash FROM billing_entries WHERE invoice_id=$1",
         [invoice.id],
       );
+      // Qo‘lda kredit (chegirma) va refund chegaralanadi; haqiqiy to‘lov to‘liq yoziladi, ortiqchasi kreditga o‘tadi.
       invariant(
         body.kind === 'refund'
           ? dec(body.amount).lte(totals.cash)
-          : dec(totals.covered).add(body.amount).lte(invoice.amount),
+          : body.kind === 'payment' || dec(totals.covered).add(body.amount).lte(invoice.amount),
         'BILLING_AMOUNT_EXCEEDED',
       );
       const row = await one(
@@ -259,29 +275,44 @@ export function platformRoutes(add: (r: Endpoint) => void) {
           actor.id,
         ],
       );
-      // Only contiguous, fully covered periods extend access; a refund shortens coverage.
-      await db.query(
-        `WITH RECURSIVE covered AS (
-      SELECT i.period_start,i.period_end FROM billing_invoices i LEFT JOIN billing_entries e ON e.invoice_id=i.id WHERE i.tenant_id=$1 GROUP BY i.id HAVING coalesce(sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END),0)>=i.amount
-    ), chain AS (
-      SELECT trial_ends_at AS until FROM tenants WHERE id=$1
-      UNION SELECT c.period_end FROM covered c JOIN chain x ON c.period_start<=x.until AND c.period_end>x.until
-    ) UPDATE tenants SET paid_until=(SELECT max(until) FROM chain) WHERE id=$1`,
-        [invoice.tenant_id],
-      );
-      await audit(db, actor, `billing.${body.kind}`, row.id, { reason: body.reason });
-      return row;
+      const excess =
+        body.kind === 'payment'
+          ? dec(totals.covered).add(body.amount).minus(invoice.amount)
+          : dec('0');
+      if (excess.gt(0))
+        await db.query(
+          "INSERT INTO billing_credits(tenant_id,kind,amount,entry_id,invoice_id,note,created_by) VALUES($1,'overpayment',$2,$3,$4,$5,$6)",
+          [
+            invoice.tenant_id,
+            excess.toFixed(2),
+            row.id,
+            invoice.id,
+            `Ortiqcha to‘lov (${body.external_ref})`,
+            actor.id,
+          ],
+        );
+      await recomputeCoverage(db, invoice.tenant_id);
+      await applyCredit(db, invoice.tenant_id, actor.id);
+      await audit(db, actor, `billing.${body.kind}`, row.id, {
+        reason: body.reason,
+        credit: excess.gt(0) ? excess.toFixed(2) : undefined,
+      });
+      return { ...row, credit: excess.gt(0) ? excess.toFixed(2) : '0.00' };
     },
   });
   add({
     method: 'GET',
     path: '/v1/platform/billing/summary',
-    summary: 'Invoys, pul tushumi va qarz alohida',
+    summary: 'Invoys, pul tushumi, qarz (invoys kesimida) va kompaniyalar kredit qoldig‘i alohida',
     platform: owner,
     handler: async ({ db }) =>
       one(
         db,
-        `WITH inv AS(SELECT coalesce(sum(amount),0) amount FROM billing_invoices),e AS(SELECT coalesce(sum(amount) FILTER(WHERE kind='payment'),0) payment,coalesce(sum(amount) FILTER(WHERE kind='refund'),0) refund,coalesce(sum(amount) FILTER(WHERE kind='credit'),0) credit FROM billing_entries) SELECT inv.amount::text invoiced,e.payment::text cash_received,e.refund::text refunded,(inv.amount-e.payment-e.credit+e.refund)::text debt,NULL::text profit FROM inv,e`,
+        `WITH inv AS(SELECT coalesce(sum(i.amount),0) amount,coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))),0) debt
+                  FROM billing_invoices i LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true),
+              e AS(SELECT coalesce(sum(amount) FILTER(WHERE kind='payment'),0) payment,coalesce(sum(amount) FILTER(WHERE kind='refund'),0) refund FROM billing_entries),
+              cr AS(SELECT coalesce(sum(amount),0) balance FROM billing_credits)
+         SELECT inv.amount::text invoiced,e.payment::text cash_received,e.refund::text refunded,inv.debt::text debt,cr.balance::text credit_balance,NULL::text profit FROM inv,e,cr`,
       ),
   });
   add({

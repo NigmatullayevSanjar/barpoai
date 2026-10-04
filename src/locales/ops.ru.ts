@@ -160,4 +160,16 @@ export const opsRu: Record<string, string> = {
   'fin.pa.by_zone': 'По зонам',
   'fin.pa.lines_count': 'Строк',
   'fin.pa.no_zone': 'Без зоны',
+
+  'billing.credit_balance': 'Кредитный остаток',
+  'billing.next_invoice': 'Следующий счёт',
+  'billing.period_hint':
+    'Период подписки 30 дней; счёт выставляется автоматически за 3 дня до начала периода. Переплата зачисляется как кредит на следующий счёт. При просрочке доступ остаётся открытым до решения владельца платформы.',
+  'tenants.source': 'Источник',
+  'tenants.source.auto': 'Автоматически',
+  'tenants.source.manual': 'Вручную',
+  'tenants.credit_balance': 'Кредитный остаток',
+  'tenants.overpay_hint':
+    'Переплата сверх счёта становится кредитом компании и автоматически применяется к следующему счёту.',
+  'platform.credit_balance': 'Кредит компаний',
 };

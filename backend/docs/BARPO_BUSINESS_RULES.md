@@ -86,3 +86,9 @@ Texnik panel faqat bazadagi haqiqiy holatni ko‘rsatadi (5xx xatolar `error_eve
 **Egasi qarori (2026-10-04):** AI yordamchi mahsulot doirasidan chiqarildi; kontrakt ham, UI ham rejalashtirilmaydi.
 
 Tuzatilgan xatolar: moliya yig‘masi, reja–fakt, prognoz va moliyaviy hisobotlardagi oylik so‘rovlar (`month` yalang‘och alias) hamda qarz yoshi so‘rovidagi ortiqcha parametr 500 qaytarar edi — integration testga regressiya tekshiruvi qo‘shildi; super admin uchun murojaatlar ro‘yxati va support xodimi uchun diagnostika ruxsati menyu bilan moslashtirildi.
+
+## Avtomatik invoys va carry-forward kredit (2026-10-04, egasi qarori)
+
+Obuna davri 30 kun, zanjir trial tugagan kundan (`period_start = oldingi period_end`, birinchisi `trial_ends_at`). Invoys davr boshlanishidan 3 kun oldin avtomatik chiqadi (`source='auto'`), narx tarif versiyasi snapshoti. To‘lov muddati davr boshi; muddati o‘tganda `access_state=overdue`, adminga bir martalik ogohlantirish, blok faqat platforma egasining qo‘lda qarori.
+
+Ortiqcha to‘lov rad etilmaydi: `payment` yozuvi haqiqiy pulni to‘liq aks ettiradi, invoysdan oshgan qismi kompaniya kredit qoldig‘i (`billing_credits`, append-only). Kredit avtomatik ravishda to‘lanmagan invoyslarga (eng eskisidan) va keyingi avtomatik invoysga qo‘llanadi; qo‘llash `billing_entries(kind='credit')` bilan ko‘rinadi, shuning uchun qoplanish zanjiri formulasi o‘zgarmaydi. Qarz formulasi: invoys kesimida `Σ max(0, amount − qoplangan)`; kredit qoldig‘i alohida ko‘rsatkich. Refund hamon sof olingan cashdan oshmaydi.

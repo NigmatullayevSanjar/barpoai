@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T12:28:42.526Z",
+  "executed_at": "2026-10-04T12:58:17.693Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -34,6 +34,7 @@
     "Audit page filters by action prefix; files page shows report photos by project",
     "Plan–actual page renders the zone rollup and downloads the Excel export",
     "Super admin reads diagnostics (queue, migration) and answers a support request; the admin receives the reply as a notification",
+    "Overpayment becomes tenant credit; the company billing page shows the credit balance and next invoice date",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
     "Logout clears the session cookie and protected routes redirect to login",
     "No uncaught React/browser errors"

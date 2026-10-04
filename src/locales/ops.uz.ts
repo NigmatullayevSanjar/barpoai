@@ -160,4 +160,16 @@ export const opsUz: Record<string, string> = {
   'fin.pa.by_zone': 'Zonalar bo‘yicha',
   'fin.pa.lines_count': 'Qatorlar',
   'fin.pa.no_zone': 'Zonasiz',
+
+  'billing.credit_balance': 'Kredit qoldig‘i',
+  'billing.next_invoice': 'Keyingi invoys',
+  'billing.period_hint':
+    'Obuna davri 30 kun; invoys davr boshlanishidan 3 kun oldin avtomatik chiqariladi. Ortiqcha to‘lov kredit sifatida keyingi invoysga qo‘llanadi. Muddati o‘tganda kirish platforma egasi qaroriga qadar ochiq qoladi.',
+  'tenants.source': 'Manba',
+  'tenants.source.auto': 'Avtomatik',
+  'tenants.source.manual': 'Qo‘lda',
+  'tenants.credit_balance': 'Kredit qoldig‘i',
+  'tenants.overpay_hint':
+    'Invoysdan ortiqcha to‘lov kompaniya kreditiga o‘tadi va keyingi invoysga avtomatik qo‘llanadi.',
+  'platform.credit_balance': 'Kompaniyalar krediti',
 };

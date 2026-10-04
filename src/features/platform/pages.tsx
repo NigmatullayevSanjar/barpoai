@@ -101,6 +101,7 @@ export function PlatformDashboard() {
         cash_received: string;
         refunded: string;
         debt: string;
+        credit_balance: string;
         profit: null;
       }>('/v1/platform/billing/summary'),
   });
@@ -137,7 +138,7 @@ export function PlatformDashboard() {
         <Stat
           label={t('platform.refunded')}
           value={summary.data ? formatMoney(summary.data.refunded, lang, false) : '—'}
-          sub={t('platform.profit_note')}
+          sub={`${t('platform.credit_balance')}: ${summary.data ? formatMoney(summary.data.credit_balance, lang, false) : '—'} · ${t('platform.profit_note')}`}
         />
       </div>
       <section>
@@ -385,7 +386,17 @@ type TenantDetail = Tenant & {
     amount: string;
     covered: string;
     plan_code: string;
+    source: 'manual' | 'auto';
   }[];
+  credits: {
+    id: string;
+    kind: 'overpayment' | 'applied' | 'manual';
+    amount: string;
+    invoice_id: string | null;
+    note: string;
+    created_at: string;
+  }[];
+  credit_balance: string;
   entries: {
     id: string;
     invoice_id: string;
@@ -486,7 +497,16 @@ export function TenantDetailPage() {
       header: t('tenants.period_start'),
       render: (r) => `${formatDate(r.period_start, lang)} — ${formatDate(r.period_end, lang)}`,
     },
-    { key: 'plan', header: t('tenants.plan'), render: (r) => r.plan_code },
+    {
+      key: 'plan',
+      header: t('tenants.plan'),
+      render: (r) => (
+        <span className="row">
+          {r.plan_code}
+          <Badge tone={r.source === 'auto' ? 'info' : 'neutral'}>{t(`tenants.source.${r.source}`)}</Badge>
+        </span>
+      ),
+    },
     {
       key: 'due',
       header: t('tenants.due_at'),
@@ -580,6 +600,8 @@ export function TenantDetailPage() {
               <dd>{formatDate(d.trial_ends_at, lang)}</dd>
               <dt>{t('tenants.paid_until')}</dt>
               <dd>{formatDate(d.paid_until, lang)}</dd>
+              <dt>{t('tenants.credit_balance')}</dt>
+              <dd>{formatMoney(d.credit_balance, lang)}</dd>
               <dt>{t('common.created_at')}</dt>
               <dd>{formatDateTime(d.created_at, lang)}</dd>
               {d.block_reason && d.status !== 'active' && (
@@ -742,6 +764,15 @@ export function TenantDetailPage() {
         tenantId={id}
         plans={plans.data?.items ?? []}
         current={d.subscription?.plan_version_id}
+        defaultStart={new Date(
+          Math.max(
+            d.trial_ends_at ? new Date(d.trial_ends_at).getTime() : 0,
+            d.paid_until ? new Date(d.paid_until).getTime() : 0,
+            Date.now(),
+          ),
+        )
+          .toISOString()
+          .slice(0, 10)}
         onDone={refresh}
       />
       <NewInvoiceModal
@@ -765,6 +796,7 @@ function SetPlanModal({
   tenantId,
   plans,
   current,
+  defaultStart,
   onDone,
 }: {
   open: boolean;
@@ -772,13 +804,14 @@ function SetPlanModal({
   tenantId: string;
   plans: Plan[];
   current?: string;
+  defaultStart: string;
   onDone: () => Promise<unknown>;
 }) {
   const { t, lang } = useT();
   const onError = useApiError();
   const toast = useToast();
   const [planId, setPlanId] = useState(current ?? '');
-  const [start, setStart] = useState(new Date().toISOString().slice(0, 10));
+  const [start, setStart] = useState(defaultStart);
   const m = useMutation({
     mutationFn: () =>
       api('/v1/platform/subscriptions', {
@@ -853,7 +886,7 @@ function NewInvoiceModal({
     tenant.subscription?.next_period_start?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const plusMonth = (d: string) => {
     const x = new Date(d + 'T00:00:00Z');
-    x.setUTCMonth(x.getUTCMonth() + 1);
+    x.setUTCDate(x.getUTCDate() + 30);
     return x.toISOString().slice(0, 10);
   };
   const [start, setStart] = useState(startDefault);
@@ -992,6 +1025,7 @@ function BillingEntryModal({
           label={`${t('tenants.amount')} (UZS)`}
           inputMode="decimal"
           placeholder="450000.00"
+          hint={t('tenants.overpay_hint')}
           error={form.formState.errors.amount?.message}
           {...form.register('amount')}
         />

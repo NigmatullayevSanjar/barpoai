@@ -4,6 +4,8 @@ import { one, audit } from './db.js';
 import { uuid, idParams, pageQuery } from './schemas.js';
 import { accessState } from './auth.js';
 import { notify } from './notify.js';
+import { creditBalance } from './billing.js';
+import { money } from './money.js';
 const owner = ['platform_owner'];
 /** Platforma egasi va texnik xodimlar uchun o'qish/ko'rish endpointlari (frontend kartalari uchun). */
 export function platformExtraRoutes(add: (r: Endpoint) => void) {
@@ -50,6 +52,12 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
           [params.id],
         )
       ).rows;
+      const credits = (
+        await db.query(
+          'SELECT id,kind,amount::text,invoice_id,note,created_at FROM billing_credits WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100',
+          [params.id],
+        )
+      ).rows;
       const invite = (
         await db.query(
           'SELECT id,expires_at,created_at FROM invites WHERE tenant_id=$1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at>now()',
@@ -64,6 +72,8 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
         subscription,
         invoices,
         entries,
+        credits,
+        credit_balance: money(await creditBalance(db, params.id)),
         pending_invite: invite ?? null,
       };
     },

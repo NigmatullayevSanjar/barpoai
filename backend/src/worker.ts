@@ -3,6 +3,7 @@ import { tenantAccess } from './auth.js';
 import { invariant } from './errors.js';
 import { sendMessage, telegramConfigured, pollOnce } from './telegram.js';
 import { notify } from './notify.js';
+import { issueDueInvoices } from './billing.js';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 /** Outbox: har tenant uchun bittadan, platforma (tenant_id NULL) uchun ham bitta vazifa. */
@@ -109,6 +110,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       await workOnce(pool);
       if (Date.now() - lastReminder > 10 * 60 * 1000) {
         await remindDeadlines(pool);
+        await issueDueInvoices(pool);
         lastReminder = Date.now();
       }
     } catch (error: any) {

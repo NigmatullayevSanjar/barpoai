@@ -23,6 +23,8 @@ import {
 } from './permissions.js';
 import { hashPassword, token, digest } from './security.js';
 import { invariant } from './errors.js';
+import { creditBalance } from './billing.js';
+import { money } from './money.js';
 import { accessState } from './auth.js';
 export function companyRoutes(add: (r: Endpoint) => void) {
   add({
@@ -467,10 +469,12 @@ export function companyRoutes(add: (r: Endpoint) => void) {
         ).rows[0] ?? null,
       invoices: (
         await db.query(
-          'SELECT * FROM billing_invoices WHERE tenant_id=$1 ORDER BY period_start DESC',
+          `SELECT i.*,coalesce((SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) FROM billing_entries e WHERE e.invoice_id=i.id),0)::text covered
+           FROM billing_invoices i WHERE i.tenant_id=$1 ORDER BY i.period_start DESC`,
           [actor.tenant_id],
         )
       ).rows,
+      credit_balance: money(await creditBalance(db, actor.tenant_id)),
       entries: (
         await db.query(
           'SELECT id,invoice_id,kind,amount,created_at FROM billing_entries WHERE tenant_id=$1 ORDER BY created_at DESC',

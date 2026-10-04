@@ -807,7 +807,7 @@ try {
   await techPage.getByRole('heading', { name: 'Murojaatlar' }).waitFor();
   await techPage.goto(webURL + '/admin/diagnostics');
   await techPage.getByText('Worker navbati', { exact: true }).waitFor();
-  await techPage.getByText(/Oxirgi migratsiya: 012_settings_support_diagnostics\.sql/).waitFor();
+  await techPage.getByText(/Oxirgi migratsiya: \d{3}_[a-z_]+\.sql/).waitFor();
   await adminPage.goto(webURL + '/app/billing');
   await adminPage.getByRole('button', { name: 'Yordam so‘rovi yuborish' }).click();
   await adminPage.getByRole('dialog').getByLabel('Xabar').fill('UI sinov: eksport qayerda?');
@@ -856,6 +856,29 @@ try {
     await owner.query('SELECT paid_until FROM tenants WHERE registration_key=$1', ['UI-TEST-001'])
   ).rows[0];
   assert(stateRow.paid_until, 'paid_until extended by fully covered invoice');
+  // 10-bosqich: ortiqcha to'lov kreditga o'tadi va kompaniya billing sahifasida ko'rinadi
+  await ownerPage.getByRole('button', { name: 'To‘lov yozish' }).first().click();
+  await ownerPage.getByLabel('Summa (UZS)').fill('100000.00');
+  await ownerPage.getByLabel('Tashqi hujjat raqami').fill('UI-PAY-2');
+  await ownerPage.getByLabel('Sabab').fill('UI sinov: ortiqcha to‘lov');
+  await ownerPage.getByRole('dialog').getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await ownerPage.getByRole('dialog').waitFor({ state: 'detached' });
+  const creditRow = (
+    await owner.query(
+      'SELECT coalesce(sum(c.amount),0)::text balance FROM billing_credits c JOIN tenants t ON t.id=c.tenant_id WHERE t.registration_key=$1',
+      ['UI-TEST-001'],
+    )
+  ).rows[0];
+  assert.equal(creditRow.balance, '100000.00');
+  await adminPage.goto(webURL + '/app/billing');
+  await adminPage.getByText('Kredit qoldig‘i', { exact: true }).waitFor();
+  await adminPage
+    .getByText(/100.000/)
+    .first()
+    .waitFor();
+  checks.push(
+    'Overpayment becomes tenant credit; the company billing page shows the credit balance and next invoice date',
+  );
   checks.push(
     'Owner assigns plan, issues invoice and records payment; coverage extends paid_until',
   );

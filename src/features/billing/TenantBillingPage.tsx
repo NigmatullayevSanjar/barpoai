@@ -34,7 +34,10 @@ type Billing = {
     period_end: string;
     due_at: string;
     amount: string;
+    covered: string;
+    source: 'manual' | 'auto';
   }[];
+  credit_balance: string;
   entries: {
     id: string;
     invoice_id: string;
@@ -67,10 +70,6 @@ export function TenantBillingPage() {
     onError: (e: ApiError) => toast.error(errorMessage(t, e.code, e.status)),
   });
   const d = query.data;
-  const covered = (id: string) =>
-    d?.entries
-      .filter((e) => e.invoice_id === id)
-      .reduce((s, e) => s + (e.kind === 'refund' ? -Number(e.amount) : Number(e.amount)), 0) ?? 0;
   const columns: Column<Billing['invoices'][number]>[] = [
     {
       key: 'period',
@@ -93,9 +92,16 @@ export function TenantBillingPage() {
       header: t('tenants.covered'),
       align: 'right',
       render: (r) => (
-        <Badge tone={covered(r.id) >= Number(r.amount) ? 'success' : 'warning'}>
-          {formatMoney(covered(r.id), lang, false)}
+        <Badge tone={Number(r.covered) >= Number(r.amount) ? 'success' : 'warning'}>
+          {formatMoney(r.covered, lang, false)}
         </Badge>
+      ),
+    },
+    {
+      key: 'source',
+      header: t('tenants.source'),
+      render: (r) => (
+        <Badge tone={r.source === 'auto' ? 'info' : 'neutral'}>{t(`tenants.source.${r.source}`)}</Badge>
       ),
     },
   ];
@@ -121,7 +127,7 @@ export function TenantBillingPage() {
       )}
       {d && (
         <>
-          <div className="grid-3">
+          <div className="grid-4">
             <div className="card stat">
               <div className="stat-label">{t('tenants.access')}</div>
               <div style={{ marginTop: 8 }}>
@@ -141,7 +147,17 @@ export function TenantBillingPage() {
               value={formatDate(d.tenant.trial_ends_at, lang)}
               sub={`${t('tenants.paid_until')}: ${formatDate(d.tenant.paid_until, lang)}`}
             />
+            <Stat
+              label={t('billing.credit_balance')}
+              value={formatMoney(d.credit_balance, lang)}
+              sub={
+                d.subscription
+                  ? `${t('billing.next_invoice')}: ${formatDate(d.subscription.next_period_start, lang)}`
+                  : t('billing.no_plan')
+              }
+            />
           </div>
+          <p className="muted text-sm">{t('billing.period_hint')}</p>
           <Alert tone="info">{t('billing.checkout_unavailable')}</Alert>
           <section>
             <h2 style={{ marginBottom: 10 }}>{t('tenants.invoices')}</h2>

@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-04T12:06:57.107Z",
+  "executed_at": "2026-10-04T12:57:30.531Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -31,6 +31,10 @@
     "Finance summary, plan-actual (with zones), forecast and financial reports respond with monthly rows",
     "Excel exports (plan-actual, tasks, stock, audit) respect scope and price permission; every export is audited",
     "Support staff reads diagnostics (queue, errors, tenants, migration); a support response notifies the requesting admin",
+    "Worker issues the first 30-day invoice 3 days before the trial ends, once, and notifies the admin",
+    "Overpayment records real cash, moves the excess to tenant credit and extends paid_until by the covered period",
+    "Next auto invoice consumes the carried credit; debt is computed per invoice; overdue invoice notifies the admin once without blocking",
+    "Owner issues a manual invoice from the platform (default 30-day period)",
     "OpenAPI generated from registered API routes"
   ]
 }
