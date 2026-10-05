@@ -6109,7 +6109,7 @@ paths:
                 - lines
               additionalProperties: false
     get:
-      summary: Obyekt smetalari
+      summary: Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi
       operationId: get_v1_estimates
       security:
         - bearerAuth: []

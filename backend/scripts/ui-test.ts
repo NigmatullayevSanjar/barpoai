@@ -11,6 +11,7 @@ import { hashPassword } from '../src/security.js';
 import { chromium, type Browser } from 'playwright';
 import ExcelJS from 'exceljs';
 import { tmpdir } from 'node:os';
+import { pageRoutes, tenantNav } from '../../src/lib/permissions.ts';
 
 /**
  * Haqiqiy brauzer sinovi: vaqtinchalik PostgreSQL + API + Vite.
@@ -881,6 +882,64 @@ try {
   );
   checks.push(
     'Owner assigns plan, issues invoice and records payment; coverage extends paid_until',
+  );
+
+  // 11-bosqich: qolgan rollar — login, menyu server ruxsati bilan bir xil, har ruxsatli sahifa xatosiz ochiladi
+  const tenantRow = (
+    await owner.query('SELECT id FROM tenants WHERE registration_key=$1', ['UI-TEST-001'])
+  ).rows[0];
+  for (const role of ['foreman', 'warehouse_manager', 'financier', 'accountant']) {
+    const loginName = `ui_${role}`;
+    const u = (
+      await owner.query(
+        'INSERT INTO users(tenant_id,login,display_name,password_hash,role) VALUES($1,$2,$3,$4,$5) RETURNING id',
+        [tenantRow.id, loginName, `Sinov ${role}`, await hashPassword(password), role],
+      )
+    ).rows[0];
+    await owner.query(
+      'INSERT INTO project_assignments(tenant_id,project_id,user_id) VALUES($1,$2,$3)',
+      [tenantRow.id, projectId, u.id],
+    );
+    const rolePage = await newPage();
+    await login(rolePage, loginName, password);
+    await rolePage.getByText(/Xush kelibsiz/).waitFor();
+    const snap = await rolePage.request.get(webURL + '/v1/me/permissions').then((r) => r.json());
+    const readable = Object.entries(snap.pages as Record<string, { read: boolean }>)
+      .filter(([, v]) => v.read)
+      .map(([k]) => k);
+    const expectedHrefs = [
+      ...new Set(
+        tenantNav
+          .flatMap((g) => g.items)
+          .filter((it) => readable.includes(it.page))
+          .map((it) => pageRoutes[it.page]),
+      ),
+    ].sort();
+    const hrefs = await rolePage
+      .locator('.sidebar nav a.nav-link')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    assert.deepEqual([...new Set(hrefs)].sort(), expectedHrefs, `${role} sidebar vs permissions`);
+    for (const href of expectedHrefs) {
+      await rolePage.goto(
+        webURL + href + (href.startsWith('/app/') ? `?project=${projectId}` : ''),
+      );
+      await rolePage.locator('.page-header').first().waitFor();
+      await delay(150);
+    }
+    assert.deepEqual(errors, [], `${role} pages raised errors`);
+  }
+  await owner.query(
+    "INSERT INTO users(login,display_name,password_hash,role) VALUES('ui_support','Yordam xodimi',$1,'support')",
+    [await hashPassword(password)],
+  );
+  const supportPage = await newPage();
+  await login(supportPage, 'ui_support', password);
+  await supportPage.getByRole('heading', { name: 'Murojaatlar' }).waitFor();
+  await supportPage.goto(webURL + '/admin/diagnostics');
+  await supportPage.getByText('Worker navbati', { exact: true }).waitFor();
+  assert.equal(await supportPage.locator('.sidebar nav a.nav-link').count(), 2);
+  checks.push(
+    'Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions and every allowed page renders without errors',
   );
 
   // 8. Chiqish cookie'ni tozalaydi

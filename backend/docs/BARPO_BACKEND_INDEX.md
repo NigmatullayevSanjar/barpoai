@@ -9,7 +9,7 @@ Natija: kod va texnik hujjatlarga ega **v0.1 backend**. To‘liq production/R1 t
 3. [Domenlar bo‘yicha Mermaid ERD](BARPO_ERD.md)
 4. [Biznes qoidalari va formulalar](BARPO_BUSINESS_RULES.md)
 5. [Rol, sahifa, CRUD va domain permission matritsasi](BARPO_PERMISSIONS.md)
-6. [OpenAPI 3.1 YAML](BARPO_API_OPENAPI.yaml), [DTO va API qo‘llanmasi](BARPO_API_GUIDE.md), runtime `/openapi.json`, [Dashboard ko‘rsatkichlari](BARPO_DASHBOARD_METRICS.md)
+6. [OpenAPI 3.1 YAML](BARPO_API_OPENAPI.yaml), [DTO va API qo‘llanmasi](BARPO_API_GUIDE.md), runtime `/openapi.json`, [Dashboard ko‘rsatkichlari](BARPO_DASHBOARD_METRICS.md), [Rol bo‘yicha sinov hisoboti](BARPO_ROLE_TEST_REPORT.md)
 7. [Integratsiya kontraktlari va blockerlar](BARPO_INTEGRATIONS.md)
 8. [Acceptance ssenariylari](BARPO_ACCEPTANCE_TESTS.md), [haqiqiy test natijalari](verification.json), [Docker smoke natijalari](docker-verification.json), [brauzer natijalari](ui-verification.json), [ruxsatlar ekrani](permissions-ui.png)
 9. [Bajarilgan ish, qolgan R1 gate va ochiq qarorlar](BARPO_IMPLEMENTATION_PLAN.md)

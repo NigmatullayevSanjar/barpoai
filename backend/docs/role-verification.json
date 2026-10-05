@@ -1,0 +1,68 @@
+{
+  "executed_at": "2026-10-05T09:42:58.471Z",
+  "passed": [
+    "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan",
+    "Role × GET endpoint matrix: 63 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
+    "Cross-tenant isolation: 14 id-routes and 5 writes with foreign ids are rejected; lists stay tenant-scoped",
+    "Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; brigadier responses carry no price fields",
+    "Replays with the same idempotency key, parallel version races, double accept and double reversal never write money/material/progress twice"
+  ],
+  "findings": [],
+  "matrix": {
+    "foreman": {
+      "allowed": 31,
+      "denied": 32,
+      "mismatches": []
+    },
+    "brigadier": {
+      "allowed": 26,
+      "denied": 37,
+      "mismatches": []
+    },
+    "warehouse_manager": {
+      "allowed": 26,
+      "denied": 37,
+      "mismatches": []
+    },
+    "financier": {
+      "allowed": 39,
+      "denied": 24,
+      "mismatches": []
+    },
+    "accountant": {
+      "allowed": 39,
+      "denied": 24,
+      "mismatches": []
+    },
+    "manager": {
+      "allowed": 18,
+      "denied": 45,
+      "mismatches": []
+    },
+    "tenant_admin": {
+      "allowed": 55,
+      "denied": 8,
+      "mismatches": []
+    },
+    "platform_owner": {
+      "allowed": 9,
+      "denied": 54,
+      "mismatches": []
+    },
+    "super_admin": {
+      "allowed": 6,
+      "denied": 57,
+      "mismatches": []
+    },
+    "support": {
+      "allowed": 5,
+      "denied": 58,
+      "mismatches": []
+    }
+  },
+  "unfillable": [],
+  "skipped": [
+    "UySot, bank, Didox, iHamkor, kamera va obuna to‘lov provayderlari — kirish (hujjat, sandbox, kalit) yo‘q; adapterlar `not_configured`, `POST /v1/billing/checkout` 503 PAYMENT_PROVIDER_NOT_CONFIGURED",
+    "Telegram real yetkazilishi — bot tokeni faqat jonli muhitda; testlarda outbox va chat_state oqimi tekshiriladi"
+  ]
+}

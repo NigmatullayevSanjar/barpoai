@@ -364,6 +364,8 @@ export function redactPrices(value: any): any {
             'unit_price',
             'unit_cost',
             'total',
+            'material_total',
+            'work_total',
             'value',
             'value_delta',
             'amount',

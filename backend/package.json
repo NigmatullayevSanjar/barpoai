@@ -18,7 +18,8 @@
     "docs": "tsx scripts/docs.ts",
     "check": "npm run build && npm test && npm run docs",
     "test:docker": "node scripts/docker-smoke.mjs",
-    "test:ui": "tsx scripts/ui-test.ts"
+    "test:ui": "tsx scripts/ui-test.ts",
+    "test:roles": "tsx scripts/role-tests.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

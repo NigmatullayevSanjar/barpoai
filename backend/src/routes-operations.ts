@@ -249,8 +249,9 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/estimates',
-    summary: 'Obyekt smetalari',
+    summary: 'Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi',
     permission: 'estimates.read',
+    sensitive: true,
     query: projectQuery,
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);

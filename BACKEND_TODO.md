@@ -189,11 +189,11 @@ Bog‘liqlik: tegishli 06–09 modullari. Kontraktlarni tayyorlash 01 bosqichdan
 **11 — Har bir rol bilan to‘liq sinov**
 
 - [x] Unit, PostgreSQL integration, Docker va login/ruxsat UI test skriptlari mavjud.
-- [ ] Har qo‘shilgan biznes qoidasi bilan uning oddiy, xato, takroriy va parallel so‘rov testlarini yozib borish.
-- [ ] 10 rol uchun haqiqiy ma’lumot bilan UI → API → DB oqimlarini sinash.
-- [ ] Kompaniyalararo kirish, individual taqiq, sahifa CRUD, obyekt/ombor chegaralari va narxlarni yashirishni tekshirish.
-- [ ] To‘liq ssenariy: kompaniya → xodim → obyekt → smeta → kirim → jo‘natish → qabul → sarf → invoys → to‘lov → hisobot → dashboard.
-- [ ] Xatolikdan keyingi qayta urinish, bekor qilish, tuzatish va qayta kirish holatlarida pul/material/progress ikki marta yozilmasligini tekshirish.
+- [x] 2026-10-05: har bosqich o‘z testini olib keldi (unit 11, integration 34, e2e 37, `test:roles` 5 blok). Yangi qoida uchun test yozish talabi CLAUDE.md da (verifiable success criteria).
+- [x] 2026-10-05: `npm run test:roles` (`scripts/role-tests.ts`) — ikki kompaniya, 7 kompaniya roli + 3 platforma roli; 63 GET endpoint × 10 rol matritsasi `/v1/me/permissions` bilan solishtiriladi (0 nomuvofiqlik). E2e da prorab, ombor mudiri, finansist, buxgalter, support kiradi, menyu server ruxsati bilan bir xil, har ruxsatli sahifa xatosiz ochiladi. Hisobot: `backend/docs/BARPO_ROLE_TEST_REPORT.md` (avtomatik).
+- [x] 2026-10-05: 14 id-marshrut + 5 yozuv chet kompaniya identifikatorlari bilan rad etiladi; individual deny rol grantidan ustun; rol sahifa read=false o‘qish va yaratishni yopadi; biriktirilmagan obyekt/ombor 404; narxsiz rollar javobida narx maydoni yo‘q. Topilgan va tuzatilgan: smeta ro‘yxati `total/material_total/work_total` ni narx huquqisiz rollarga qaytarar edi (endi `sensitive`).
+- [x] 2026-10-05: to‘liq ssenariy integration (34 tekshiruv) va e2e (37 tekshiruv) da yuradi; natijalar `verification.json`, `ui-verification.json`.
+- [x] 2026-10-05: bir xil Idempotency-Key bilan qayta urinish (kirim, to‘lov) bitta ledger/jurnal yozuvi; parallel vazifa o‘tishi 200+409; hisobotni ikki marta qabul qilish bitta progress; ishlatilgan kirim qaytarilmaydi, yangi kirim ikki marta qaytarilmaydi (409).
 
 Bog‘liqlik: sinovlar har bosqichda yuradi; umumiy qabul 03–10 yakunida. Qabul mezoni: ochiq xatolar va provayderga bog‘liq bajarilmagan testlar alohida ko‘rsatilgan hisobot mavjud.
 
