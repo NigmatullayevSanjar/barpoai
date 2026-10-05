@@ -52,13 +52,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const user = await api<Me>('/v1/auth/me');
-      setMe(user);
+      // Cookie boshqa foydalanuvchiga o'tgan bo'lsa (bir brauzerda ikkinchi login) eski kesh ko'rsatilmaydi.
+      setMe((previous) => {
+        if (previous && previous.id !== user.id) queryClient.clear();
+        return user;
+      });
       await loadPermissions(user);
     } catch {
       setMe(null);
       setPermissions(null);
     }
-  }, [loadPermissions]);
+  }, [loadPermissions, queryClient]);
 
   useEffect(() => {
     void refresh();
@@ -69,17 +73,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [refresh, queryClient]);
 
-  // Ruxsatlar o'zgarsa darhol aks etishi uchun fokusda va 60 soniyada yangilanadi.
+  // Ruxsatlar yoki sessiya egasi o'zgarsa darhol aks etishi uchun fokusda va 60 soniyada /auth/me qayta yuklanadi.
   useEffect(() => {
-    if (!me?.tenant_id || me.must_change_password) return;
-    const tick = () => void loadPermissions(me);
+    if (!me || me.must_change_password) return;
+    const tick = () => void refresh();
     const timer = setInterval(tick, 60000);
     window.addEventListener('focus', tick);
     return () => {
       clearInterval(timer);
       window.removeEventListener('focus', tick);
     };
-  }, [me, loadPermissions]);
+  }, [me, refresh]);
 
   const login = useCallback(
     async (loginValue: string, password: string) => {

@@ -79,6 +79,8 @@ try {
     root: resolve('..'),
     configFile: resolve('../vite.config.ts'),
     server: { host: 'localhost', port: 0, strictPort: false },
+    // Foydalanuvchining pnpm dev nusxasi bilan .vite/deps keshini bo'lishmaslik uchun (bo'sh sahifa reload bo'ronlari).
+    cacheDir: resolve(tmpdir(), 'barpo-ui-test-vite-cache'),
     logLevel: 'error',
   });
   await vite.listen();
@@ -927,6 +929,8 @@ try {
       await delay(150);
     }
     assert.deepEqual(errors, [], `${role} pages raised errors`);
+    // Xotira: har rol konteksti yopiladi (scrypt + ko'p sahifa birga xotirani tugatadi).
+    await rolePage.context().close();
   }
   await owner.query(
     "INSERT INTO users(login,display_name,password_hash,role) VALUES('ui_support','Yordam xodimi',$1,'support')",
