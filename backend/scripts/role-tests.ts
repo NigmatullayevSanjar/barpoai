@@ -16,7 +16,7 @@ import type { Endpoint } from '../src/http.js';
  * 1) Rol × GET endpoint matritsasi: /v1/me/permissions kutgan natija bilan haqiqiy HTTP javob solishtiriladi.
  * 2) Kompaniyalararo kirish, individual taqiq, sahifa CRUD, obyekt/ombor chegarasi, narx yashirish.
  * 3) Takroriy va parallel so'rovlarda pul/material/progress ikki marta yozilmasligi.
- * Natija: docs/BARPO_ROLE_TEST_REPORT.md va docs/role-verification.json.
+ * Natija: ../docs/backend/BARPO_ROLE_TEST_REPORT.md va ../docs/backend/role-verification.json.
  */
 const name = `barpo-role-test-${process.pid}`,
   secret = randomBytes(18).toString('hex'),
@@ -924,10 +924,10 @@ ${skipped.map((s) => `- ⏸ ${s}`).join('\n')}
 
 To‘liq biznes ssenariy (kompaniya → xodim → obyekt → smeta → kirim → jo‘natish → qabul → sarf → invoys → to‘lov → hisobot → dashboard) \`npm run test:integration\` va brauzer e2e \`npm run test:ui\` da yuradi; ularning natijalari \`verification.json\` va \`ui-verification.json\` da.
 `;
-  await mkdir('docs', { recursive: true });
-  await writeFile('docs/BARPO_ROLE_TEST_REPORT.md', report_md);
+  await mkdir('../docs/backend', { recursive: true });
+  await writeFile('../docs/backend/BARPO_ROLE_TEST_REPORT.md', report_md);
   await writeFile(
-    'docs/role-verification.json',
+    '../docs/backend/role-verification.json',
     JSON.stringify(
       { executed_at: new Date().toISOString(), passed, findings, matrix, unfillable, skipped },
       null,

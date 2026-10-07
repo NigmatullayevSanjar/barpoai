@@ -1,49 +1,38 @@
-# BARPO AI — frontend
+# BARPO AI
 
-Qurilish kompaniyalari uchun multi-tenant ERP/SaaS platformaning veb ilovasi. Vite + React 19 + TypeScript, feature-based tuzilma, TanStack Query, React Hook Form + Zod, o‘z CSS dizayn tizimi (bordo/oq/och kulrang). Backend: [backend/README.md](backend/README.md). Ish rejasi: [BACKEND_TODO.md](BACKEND_TODO.md). Mahsulot konteksti: [BARPO_AI_PROJECT_CONTEXT.md](BARPO_AI_PROJECT_CONTEXT.md).
-
-## Ishga tushirish
-
-Node.js 24 va pnpm kerak. Backend Docker Compose bilan `localhost:3001` da ishlab turishi kerak (qarang backend/README.md).
-
-```sh
-pnpm install
-pnpm dev        # http://localhost:5173 — /v1 so‘rovlari API ga proxy qilinadi
-pnpm typecheck
-pnpm build
-pnpm preview
-```
-
-Frontend va API bir xil origin orqali ishlaydi (dev’da Vite proxy, production’da reverse proxy `/v1` → API). Shu sababli sessiya httpOnly cookie’da, `VITE_API_URL` bo‘sh qoladi. API alohida domenda bo‘lsa `.env.local` da `VITE_API_URL` ni bering va backendda `APP_ORIGIN` ni frontend domeniga sozlang.
+Qurilish kompaniyalari uchun multi-tenant B2B SaaS ERP: obyektlar, smeta, ombor, moliya, vazifa va hisobotlar bitta tizimda.
 
 ## Tuzilma
 
+| Papka | Ichida |
+|---|---|
+| [`frontend/`](frontend) | Vite + React 19 + TypeScript veb ilova |
+| [`backend/`](backend) | Node.js 24 + Fastify + PostgreSQL 17 API, worker, migratsiyalar, testlar |
+| [`docs/`](docs) | barcha hujjatlar: reja, mahsulot konteksti, texnik hujjatlar, test natijalari |
+
+To‘liq loyiha konteksti bitta faylda: [docs/BARPO_AI_HANDOFF.md](docs/BARPO_AI_HANDOFF.md).
+
+## Ishga tushirish
+
+Kerak: Node.js 24, pnpm, Docker Desktop.
+
+```sh
+# 1) Backend: baza, migratsiya, API (localhost:3001) va worker
+cd backend
+cp .env.example .env        # parollarni to‘ldiring
+docker compose up --build -d
+
+# 2) Frontend: http://localhost:5173 (/v1 so‘rovlari API ga proxy qilinadi)
+cd ../frontend
+pnpm install
+pnpm dev
 ```
-src/
-  app/            App (provayderlar, router), layouts (AppShell, AuthLayout), guards
-  lib/            api (fetch + cookie + Idempotency-Key), auth (sessiya, ruxsatlar), i18n, permissions, format
-  locales/        uz.ts, ru.ts — barcha UI matnlari
-  components/ui/  Button, Input, Select, Modal, DataTable, Badge, Toast, holatlar (empty/error/loading)
-  features/
-    auth/         login (login yoki telefon), taklif orqali ro‘yxatdan o‘tish, parol almashtirish/tiklash
-    profile/      profil, til, Telegram ulash (bir martalik deep link)
-    permissions/  rol × sahifa CRUD matritsasi (mijoz admini)
-    billing/      kompaniya obunasi va yordam so‘rovi
-    platform/     platforma egasi: dashboard, kompaniyalar, taklif, tarif, invoys, to‘lov, qarzdorlar, murojaatlar, texnik xodimlar
-    common/       ComingSoon — hali ulanmagan bo‘limlar uchun halol bo‘sh holat
-  styles/         tokens, base, components, layout
-legacy/           eski Figma demo ekranlari (ulanmagan, faqat dizayn manbasi)
-```
 
-Marshrutlar: `/login`, `/register#token=…`, `/reset-password#token=…`, `/change-password`, `/profile`; kompaniya: `/app/*` (sahifa kalitlari backenddagi `pages` bilan bir xil, menyu `GET /v1/me/permissions` bo‘yicha filtrlanadi); platforma: `/admin/*`.
+Birinchi platforma egasini yaratish va batafsil sozlash: [docs/backend/README.md](docs/backend/README.md).
 
-## Qoidalar
+## Hujjatlar
 
-- Ruxsat UI’da faqat ko‘rsatish uchun; har amal serverda tekshiriladi.
-- Pul va miqdor API’dan string keladi; frontend arifmetika qilmaydi, faqat formatlaydi.
-- Statik “demo” raqamlar ko‘rsatilmaydi: ma’lumot yo‘q bo‘lsa bo‘sh holat, xato bo‘lsa xato holati.
-- Har bir yangi matn `locales/uz.ts` va `locales/ru.ts` ga qo‘shiladi.
-
-## Sinov
-
-Brauzer e2e sinovi backend papkasidan: `npm run test:ui` (vaqtinchalik PostgreSQL + API + Vite, Headless Chrome). Natija: [backend/docs/ui-verification.json](backend/docs/ui-verification.json).
+- [docs/BACKEND_TODO.md](docs/BACKEND_TODO.md) — 12 bosqichli ish rejasi va holati
+- [docs/BARPO_AI_PROJECT_CONTEXT.md](docs/BARPO_AI_PROJECT_CONTEXT.md) — mahsulot konteksti
+- [docs/backend/BARPO_BACKEND_INDEX.md](docs/backend/BARPO_BACKEND_INDEX.md) — backend texnik hujjatlari
+- [docs/frontend/README.md](docs/frontend/README.md) — frontend tuzilmasi va qoidalari

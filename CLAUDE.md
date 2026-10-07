@@ -66,7 +66,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Project pointers
 
-- Plan of record: `BACKEND_TODO.md` (12 stages, per-stage status lines dated). Product spec: `BARPO_AI_PROJECT_CONTEXT.md`. When the two conflict, backend business rules in `backend/docs/BARPO_BUSINESS_RULES.md` win; the context doc guides UI and scope.
-- Verify before every commit: `backend`: `npm run build`, `npm test`, `npm run test:integration` (Docker), `npm run test:ui` (Docker + Headless Chrome), `npm run test:roles` (rol × endpoint matritsasi, Docker); root: `pnpm typecheck`, `pnpm build`. Regenerate API docs with `npm run docs` after route changes.
-- Conventions: money and quantities are decimal strings end to end; permissions are enforced server-side (UI only hides); every new UI string goes into both `src/locales/*.uz.ts` and `*.ru.ts`; no static demo numbers — empty/error states instead.
+- Plan of record: `docs/BACKEND_TODO.md` (12 stages, per-stage status lines dated). Product spec: `docs/BARPO_AI_PROJECT_CONTEXT.md`. When the two conflict, backend business rules in `docs/backend/BARPO_BUSINESS_RULES.md` win; the context doc guides UI and scope.
+- Verify before every commit: `backend`: `npm run build`, `npm test`, `npm run test:integration` (Docker), `npm run test:ui` (Docker + Headless Chrome), `npm run test:roles` (rol × endpoint matritsasi, Docker); `frontend`: `pnpm typecheck`, `pnpm build`. Regenerate API docs with `npm run docs` after route changes.
+- Conventions: money and quantities are decimal strings end to end; permissions are enforced server-side (UI only hides); every new UI string goes into both `frontend/src/locales/*.uz.ts` and `*.ru.ts`; no static demo numbers — empty/error states instead.
 - Secrets stay in `backend/.env` (gitignored). Never commit tokens.
+- Layout: `frontend/` (Vite app), `backend/` (API, worker, migrations, tests), `docs/` (all documentation; backend scripts write generated docs and test results to `docs/backend/`). Full project context for a new session: `docs/BARPO_AI_HANDOFF.md`.

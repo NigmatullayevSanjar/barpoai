@@ -8,7 +8,7 @@ Bu hujjat ish rejasi; undagi ochiq vazifalar ushbu hujjat yozilishi bilan bajari
 - `[ ]` — bajarilishi, ulanishi yoki alohida tekshirilishi kerak.
 - **Tashqi bog‘liqlik** — provayder hujjati, kirish ma’lumoti yoki biznes qarori talab qilinadi.
 
-Oldingi test natijalari `backend/docs/*verification.json` fayllarida mavjud. Ushbu reja tayyorlash vaqtida ular qayta ishga tushirilmadi.
+Oldingi test natijalari `docs/backend/*verification.json` fayllarida mavjud. Ushbu reja tayyorlash vaqtida ular qayta ishga tushirilmadi.
 
 **1. Backendning hozirgi ishlash mantiqi**
 
@@ -164,7 +164,7 @@ Bog‘liqlik: 04–06; miqdorlar va tannarx mosligi uchun 07 bilan birga tekshir
 **09 — Dashboard, prognoz va qolgan sahifa imkoniyatlari**
 
 - [x] Obyekt tannarxi, sof pul oqimi, yetkazib beruvchi qarzi va avans yig‘indisi endpointi mavjud.
-- [x] 2026-10-04: `GET /v1/dashboard` — obyektlar (progress, jadvaldan orqada), vazifalar, hisobotlar, ombor (kam qoldiq, so‘rovlar, bugungi kirim/sarf), moliya (budjet, xarajat, qarz, muddati o‘tgan qarz, to‘lov so‘rovlari), xodimlar bloklari; har blok faqat haqiqiy ruxsat bilan, aks holda `null`. Manba va qoidalar `backend/docs/BARPO_DASHBOARD_METRICS.md`. Rolga mos bosh sahifa UI (admin/prorab/brigadir/ombor/finansist bir sahifa, bloklar ruxsatga qarab).
+- [x] 2026-10-04: `GET /v1/dashboard` — obyektlar (progress, jadvaldan orqada), vazifalar, hisobotlar, ombor (kam qoldiq, so‘rovlar, bugungi kirim/sarf), moliya (budjet, xarajat, qarz, muddati o‘tgan qarz, to‘lov so‘rovlari), xodimlar bloklari; har blok faqat haqiqiy ruxsat bilan, aks holda `null`. Manba va qoidalar `docs/backend/BARPO_DASHBOARD_METRICS.md`. Rolga mos bosh sahifa UI (admin/prorab/brigadir/ombor/finansist bir sahifa, bloklar ruxsatga qarab).
 - [x] 2026-10-04: reja–faktga zona kesimi (`by_zone`) qo‘shildi; moliya yig‘masi, reja–fakt, prognoz va moliyaviy hisobotlardagi oylik so‘rovlar (`month` yalang‘och alias) va qarz yoshi parametri xatosi tuzatildi (ilgari 500 qaytarar edi), integration testda regressiya tekshiruvi bor.
 - [x] 2026-10-04: Excel eksportlar — reja–fakt (qatorlar/zonalar/oylar), vazifalar, ombor qoldiqlari, audit; narx huquqisiz summa ustunlari yo‘q, har eksport auditga yoziladi. PDF spec bo‘yicha keyingi bosqich. Kontragent solishtiruvi 07-bosqichdagi `statement` bilan qoladi.
 - [x] 2026-10-04: texnik panel — baza (latency, oxirgi migratsiya), worker navbati (pending/dead/24 soat, muvaffaqiyatsiz vazifalar), 5xx xatolar jurnali (`error_events`, migratsiya 012), sessiyalar, Telegram, kompaniyalar; super admin va support ko‘radi. Support murojaatiga javob (`response`) — egasiga bildirishnoma. CPU/RAM/backup hosting bilan (12-bosqich).
@@ -190,7 +190,7 @@ Bog‘liqlik: tegishli 06–09 modullari. Kontraktlarni tayyorlash 01 bosqichdan
 
 - [x] Unit, PostgreSQL integration, Docker va login/ruxsat UI test skriptlari mavjud.
 - [x] 2026-10-05: har bosqich o‘z testini olib keldi (unit 11, integration 34, e2e 37, `test:roles` 5 blok). Yangi qoida uchun test yozish talabi CLAUDE.md da (verifiable success criteria).
-- [x] 2026-10-05: `npm run test:roles` (`scripts/role-tests.ts`) — ikki kompaniya, 7 kompaniya roli + 3 platforma roli; 63 GET endpoint × 10 rol matritsasi `/v1/me/permissions` bilan solishtiriladi (0 nomuvofiqlik). E2e da prorab, ombor mudiri, finansist, buxgalter, support kiradi, menyu server ruxsati bilan bir xil, har ruxsatli sahifa xatosiz ochiladi. Hisobot: `backend/docs/BARPO_ROLE_TEST_REPORT.md` (avtomatik).
+- [x] 2026-10-05: `npm run test:roles` (`scripts/role-tests.ts`) — ikki kompaniya, 7 kompaniya roli + 3 platforma roli; 63 GET endpoint × 10 rol matritsasi `/v1/me/permissions` bilan solishtiriladi (0 nomuvofiqlik). E2e da prorab, ombor mudiri, finansist, buxgalter, support kiradi, menyu server ruxsati bilan bir xil, har ruxsatli sahifa xatosiz ochiladi. Hisobot: `docs/backend/BARPO_ROLE_TEST_REPORT.md` (avtomatik).
 - [x] 2026-10-05: 14 id-marshrut + 5 yozuv chet kompaniya identifikatorlari bilan rad etiladi; individual deny rol grantidan ustun; rol sahifa read=false o‘qish va yaratishni yopadi; biriktirilmagan obyekt/ombor 404; narxsiz rollar javobida narx maydoni yo‘q. Topilgan va tuzatilgan: smeta ro‘yxati `total/material_total/work_total` ni narx huquqisiz rollarga qaytarar edi (endi `sensitive`).
 - [x] 2026-10-05: to‘liq ssenariy integration (34 tekshiruv) va e2e (37 tekshiruv) da yuradi; natijalar `verification.json`, `ui-verification.json`.
 - [x] 2026-10-05: bir xil Idempotency-Key bilan qayta urinish (kirim, to‘lov) bitta ledger/jurnal yozuvi; parallel vazifa o‘tishi 200+409; hisobotni ikki marta qabul qilish bitta progress; ishlatilgan kirim qaytarilmaydi, yangi kirim ikki marta qaytarilmaydi (409).
@@ -239,4 +239,4 @@ Band faqat kodi, kerakli UI ulanishi va belgilangan qabul tekshiruvi tugagach ya
 | Navbatdagi bildirishnomalar | `backend/src/worker.ts` |
 | Baza sxemasi | `backend/migrations/001_core.sql` dan `005_budget_version.sql` gacha |
 
-Qo‘shimcha: [mavjud implementatsiya holati](backend/docs/BARPO_IMPLEMENTATION_PLAN.md), [biznes qoidalari](backend/docs/BARPO_BUSINESS_RULES.md), [integratsiya chegaralari](backend/docs/BARPO_INTEGRATIONS.md), [API qo‘llanmasi](backend/docs/BARPO_API_GUIDE.md).
+Qo‘shimcha: [mavjud implementatsiya holati](backend/BARPO_IMPLEMENTATION_PLAN.md), [biznes qoidalari](backend/BARPO_BUSINESS_RULES.md), [integratsiya chegaralari](backend/BARPO_INTEGRATIONS.md), [API qo‘llanmasi](backend/BARPO_API_GUIDE.md).

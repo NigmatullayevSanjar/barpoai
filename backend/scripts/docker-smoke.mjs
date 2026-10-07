@@ -98,7 +98,7 @@ try {
       'Unauthenticated API denied',
     ],
   };
-  await writeFile('docs/docker-verification.json', JSON.stringify(result, null, 2));
+  await writeFile('../docs/backend/docker-verification.json', JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {
   for (const container of [api, db]) {

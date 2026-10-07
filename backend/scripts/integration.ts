@@ -1305,9 +1305,9 @@ try {
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');
-  await mkdir('docs', { recursive: true });
+  await mkdir('../docs/backend', { recursive: true });
   await writeFile(
-    'docs/verification.json',
+    '../docs/backend/verification.json',
     JSON.stringify(
       {
         executed_at: new Date().toISOString(),

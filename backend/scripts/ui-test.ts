@@ -11,7 +11,7 @@ import { hashPassword } from '../src/security.js';
 import { chromium, type Browser } from 'playwright';
 import ExcelJS from 'exceljs';
 import { tmpdir } from 'node:os';
-import { pageRoutes, tenantNav } from '../../src/lib/permissions.ts';
+import { pageRoutes, tenantNav } from '../../frontend/src/lib/permissions.ts';
 
 /**
  * Haqiqiy brauzer sinovi: vaqtinchalik PostgreSQL + API + Vite.
@@ -74,10 +74,10 @@ try {
   ({ app } = await buildApp(pool));
   const apiURL = await app.listen({ host: '127.0.0.1', port: 0 });
   process.env.API_PROXY_TARGET = apiURL;
-  const { createServer } = await import('../../node_modules/vite/dist/node/index.js');
+  const { createServer } = await import('../../frontend/node_modules/vite/dist/node/index.js');
   vite = await createServer({
-    root: resolve('..'),
-    configFile: resolve('../vite.config.ts'),
+    root: resolve('../frontend'),
+    configFile: resolve('../frontend/vite.config.ts'),
     server: { host: 'localhost', port: 0, strictPort: false },
     // Foydalanuvchining pnpm dev nusxasi bilan .vite/deps keshini bo'lishmaslik uchun (bo'sh sahifa reload bo'ronlari).
     cacheDir: resolve(tmpdir(), 'barpo-ui-test-vite-cache'),
@@ -955,17 +955,17 @@ try {
   checks.push('Logout clears the session cookie and protected routes redirect to login');
   assert.deepEqual(errors, []);
   checks.push('No uncaught React/browser errors');
-  await mkdir('docs', { recursive: true });
-  await ownerPage.screenshot({ path: 'docs/platform-tenant-ui.png' });
+  await mkdir('../docs/backend', { recursive: true });
+  await ownerPage.screenshot({ path: '../docs/backend/platform-tenant-ui.png' });
   const result = { executed_at: new Date().toISOString(), browser: 'Headless Chrome', checks };
-  await writeFile('docs/ui-verification.json', JSON.stringify(result, null, 2));
+  await writeFile('../docs/backend/ui-verification.json', JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
   console.error('ERRORS', JSON.stringify(errorsRef.list));
   let n = 0;
   for (const p of pages) {
     try {
-      await p.screenshot({ path: 'docs/ui-failure-' + n++ + '.png' });
+      await p.screenshot({ path: '../docs/backend/ui-failure-' + n++ + '.png' });
     } catch {}
     try {
       console.error(

@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-01T13:04:49.104Z",
+  "executed_at": "2026-10-07T12:53:03.514Z",
   "image": "barpo-backend:local",
   "checks": [
     "Docker database init script",

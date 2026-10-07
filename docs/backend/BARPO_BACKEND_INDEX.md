@@ -1,6 +1,6 @@
 # BARPO AI — Backend indeksi
 
-Natija: kod va texnik hujjatlarga ega **v0.1 backend**. To‘liq production/R1 tayyorligi deyilmaydi. Foydalanuvchi provayderlar hozir yo‘qligini tasdiqlagan. Ishlashni boshlash: [README](../README.md).
+Natija: kod va texnik hujjatlarga ega **v0.1 backend**. To‘liq production/R1 tayyorligi deyilmaydi. Foydalanuvchi provayderlar hozir yo‘qligini tasdiqlagan. Ishlashni boshlash: [README](README.md).
 
 ## Artefaktlar
 
