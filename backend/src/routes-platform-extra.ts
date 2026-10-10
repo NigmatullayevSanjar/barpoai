@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { uuid, idParams, pageQuery } from './schemas.js';
+import { uuid, idParams, searchQuery, likePattern, queryBool } from './schemas.js';
 import { accessState } from './auth.js';
 import { notify } from './notify.js';
 import { creditBalance } from './billing.js';
@@ -81,9 +81,9 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/billing/invoices',
-    summary: 'Barcha SaaS invoyslar, qoplanish va kompaniya nomi bilan',
+    summary: 'Barcha SaaS invoyslar, qoplanish va kompaniya nomi bilan; q — kompaniya nomi',
     platform: owner,
-    query: pageQuery.extend({ tenant_id: uuid.optional(), unpaid: z.coerce.boolean().optional() }),
+    query: searchQuery.extend({ tenant_id: uuid.optional(), unpaid: queryBool.optional() }),
     handler: async ({ db, query }) => ({
       items: (
         await db.query(
@@ -91,8 +91,15 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
            FROM billing_invoices i JOIN tenants t ON t.id=i.tenant_id JOIN plan_versions p ON p.id=i.plan_version_id
            LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true
            WHERE ($1::uuid IS NULL OR i.tenant_id=$1) AND ($2::boolean IS NOT TRUE OR coalesce(c.covered,0)<i.amount)
+             AND ($5::text IS NULL OR t.legal_name ILIKE $5 ESCAPE '\\' OR p.code ILIKE $5 ESCAPE '\\')
            ORDER BY i.due_at DESC,i.id LIMIT $3 OFFSET $4`,
-          [query.tenant_id ?? null, query.unpaid ?? false, query.limit, query.offset],
+          [
+            query.tenant_id ?? null,
+            query.unpaid ?? false,
+            query.limit,
+            query.offset,
+            query.q ? likePattern(query.q) : null,
+          ],
         )
       ).rows,
     }),

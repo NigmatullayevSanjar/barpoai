@@ -46,6 +46,13 @@ export const ru: Record<string, string> = {
   'common.password': 'Пароль',
   'common.optional': 'необязательно',
   'common.days': '{n} дн.',
+  'common.per_page': 'Строк на странице',
+  'common.no_results': 'Ничего не найдено',
+  'common.search_more': 'Есть ещё результаты — уточните запрос',
+  'common.not_found_record': 'Запись не найдена',
+  'common.not_found_record_desc':
+    'Эта запись не существует, архивирована или не закреплена за вами. Проверьте ссылку.',
+  'common.back_to_list': 'К списку',
 
   'nav.group.main': 'Основное',
   'nav.group.finance': 'Финансы',

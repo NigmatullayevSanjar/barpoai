@@ -135,11 +135,15 @@ export function useWorkMutation<T>(
       ),
   });
 }
-export const useTasks = (projectId: string, filters: { status?: string; mine?: boolean } = {}) =>
+export const useTasks = (
+  projectId: string,
+  filters: { status?: string; mine?: boolean } = {},
+  page = { offset: 0, limit: 25 },
+) =>
   useQuery({
-    queryKey: ['tasks', projectId, filters],
+    queryKey: ['tasks', projectId, filters, page.offset, page.limit],
     queryFn: () =>
-      api<ListResponse<Task>>(`/v1/tasks${qs({ project_id: projectId, limit: 100, ...filters })}`),
+      api<ListResponse<Task>>(`/v1/tasks${qs({ project_id: projectId, ...filters, ...page })}`),
     enabled: Boolean(projectId),
   });
 export const useTask = (id: string | null) =>
@@ -148,11 +152,15 @@ export const useTask = (id: string | null) =>
     queryFn: () => api<TaskDetail>(`/v1/tasks/${id}`),
     enabled: Boolean(id),
   });
-export const useReports = (projectId: string, filters: { status?: string; kind?: string } = {}) =>
+export const useReports = (
+  projectId: string,
+  filters: { status?: string; kind?: string } = {},
+  page = { offset: 0, limit: 25 },
+) =>
   useQuery({
-    queryKey: ['reports', projectId, filters],
+    queryKey: ['reports', projectId, filters, page.offset, page.limit],
     queryFn: () =>
-      api<ListResponse<Report>>(`/v1/reports${qs({ project_id: projectId, limit: 100, ...filters })}`),
+      api<ListResponse<Report>>(`/v1/reports${qs({ project_id: projectId, ...filters, ...page })}`),
     enabled: Boolean(projectId),
   });
 export const useReport = (id: string | null) =>

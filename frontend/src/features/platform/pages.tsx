@@ -5,7 +5,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Check, Copy, Link2, Plus, ShieldBan, ShieldCheck, Archive, UserPlus } from 'lucide-react';
-import { api, ApiError, qs, type ListResponse } from '@/lib/api';
+import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
+import { DetailError } from '@/app/guards';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import {
@@ -91,7 +92,7 @@ export function PlatformDashboard() {
   const { t, lang } = useT();
   const tenants = useQuery({
     queryKey: ['platform-tenants'],
-    queryFn: () => api<ListResponse<Tenant>>('/v1/platform/tenants?limit=100'),
+    queryFn: () => apiAll<Tenant>('/v1/platform/tenants'),
   });
   const summary = useQuery({
     queryKey: ['platform-summary'],
@@ -160,7 +161,7 @@ function TenantsTable({
   loading,
   error,
   refetch,
-  search,
+  pagination,
   emptyTitle,
   action,
 }: {
@@ -168,7 +169,7 @@ function TenantsTable({
   loading: boolean;
   error: unknown;
   refetch: () => void;
-  search?: string;
+  pagination?: React.ComponentProps<typeof DataTable<Tenant>>['pagination'];
   emptyTitle?: string;
   action?: React.ReactNode;
 }) {
@@ -234,14 +235,7 @@ function TenantsTable({
       error={error ? errorMessage(t, (error as ApiError).code, (error as ApiError).status) : null}
       onRetry={refetch}
       onRowClick={(r) => navigate(`/admin/tenants/${r.id}`)}
-      search={
-        search !== undefined
-          ? {
-              query: search,
-              fields: (r) => [r.legal_name, r.registration_key, r.alias, r.admin_name],
-            }
-          : undefined
-      }
+      pagination={pagination}
       empty={{ title: emptyTitle ?? t('common.empty'), action }}
     />
   );
@@ -254,10 +248,17 @@ export function TenantsPage() {
   const [filter, setFilter] = useState<'all' | AccessState>('all');
   const [open, setOpen] = useState(false);
   const query = useQuery({
-    queryKey: ['platform-tenants'],
-    queryFn: () => api<ListResponse<Tenant>>('/v1/platform/tenants?limit=100'),
+    queryKey: ['platform-tenants', 'list', list.q, filter, list.offset, list.limit],
+    queryFn: () =>
+      api<ListResponse<Tenant>>(
+        `/v1/platform/tenants${qs({
+          q: list.q,
+          state: filter === 'all' ? undefined : filter,
+          limit: list.limit,
+          offset: list.offset,
+        })}`,
+      ),
   });
-  const rows = query.data?.items.filter((r) => filter === 'all' || r.access_state === filter);
   return (
     <div className="stack" style={{ gap: 14 }}>
       <PageHeader
@@ -274,7 +275,10 @@ export function TenantsPage() {
         <Select
           aria-label={t('tenants.access')}
           value={filter}
-          onChange={(e) => setFilter(e.target.value as typeof filter)}
+          onChange={(e) => {
+            setFilter(e.target.value as typeof filter);
+            list.setOffset(0);
+          }}
         >
           <option value="all">{t('common.all')}</option>
           {(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived'] as AccessState[]).map((s) => (
@@ -285,11 +289,11 @@ export function TenantsPage() {
         </Select>
       </div>
       <TenantsTable
-        rows={rows}
+        rows={query.data?.items}
         loading={query.isLoading}
         error={query.error}
         refetch={query.refetch}
-        search={list.search}
+        pagination={list.pagination}
         action={
           <Button icon={<Plus />} onClick={() => setOpen(true)}>
             {t('tenants.new')}
@@ -481,9 +485,11 @@ export function TenantDetailPage() {
   const d = query.data;
   if (query.isError)
     return (
-      <Alert tone="danger">
-        {errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
-      </Alert>
+      <DetailError
+        error={query.error}
+        onRetry={query.refetch}
+        backTo={{ to: '/admin/tenants', label: t('common.back_to_list') }}
+      />
     );
   if (!d)
     return (
@@ -1222,13 +1228,13 @@ type InvoiceRow = {
 export function BillingPage() {
   const { t, lang } = useT();
   const navigate = useNavigate();
-  const list = useListState(50);
+  const list = useListState();
   const [unpaid, setUnpaid] = useState(false);
   const query = useQuery({
-    queryKey: ['platform-invoices', list.offset, unpaid],
+    queryKey: ['platform-invoices', list.q, list.offset, list.limit, unpaid],
     queryFn: () =>
       api<ListResponse<InvoiceRow>>(
-        `/v1/platform/billing/invoices${qs({ limit: list.limit, offset: list.offset, unpaid })}`,
+        `/v1/platform/billing/invoices${qs({ q: list.q, limit: list.limit, offset: list.offset, unpaid })}`,
       ),
   });
   const columns: Column<InvoiceRow>[] = [
@@ -1303,15 +1309,7 @@ export function BillingPage() {
         error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
         onRetry={query.refetch}
         onRowClick={(r) => navigate(`/admin/tenants/${r.tenant_id}`)}
-        search={{
-          query: list.search,
-          fields: (r) => [r.legal_name, r.plan_code],
-        }}
-        pagination={{
-          offset: list.offset,
-          limit: list.limit,
-          onChange: list.setOffset,
-        }}
+        pagination={list.pagination}
       />
     </div>
   );
@@ -1320,7 +1318,7 @@ export function DebtorsPage() {
   const { t } = useT();
   const query = useQuery({
     queryKey: ['platform-tenants'],
-    queryFn: () => api<ListResponse<Tenant>>('/v1/platform/tenants?limit=100'),
+    queryFn: () => apiAll<Tenant>('/v1/platform/tenants'),
   });
   const rows = query.data?.items.filter((r) => r.access_state === 'overdue' || r.access_state === 'blocked');
   return (
@@ -1348,10 +1346,18 @@ export function SupportPage() {
   const { t, lang } = useT();
   const onError = useApiError();
   const queryClient = useQueryClient();
+  const list = useListState();
   const [tab, setTab] = useState<'open' | 'closed' | 'all'>('open');
   const query = useQuery({
-    queryKey: ['platform-support'],
-    queryFn: () => api<ListResponse<SupportRow>>('/v1/platform/support?limit=100'),
+    queryKey: ['platform-support', tab, list.offset, list.limit],
+    queryFn: () =>
+      api<ListResponse<SupportRow>>(
+        `/v1/platform/support${qs({
+          status: tab === 'all' ? undefined : tab,
+          limit: list.limit,
+          offset: list.offset,
+        })}`,
+      ),
   });
   const [reply, setReply] = useState<SupportRow | null>(null);
   const [text, setText] = useState('');
@@ -1368,7 +1374,6 @@ export function SupportPage() {
     },
     onError,
   });
-  const rows = query.data?.items.filter((r) => tab === 'all' || r.status === tab);
   const columns: Column<SupportRow>[] = [
     {
       key: 'tenant',
@@ -1448,18 +1453,22 @@ export function SupportPage() {
       <PageHeader title={t('support.title')} description={t('support.sub')} />
       <div className="segmented">
         {(['open', 'closed', 'all'] as const).map((k) => (
-          <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)}>
+          <button key={k} type="button" aria-pressed={tab === k} onClick={() => {
+            setTab(k);
+            list.setOffset(0);
+          }}>
             {k === 'all' ? t('common.all') : t(`support.${k}`)}
           </button>
         ))}
       </div>
       <DataTable
         columns={columns}
-        rows={rows}
+        rows={query.data?.items}
         rowKey={(r) => r.id}
         loading={query.isLoading}
         error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
         onRetry={query.refetch}
+        pagination={list.pagination}
       />
       <Modal
         open={Boolean(reply)}

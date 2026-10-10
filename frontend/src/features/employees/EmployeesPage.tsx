@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Check, Copy, KeyRound, Plus, RefreshCw, Trash2, UserPlus } from 'lucide-react';
-import { api, ApiError, type ListResponse } from '@/lib/api';
+import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate } from '@/lib/format';
@@ -70,12 +70,19 @@ export function EmployeesPage() {
   const [create, setCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const query = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => api<ListResponse<Employee>>('/v1/employees?limit=100'),
+    queryKey: ['employees', 'list', list.q, role, status, list.offset, list.limit],
+    queryFn: () =>
+      api<ListResponse<Employee>>(
+        `/v1/employees${qs({
+          q: list.q,
+          role: role === 'all' ? undefined : role,
+          active: status === 'all' ? undefined : status === 'active',
+          limit: list.limit,
+          offset: list.offset,
+        })}`,
+      ),
   });
-  const rows = query.data?.items.filter(
-    (e) => (role === 'all' || e.role === role) && (status === 'all' || (status === 'active') === e.active),
-  );
+  const rows = query.data?.items;
   const columns: Column<Employee>[] = [
     {
       key: 'name',
@@ -154,7 +161,10 @@ export function EmployeesPage() {
         <Select
           aria-label={t('employees.filter_role')}
           value={role}
-          onChange={(e) => setRole(e.target.value as typeof role)}
+          onChange={(e) => {
+            setRole(e.target.value as typeof role);
+            list.setOffset(0);
+          }}
         >
           <option value="all">{t('common.all')}</option>
           {(['tenant_admin', ...employeeRoles] as Role[]).map((r) => (
@@ -166,7 +176,10 @@ export function EmployeesPage() {
         <Select
           aria-label={t('employees.filter_status')}
           value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
+          onChange={(e) => {
+            setStatus(e.target.value as typeof status);
+            list.setOffset(0);
+          }}
         >
           <option value="active">{t('employees.active')}</option>
           <option value="inactive">{t('employees.inactive')}</option>
@@ -185,7 +198,7 @@ export function EmployeesPage() {
         }
         onRetry={query.refetch}
         onRowClick={(r) => setSelected(r.id)}
-        search={{ query: list.search, fields: (r) => [r.display_name, r.login, r.phone, r.position] }}
+        pagination={list.pagination}
         empty={{ title: t('employees.empty'), description: t('employees.empty_desc'), action: createButton }}
       />
       <CreateEmployeeModal open={create} onClose={() => setCreate(false)} />
@@ -200,7 +213,7 @@ function CreateEmployeeModal({ open, onClose }: { open: boolean; onClose: () => 
   const queryClient = useQueryClient();
   const projects = useQuery({
     queryKey: ['projects'],
-    queryFn: () => api<ListResponse<Project>>('/v1/projects?limit=100'),
+    queryFn: () => apiAll<Project>('/v1/projects'),
     enabled: open,
   });
   const schema = z.object({
@@ -399,7 +412,7 @@ function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   });
   const projects = useQuery({
     queryKey: ['projects'],
-    queryFn: () => api<ListResponse<Project>>('/v1/projects?limit=100'),
+    queryFn: () => apiAll<Project>('/v1/projects'),
   });
   const refresh = () =>
     Promise.all([

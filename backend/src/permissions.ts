@@ -371,6 +371,7 @@ export function redactPrices(value: any): any {
             'amount',
             'price',
             'monthly_price',
+            'fact_value',
           ].includes(key),
       )
       .map(([k, v]) => [k, redactPrices(v)]),

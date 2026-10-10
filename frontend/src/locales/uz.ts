@@ -48,6 +48,13 @@ export const uz: Record<string, string> = {
   'common.password': 'Parol',
   'common.optional': 'ixtiyoriy',
   'common.days': '{n} kun',
+  'common.per_page': 'Qatorlar soni',
+  'common.no_results': 'Hech narsa topilmadi',
+  'common.search_more': 'Ko‘proq natija bor — aniqroq yozing',
+  'common.not_found_record': 'Yozuv topilmadi',
+  'common.not_found_record_desc':
+    'Bu yozuv mavjud emas, arxivlangan yoki sizga biriktirilmagan. Havolani tekshiring.',
+  'common.back_to_list': 'Ro‘yxatga qaytish',
 
   // navigatsiya
   'nav.group.main': 'Asosiy',

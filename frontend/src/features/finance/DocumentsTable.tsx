@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
@@ -16,6 +16,7 @@ export function DocumentsTable({
   projectId,
   showProject,
   allowPay,
+  pagination,
 }: {
   docs?: FinanceDocument[];
   loading?: boolean;
@@ -24,6 +25,7 @@ export function DocumentsTable({
   projectId: string;
   showProject?: boolean;
   allowPay?: boolean;
+  pagination?: ComponentProps<typeof DataTable>['pagination'];
 }) {
   const { t, lang } = useT();
   const { permissions, me } = useAuth();
@@ -148,6 +150,7 @@ export function DocumentsTable({
         error={error}
         onRetry={onRetry}
         empty={{ title: t('fin.documents_empty') }}
+        pagination={pagination}
         dense
       />
       {reverse && <ReverseModal doc={reverse} onClose={() => setReverse(null)} />}

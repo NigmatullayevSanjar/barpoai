@@ -190,6 +190,7 @@ export const financeKeys = [
   'finance-reports',
   'notifications',
   'stock-overview',
+  'search-select',
 ];
 
 export function useFinanceMutation<T>(
@@ -224,20 +225,24 @@ export const useSummary = (projectId: string) =>
   });
 export const useDocuments = (
   projectId: string,
-  filters: { kind?: string; counterparty_id?: string; from?: string; to?: string } = {},
+  filters: { kind?: string; counterparty_id?: string; from?: string; to?: string; unpaid?: boolean } = {},
+  page: { offset: number; limit: number },
 ) =>
   useQuery({
-    queryKey: ['finance-docs', projectId, filters],
+    queryKey: ['finance-docs', projectId, filters, page.offset, page.limit],
     queryFn: () =>
       api<ListResponse<FinanceDocument>>(
-        `/v1/finance/documents${qs({ project_id: projectId, limit: 100, ...filters })}`,
+        `/v1/finance/documents${qs({ project_id: projectId, ...filters, limit: page.limit, offset: page.offset })}`,
       ),
     enabled: Boolean(projectId),
   });
-export const useCounterparties = () =>
+export const useCounterparties = (opts: { q?: string; offset: number; limit: number }) =>
   useQuery({
-    queryKey: ['counterparties'],
-    queryFn: () => api<ListResponse<Counterparty>>('/v1/counterparties?limit=100'),
+    queryKey: ['counterparties', opts.q, opts.offset, opts.limit],
+    queryFn: () =>
+      api<ListResponse<Counterparty>>(
+        `/v1/counterparties${qs({ q: opts.q || undefined, limit: opts.limit, offset: opts.offset })}`,
+      ),
   });
 export const useCashBalances = () =>
   useQuery({
@@ -247,20 +252,25 @@ export const useCashBalances = () =>
 export const usePayables = (
   projectId: string,
   filters: { counterparty_id?: string; overdue?: boolean } = {},
+  page: { offset: number; limit: number },
 ) =>
   useQuery({
-    queryKey: ['finance-payables', projectId, filters],
+    queryKey: ['finance-payables', projectId, filters, page.offset, page.limit],
     queryFn: () =>
       api<ListResponse<Payable>>(
-        `/v1/finance/payables${qs({ project_id: projectId || undefined, limit: 100, ...filters })}`,
+        `/v1/finance/payables${qs({ project_id: projectId || undefined, ...filters, limit: page.limit, offset: page.offset })}`,
       ),
   });
-export const usePaymentRequests = (projectId: string, status?: string) =>
+export const usePaymentRequests = (
+  projectId: string,
+  status: string | undefined,
+  page: { offset: number; limit: number },
+) =>
   useQuery({
-    queryKey: ['payment-requests', projectId, status],
+    queryKey: ['payment-requests', projectId, status, page.offset, page.limit],
     queryFn: () =>
       api<ListResponse<PaymentRequest>>(
-        `/v1/finance/payment-requests${qs({ project_id: projectId || undefined, status, limit: 100 })}`,
+        `/v1/finance/payment-requests${qs({ project_id: projectId || undefined, status, limit: page.limit, offset: page.offset })}`,
       ),
   });
 export const useBudgets = (projectId: string) =>

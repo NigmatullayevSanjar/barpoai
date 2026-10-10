@@ -11,6 +11,7 @@ import {
   text,
   version,
   reason,
+  queryBool,
 } from './schemas.js';
 import { projectScope, allowed, pageAllowed } from './permissions.js';
 import { invariant } from './errors.js';
@@ -341,7 +342,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
     query: pageQuery.extend({
       project_id: uuid.optional(),
       counterparty_id: uuid.optional(),
-      overdue: z.coerce.boolean().optional(),
+      overdue: queryBool.optional(),
     }),
     handler: async ({ db, actor, query }) => {
       const projects = query.project_id

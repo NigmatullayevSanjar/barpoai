@@ -23,12 +23,11 @@ type Props<T> = {
   onRowClick?: (row: T) => void;
   empty?: { title: ReactNode; description?: ReactNode; action?: ReactNode };
   dense?: boolean;
-  /** Mijoz tomonida filtr: qidiruv matni va qaysi maydonlar bo'yicha */
-  search?: { query: string; fields: (row: T) => (string | null | undefined)[] };
   pagination?: {
     offset: number;
     limit: number;
     onChange: (offset: number) => void;
+    onLimitChange?: (limit: number) => void;
   };
   footer?: ReactNode;
   rowClassName?: (row: T) => string | undefined;
@@ -43,7 +42,6 @@ export function DataTable<T>({
   onRowClick,
   empty,
   dense,
-  search,
   pagination,
   footer,
   rowClassName,
@@ -52,10 +50,6 @@ export function DataTable<T>({
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const visible = useMemo(() => {
     let list = rows ?? [];
-    if (search?.query) {
-      const q = search.query.toLocaleLowerCase();
-      list = list.filter((r) => search.fields(r).some((f) => (f ?? '').toLocaleLowerCase().includes(q)));
-    }
     if (sort) {
       const col = columns.find((c) => c.key === sort.key);
       if (col?.sortValue) {
@@ -74,7 +68,7 @@ export function DataTable<T>({
       }
     }
     return list;
-  }, [rows, search?.query, sort, columns, search]);
+  }, [rows, sort, columns]);
 
   const toggleSort = (key: string) =>
     setSort((s) => (s?.key !== key ? { key, dir: 'asc' } : s.dir === 'asc' ? { key, dir: 'desc' } : null));
@@ -151,6 +145,7 @@ export function DataTable<T>({
           limit={pagination.limit}
           count={rows?.length ?? 0}
           onChange={pagination.onChange}
+          onLimitChange={pagination.onLimitChange}
         />
       )}
       {footer}

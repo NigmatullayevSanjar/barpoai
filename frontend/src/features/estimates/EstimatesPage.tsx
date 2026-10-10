@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { FileSpreadsheet, Plus } from 'lucide-react';
-import { api, ApiError, type ListResponse } from '@/lib/api';
+import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -20,8 +20,11 @@ export function EstimatesPage() {
   const sel = useProjectSelection();
   const [importOpen, setImportOpen] = useState(false);
   const query = useQuery({
-    queryKey: ['estimates', sel.projectId],
-    queryFn: () => api<ListResponse<EstimateSummary>>(`/v1/estimates?project_id=${sel.projectId}&limit=100`),
+    queryKey: ['estimates', sel.projectId, list.q, list.limit, list.offset],
+    queryFn: () =>
+      api<ListResponse<EstimateSummary>>(
+        `/v1/estimates${qs({ project_id: sel.projectId, q: list.q, limit: list.limit, offset: list.offset })}`,
+      ),
     enabled: Boolean(sel.projectId),
   });
   const pricesVisible = me?.role === 'tenant_admin' || permissions?.permissions.includes('prices.read');
@@ -92,7 +95,10 @@ export function EstimatesPage() {
     <div className="stack" style={{ gap: 14 }}>
       <PageHeader title={t('est.title')} description={t('est.sub')} actions={actions || undefined} />
       <div className="toolbar">
-        <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
+        <ProjectSelect value={sel.projectId} onChange={(id) => {
+            sel.setProjectId(id);
+            list.setOffset(0);
+          }} projects={sel.projects} />
         <SearchInput value={list.search} onChange={list.setSearch} />
         {!pricesVisible && <Badge tone="warning">{t('est.unit_price_hidden')}</Badge>}
       </div>
@@ -113,7 +119,7 @@ export function EstimatesPage() {
           }
           onRetry={query.refetch}
           onRowClick={(r) => navigate(`/app/estimates/${r.id}`)}
-          search={{ query: list.search, fields: (r) => [r.name, r.created_by_name] }}
+          pagination={list.pagination}
           empty={{ title: t('est.empty'), description: t('est.empty_desc'), action: actions || undefined }}
         />
       )}

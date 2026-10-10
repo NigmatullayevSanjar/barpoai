@@ -118,19 +118,23 @@ export const useOverview = (projectId: string) =>
 export const useCommands = (
   projectId: string,
   filters: { status?: string; kind?: string; account_id?: string },
+  page: { offset: number; limit: number },
 ) =>
   useQuery({
-    queryKey: ['stock-commands', projectId, filters],
+    queryKey: ['stock-commands', projectId, filters, page.offset, page.limit],
     queryFn: () =>
       api<ListResponse<StockCommand>>(
-        `/v1/stock/commands${qs({ project_id: projectId, limit: 100, ...filters })}`,
+        `/v1/stock/commands${qs({ project_id: projectId, limit: page.limit, offset: page.offset, ...filters })}`,
       ),
     enabled: Boolean(projectId),
   });
-export const useRequests = (projectId: string) =>
+export const useRequests = (projectId: string, page: { offset: number; limit: number }) =>
   useQuery({
-    queryKey: ['stock-requests', projectId],
-    queryFn: () => api<ListResponse<MaterialRequest>>(`/v1/stock/requests?project_id=${projectId}&limit=100`),
+    queryKey: ['stock-requests', projectId, page.offset, page.limit],
+    queryFn: () =>
+      api<ListResponse<MaterialRequest>>(
+        `/v1/stock/requests${qs({ project_id: projectId, limit: page.limit, offset: page.offset })}`,
+      ),
     enabled: Boolean(projectId),
   });
 export const stockKeys = [

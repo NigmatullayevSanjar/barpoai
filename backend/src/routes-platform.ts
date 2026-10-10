@@ -11,6 +11,8 @@ import {
   timestamp,
   idParams,
   pageQuery,
+  searchQuery,
+  likePattern,
   password,
   loginName,
 } from './schemas.js';
@@ -58,17 +60,32 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/tenants',
-    summary: 'Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q)',
+    summary:
+      'Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q); q — nom, kalit, alias; state — access_state filtri',
     platform: owner,
-    query: pageQuery,
+    query: searchQuery.extend({
+      state: z.enum(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived']).optional(),
+    }),
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
+          // state CASE ifodasi auth.ts dagi accessState() bilan bir xil tartibda.
           `SELECT t.*,a.alias,(SELECT count(*)::int FROM users u WHERE u.tenant_id=t.id AND u.active) active_users,
             (SELECT display_name FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active LIMIT 1) admin_name,
             (SELECT p.code FROM subscriptions s JOIN plan_versions p ON p.id=s.plan_version_id WHERE s.tenant_id=t.id) plan_code
-           FROM tenants t LEFT JOIN tenant_aliases a ON a.tenant_id=t.id AND a.owner_id=$1 ORDER BY t.created_at,t.id LIMIT $2 OFFSET $3`,
-          [actor.id, query.limit, query.offset],
+           FROM tenants t LEFT JOIN tenant_aliases a ON a.tenant_id=t.id AND a.owner_id=$1
+           WHERE ($4::text IS NULL OR t.legal_name ILIKE $4 ESCAPE '\\' OR t.registration_key ILIKE $4 ESCAPE '\\' OR a.alias ILIKE $4 ESCAPE '\\'
+                  OR EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active AND u.display_name ILIKE $4 ESCAPE '\\'))
+             AND ($5::text IS NULL OR (CASE WHEN t.status<>'active' THEN t.status WHEN t.trial_ends_at IS NULL THEN 'pending'
+                  WHEN t.paid_until>now() THEN 'paid' WHEN t.trial_ends_at>now() THEN 'trial' ELSE 'overdue' END)=$5)
+           ORDER BY t.created_at,t.id LIMIT $2 OFFSET $3`,
+          [
+            actor.id,
+            query.limit,
+            query.offset,
+            query.q ? likePattern(query.q) : null,
+            query.state ?? null,
+          ],
         )
       ).rows.map((row) => ({ ...row, ...accessState(row) })),
     }),
@@ -318,14 +335,14 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/support',
-    summary: 'Support va tarif almashtirish so‘rovlari (javob bilan)',
+    summary: 'Support va tarif almashtirish so‘rovlari (javob bilan); status filtri',
     platform: ['support', 'platform_owner', 'super_admin'],
-    query: pageQuery,
+    query: pageQuery.extend({ status: z.enum(['open', 'closed']).optional() }),
     handler: async ({ db, query }) => ({
       items: (
         await db.query(
-          'SELECT s.*,t.legal_name,u.display_name FROM support_requests s JOIN tenants t ON t.id=s.tenant_id JOIN users u ON u.id=s.user_id ORDER BY s.status,s.created_at DESC,s.id LIMIT $1 OFFSET $2',
-          [query.limit, query.offset],
+          'SELECT s.*,t.legal_name,u.display_name FROM support_requests s JOIN tenants t ON t.id=s.tenant_id JOIN users u ON u.id=s.user_id WHERE ($3::text IS NULL OR s.status=$3) ORDER BY s.status,s.created_at DESC,s.id LIMIT $1 OFFSET $2',
+          [query.limit, query.offset, query.status ?? null],
         )
       ).rows,
     }),

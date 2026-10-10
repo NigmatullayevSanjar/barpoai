@@ -702,7 +702,8 @@ paths:
               additionalProperties: false
   /v1/platform/tenants:
     get:
-      summary: Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q)
+      summary: Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q); q — nom, kalit, alias; state —
+        access_state filtri
       operationId: get_v1_platform_tenants
       security:
         - bearerAuth: []
@@ -724,6 +725,24 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+              - trial
+              - paid
+              - overdue
+              - blocked
+              - archived
       x-permission: platform_owner
       x-tenant-scope: false
       responses:
@@ -1159,7 +1178,7 @@ paths:
                 - period_start
               additionalProperties: false
     get:
-      summary: Barcha SaaS invoyslar, qoplanish va kompaniya nomi bilan
+      summary: Barcha SaaS invoyslar, qoplanish va kompaniya nomi bilan; q — kompaniya nomi
       operationId: get_v1_platform_billing_invoices
       security:
         - bearerAuth: []
@@ -1181,6 +1200,12 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
         - name: tenant_id
           in: query
           required: false
@@ -1320,7 +1345,7 @@ paths:
         "503": *a27
   /v1/platform/support:
     get:
-      summary: Support va tarif almashtirish so‘rovlari (javob bilan)
+      summary: Support va tarif almashtirish so‘rovlari (javob bilan); status filtri
       operationId: get_v1_platform_support
       security:
         - bearerAuth: []
@@ -1342,6 +1367,14 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - open
+              - closed
       x-permission: support|platform_owner|super_admin
       x-tenant-scope: false
       responses:
@@ -1552,7 +1585,7 @@ paths:
               additionalProperties: false
   /v1/projects:
     get:
-      summary: Faqat biriktirilgan obyektlar
+      summary: Faqat biriktirilgan obyektlar; q — nom, kod, buyurtmachi, manzil bo‘yicha qidiruv; status filtri
       operationId: get_v1_projects
       security:
         - bearerAuth: []
@@ -1574,6 +1607,22 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - planning
+              - active
+              - paused
+              - completed
       x-permission: projects.read
       x-tenant-scope: true
       responses:
@@ -2023,7 +2072,7 @@ paths:
         "503": *a39
   /v1/employees:
     get:
-      summary: Kompaniya xodimlari; hash hech qachon chiqmaydi
+      summary: Kompaniya xodimlari; hash hech qachon chiqmaydi; q — ism, login, telefon, lavozim; role va active filtrlari
       operationId: get_v1_employees
       security:
         - bearerAuth: []
@@ -2045,6 +2094,30 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - tenant_admin
+              - foreman
+              - brigadier
+              - warehouse_manager
+              - financier
+              - accountant
+              - manager
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
       x-permission: employees.manage
       x-tenant-scope: true
       responses:
@@ -5564,7 +5637,7 @@ paths:
                 - unit_id
               additionalProperties: false
     get:
-      summary: Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli)
+      summary: Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli); q — nom bo‘yicha qidiruv
       operationId: get_v1_materials
       security:
         - bearerAuth: []
@@ -5586,6 +5659,12 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
       x-permission: projects.read
       x-tenant-scope: true
       responses:
@@ -6109,7 +6188,7 @@ paths:
                 - lines
               additionalProperties: false
     get:
-      summary: Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi
+      summary: Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi; q — nom yoki muallif bo‘yicha qidiruv
       operationId: get_v1_estimates
       security:
         - bearerAuth: []
@@ -6138,6 +6217,12 @@ paths:
             type: string
             format: uuid
             pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
       x-permission: estimates.read
       x-tenant-scope: true
       responses:
@@ -6164,7 +6249,8 @@ paths:
         "503": *a106
   /v1/estimates/{id}:
     get:
-      summary: Joriy smeta va oylik qatorlar
+      summary: Joriy smeta va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona bo‘yicha guruhlar
+        (decimal)
       operationId: get_v1_estimates__id
       security:
         - bearerAuth: []
@@ -6661,7 +6747,7 @@ paths:
                 - kind
               additionalProperties: false
     get:
-      summary: Kompaniya kontragentlari
+      summary: Kompaniya kontragentlari; q — nom, INN, telefon, kontakt; archived=false — faqat faollar
       operationId: get_v1_counterparties
       security:
         - bearerAuth: []
@@ -6683,6 +6769,17 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: archived
+          in: query
+          required: false
+          schema:
+            type: boolean
       x-permission: finance.read
       x-tenant-scope: true
       responses:
@@ -6990,6 +7087,11 @@ paths:
             type: string
             format: date
             pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+        - name: unpaid
+          in: query
+          required: false
+          schema:
+            type: boolean
       x-permission: authenticated
       x-tenant-scope: true
       responses:

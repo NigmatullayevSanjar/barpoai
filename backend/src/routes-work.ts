@@ -14,6 +14,7 @@ import {
   qty,
   date,
   timestamp,
+  queryBool,
 } from './schemas.js';
 import { projectScope, assignedUser, allowed } from './permissions.js';
 import { notify, projectRecipients } from './notify.js';
@@ -140,7 +141,7 @@ export function workRoutes(add: (r: Endpoint) => void) {
       status: z
         .enum(['todo', 'in_progress', 'submitted', 'returned', 'accepted', 'open'])
         .optional(),
-      mine: z.coerce.boolean().optional(),
+      mine: queryBool.optional(),
     }),
     handler: ({ db, actor, query }) => listTasks(db, actor, query),
   });

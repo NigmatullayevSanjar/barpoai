@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Archive, Pencil, Plus } from 'lucide-react';
-import { api, ApiError, qs, type ListResponse } from '@/lib/api';
+import { api, ApiError, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -13,9 +13,11 @@ import {
   Input,
   Modal,
   PageHeader,
+  Pagination,
   Segmented,
   Select,
   Textarea,
+  useListState,
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
@@ -50,12 +52,17 @@ export function TasksPage() {
   const { t, lang } = useT();
   const { can } = useAuth();
   const sel = useProjectSelection();
+  const list = useListState();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mine, setMine] = useState(false);
   const [status, setStatus] = useState<string>('open');
   const [create, setCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const query = useTasks(sel.projectId, { ...(status ? { status } : {}), ...(mine ? { mine: true } : {}) });
+  const query = useTasks(
+    sel.projectId,
+    { ...(status ? { status } : {}), ...(mine ? { mine: true } : {}) },
+    { offset: list.offset, limit: list.limit },
+  );
   const tasks = query.data?.items ?? [];
   const Deadline = ({ task }: { task: Task }) => {
     if (!task.deadline) return <span className="muted">—</span>;
@@ -144,7 +151,14 @@ export function TasksPage() {
         }
       />
       <div className="toolbar">
-        <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
+        <ProjectSelect
+          value={sel.projectId}
+          onChange={(id) => {
+            sel.setProjectId(id);
+            list.setOffset(0);
+          }}
+          projects={sel.projects}
+        />
         <Segmented<'board' | 'table'>
           value={view}
           onChange={setView}
@@ -153,7 +167,14 @@ export function TasksPage() {
             { key: 'table', label: t('tasks.view.table') },
           ]}
         />
-        <Select aria-label={t('common.status')} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <Select
+          aria-label={t('common.status')}
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="open">{t('stock.status.open')}</option>
           <option value="">{t('tasks.all')}</option>
           {taskStatuses.map((s) => (
@@ -164,7 +185,10 @@ export function TasksPage() {
         </Select>
         {can('tasks', 'update') && (
           <label className="checkbox">
-            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{' '}
+            <input type="checkbox" checked={mine} onChange={(e) => {
+                setMine(e.target.checked);
+                list.setOffset(0);
+              }} />{' '}
             {t('tasks.mine')}
           </label>
         )}
@@ -222,7 +246,17 @@ export function TasksPage() {
           rowKey={(r) => r.id}
           loading={query.isLoading}
           onRowClick={(r) => setSelected(r.id)}
+          pagination={list.pagination}
           empty={{ title: t('tasks.empty'), description: t('tasks.empty_desc') }}
+        />
+      )}
+      {view === 'board' && !query.isError && (
+        <Pagination
+          offset={list.offset}
+          limit={list.limit}
+          count={tasks.length}
+          onChange={list.setOffset}
+          onLimitChange={list.setLimit}
         />
       )}
       {create && <TaskModal projectId={sel.projectId} onClose={() => setCreate(false)} />}

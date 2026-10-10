@@ -7,6 +7,9 @@ import {
   date,
   idParams,
   pageQuery,
+  searchQuery,
+  likePattern,
+  queryBool,
   version,
   password,
   loginName,
@@ -30,14 +33,27 @@ export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/projects',
-    summary: 'Faqat biriktirilgan obyektlar',
+    summary: 'Faqat biriktirilgan obyektlar; q — nom, kod, buyurtmachi, manzil bo‘yicha qidiruv; status filtri',
     permission: 'projects.read',
-    query: pageQuery,
+    query: searchQuery.extend({
+      status: z.enum(['planning', 'active', 'paused', 'completed']).optional(),
+    }),
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          `SELECT p.* FROM projects p WHERE p.tenant_id=$1 AND p.archived_at IS NULL AND ($2='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND a.user_id=$3)) ORDER BY p.created_at,p.id LIMIT $4 OFFSET $5`,
-          [actor.tenant_id, actor.role, actor.id, query.limit, query.offset],
+          `SELECT p.* FROM projects p WHERE p.tenant_id=$1 AND p.archived_at IS NULL AND ($2='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND a.user_id=$3))
+             AND ($6::text IS NULL OR p.name ILIKE $6 ESCAPE '\\' OR p.code ILIKE $6 ESCAPE '\\' OR p.customer_name ILIKE $6 ESCAPE '\\' OR p.address ILIKE $6 ESCAPE '\\')
+             AND ($7::text IS NULL OR p.status=$7)
+           ORDER BY p.created_at,p.id LIMIT $4 OFFSET $5`,
+          [
+            actor.tenant_id,
+            actor.role,
+            actor.id,
+            query.limit,
+            query.offset,
+            query.q ? likePattern(query.q) : null,
+            query.status ?? null,
+          ],
         )
       ).rows,
     }),
@@ -163,17 +179,31 @@ export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/employees',
-    summary: 'Kompaniya xodimlari; hash hech qachon chiqmaydi',
+    summary:
+      'Kompaniya xodimlari; hash hech qachon chiqmaydi; q — ism, login, telefon, lavozim; role va active filtrlari',
     permission: 'employees.manage',
-    query: pageQuery,
+    query: searchQuery.extend({
+      role: z.enum(tenantRoles).optional(),
+      active: queryBool.optional(),
+    }),
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
           `SELECT u.id,u.login,u.display_name,u.phone,u.role,u.active,u.must_change_password,u.position,u.hired_at,u.version,u.created_at,
              (SELECT coalesce(json_agg(json_build_object('project_id',a.project_id,'project_name',p.name) ORDER BY p.name),'[]') FROM project_assignments a JOIN projects p ON p.id=a.project_id WHERE a.tenant_id=u.tenant_id AND a.user_id=u.id AND p.archived_at IS NULL) projects,
              EXISTS(SELECT 1 FROM telegram_accounts ta WHERE ta.user_id=u.id) telegram_linked
-           FROM users u WHERE u.tenant_id=$1 ORDER BY u.display_name,u.id LIMIT $2 OFFSET $3`,
-          [actor.tenant_id, query.limit, query.offset],
+           FROM users u WHERE u.tenant_id=$1
+             AND ($4::text IS NULL OR u.display_name ILIKE $4 ESCAPE '\\' OR u.login ILIKE $4 ESCAPE '\\' OR u.phone ILIKE $4 ESCAPE '\\' OR u.position ILIKE $4 ESCAPE '\\')
+             AND ($5::text IS NULL OR u.role=$5) AND ($6::boolean IS NULL OR u.active=$6)
+           ORDER BY u.display_name,u.id LIMIT $2 OFFSET $3`,
+          [
+            actor.tenant_id,
+            query.limit,
+            query.offset,
+            query.q ? likePattern(query.q) : null,
+            query.role ?? null,
+            query.active ?? null,
+          ],
         )
       ).rows,
     }),

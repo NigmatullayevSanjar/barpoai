@@ -4,12 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Archive, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
-import { api, ApiError, type ListResponse } from '@/lib/api';
+import { api, apiAll, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { DetailError } from '@/app/guards';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
-  Alert,
   Badge,
   Button,
   ConfirmDialog,
@@ -70,9 +70,11 @@ export function ProjectDetailPage() {
   const d = query.data;
   if (query.isError)
     return (
-      <Alert tone="danger">
-        {errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
-      </Alert>
+      <DetailError
+        error={query.error}
+        onRetry={query.refetch}
+        backTo={{ to: '/app/projects', label: t('common.back_to_list') }}
+      />
     );
   if (!d)
     return (
@@ -450,7 +452,7 @@ function MembersTab({
   const [warehouseId, setWarehouseId] = useState('');
   const employees = useQuery({
     queryKey: ['employees'],
-    queryFn: () => api<ListResponse<Employee>>('/v1/employees?limit=100'),
+    queryFn: () => apiAll<Employee>('/v1/employees'),
     enabled: canEdit,
   });
   const candidates =

@@ -18,6 +18,15 @@ export type EstimateSummary = {
   material_total: string;
   work_total: string;
 };
+export type EstimateGroupTotal = { key: string; count: number; total?: string; value?: string };
+export type EstimateTotals = {
+  total?: string;
+  material_total?: string;
+  work_total?: string;
+  by_kind: EstimateGroupTotal[];
+  by_category: EstimateGroupTotal[];
+  by_zone: EstimateGroupTotal[];
+};
 export type EstimateLine = {
   id: string;
   kind: LineKind;
@@ -48,6 +57,7 @@ export type EstimateDetail = {
   revision: number;
   created_at: string;
   lines: EstimateLine[];
+  totals: EstimateTotals;
 };
 
 /** Tahrir qatori: barcha qiymatlar string, serverga shu holicha yuboriladi (decimal). */
@@ -58,6 +68,8 @@ export type LineDraft = {
   category: string;
   zone_id: string;
   material_id: string;
+  material_name: string;
+  material_unit: string;
   unit_id: string;
   mode: 'manual' | 'norm';
   quantity: string;
@@ -75,6 +87,8 @@ export const newLine = (partial: Partial<LineDraft> = {}): LineDraft => ({
   category: '',
   zone_id: '',
   material_id: '',
+  material_name: '',
+  material_unit: '',
   unit_id: '',
   mode: 'manual',
   quantity: '',
@@ -93,6 +107,8 @@ export const fromLine = (l: EstimateLine): LineDraft => ({
   category: l.category ?? '',
   zone_id: l.zone_id ?? '',
   material_id: l.material_id ?? '',
+  material_name: l.material_name ?? '',
+  material_unit: l.material_id ? l.unit_id : '',
   unit_id: l.unit_id,
   mode: l.norm !== null ? 'norm' : 'manual',
   quantity: l.norm !== null ? '' : trimZeros(l.quantity),
@@ -120,17 +136,14 @@ export function effectiveOf(d: LineDraft) {
 export const totalOf = (d: LineDraft) => effectiveOf(d) * (Number(normalizeNumber(d.unit_price)) || 0);
 export function validateLine(
   d: LineDraft,
-  materials: Material[],
   t: (k: string, v?: Record<string, string>) => string,
 ) {
   const errors: Partial<Record<keyof LineDraft, string>> = {};
   if (!d.description.trim()) errors.description = t('est.err.description');
   if (d.kind === 'material' && !d.material_id) errors.material_id = t('est.err.material');
   if (!d.unit_id) errors.unit_id = t('est.err.unit');
-  if (d.kind === 'material' && d.material_id) {
-    const m = materials.find((x) => x.id === d.material_id);
-    if (m && m.unit_id !== d.unit_id) errors.unit_id = t('est.err.unit_mismatch', { unit: m.unit_id });
-  }
+  if (d.kind === 'material' && d.material_unit && d.material_unit !== d.unit_id)
+    errors.unit_id = t('est.err.unit_mismatch', { unit: d.material_unit });
   if (d.mode === 'manual') {
     if (!QTY.test(normalizeNumber(d.quantity))) errors.quantity = t('est.err.quantity');
   } else {
@@ -182,15 +195,9 @@ export const useUnits = () =>
     queryFn: () => api<{ units: Unit[] }>('/v1/catalog'),
     staleTime: 3600000,
   });
-export const useMaterials = () =>
-  useQuery({
-    queryKey: ['materials'],
-    queryFn: () => api<ListResponse<Material>>('/v1/materials?limit=100'),
-  });
 export const useZones = (projectId: string) =>
   useQuery({
     queryKey: ['zones', projectId],
     queryFn: () => api<ListResponse<Zone>>(`/v1/projects/${projectId}/zones`),
     enabled: Boolean(projectId),
   });
-export const sumBy = <T>(rows: T[], pick: (r: T) => number) => rows.reduce((s, r) => s + pick(r), 0);

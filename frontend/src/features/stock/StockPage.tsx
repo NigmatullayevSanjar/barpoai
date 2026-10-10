@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
   ArrowLeftRight,
@@ -25,12 +25,14 @@ import {
   Stat,
   Tabs,
   Textarea,
+  useListState,
 } from '@/components/ui';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { ExportButton } from '@/features/common/ExportButton';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
-import { normalizeNumber, useMaterials, useZones } from '@/features/estimates/model';
+import { normalizeNumber, useZones, type Material } from '@/features/estimates/model';
 import {
   kindTone,
   statusTone,
@@ -165,9 +167,9 @@ export function StockPage() {
           onCommand={(kind, preset) => setModal({ kind, preset })}
         />
       )}
-      {tab === 'movements' && sel.projectId && <MovementsTab projectId={sel.projectId} />}
+      {tab === 'movements' && sel.projectId && <MovementsTab key={sel.projectId} projectId={sel.projectId} />}
       {tab === 'requests' && sel.projectId && d && (
-        <RequestsTab projectId={sel.projectId} accounts={d.accounts} />
+        <RequestsTab key={sel.projectId} projectId={sel.projectId} accounts={d.accounts} />
       )}
       {tab === 'materials' && <MaterialsTab />}
       {modal && d && (
@@ -394,11 +396,12 @@ function LedgerModal({
   onClose: () => void;
 }) {
   const { t, lang } = useT();
+  const list = useListState();
   const query = useQuery({
-    queryKey: ['stock-ledger', account.id, balance.material_id],
+    queryKey: ['stock-ledger', account.id, balance.material_id, list.offset, list.limit],
     queryFn: () =>
       api<ListResponse<LedgerRow>>(
-        `/v1/stock/ledger${qs({ account_id: account.id, material_id: balance.material_id, limit: 100 })}`,
+        `/v1/stock/ledger${qs({ account_id: account.id, material_id: balance.material_id, limit: list.limit, offset: list.offset })}`,
       ),
   });
   const columns: Column<LedgerRow>[] = [
@@ -452,6 +455,7 @@ function LedgerModal({
         rowKey={(r) => r.id}
         loading={query.isLoading}
         dense
+        pagination={list.pagination}
         empty={{ title: t('stock.movements_empty') }}
       />
     </Modal>
@@ -468,7 +472,8 @@ function MovementsTab({ projectId }: { projectId: string }) {
     command: StockCommand;
     action: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
   } | null>(null);
-  const query = useCommands(projectId, { ...(status ? { status } : {}), ...(kind ? { kind } : {}) });
+  const list = useListState();
+  const query = useCommands(projectId, { ...(status ? { status } : {}), ...(kind ? { kind } : {}) }, list);
   const actionsFor = (c: StockCommand) => {
     const out: {
       key: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
@@ -586,7 +591,11 @@ function MovementsTab({ projectId }: { projectId: string }) {
   return (
     <div className="stack" style={{ gap: 12 }}>
       <div className="toolbar">
-        <Select aria-label={t('common.status')} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <Select aria-label={t('common.status')} value={status} onChange={(e) => {
+            setStatus(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="open">{t('stock.status.open')}</option>
           <option value="">{t('common.all')}</option>
           {(['pending', 'partial', 'posted', 'cancelled', 'disputed'] as const).map((s) => (
@@ -595,7 +604,11 @@ function MovementsTab({ projectId }: { projectId: string }) {
             </option>
           ))}
         </Select>
-        <Select aria-label={t('est.col.kind')} value={kind} onChange={(e) => setKind(e.target.value)}>
+        <Select aria-label={t('est.col.kind')} value={kind} onChange={(e) => {
+            setKind(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="">{t('common.all')}</option>
           {(
             ['receipt', 'transfer', 'consumption', 'return', 'adjustment', 'reversal', 'opening'] as const
@@ -618,6 +631,7 @@ function MovementsTab({ projectId }: { projectId: string }) {
         }
         onRetry={query.refetch}
         empty={{ title: t('stock.movements_empty') }}
+        pagination={list.pagination}
         dense
       />
       {action && (
@@ -631,7 +645,8 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
   const { t, lang } = useT();
   const { me, permissions } = useAuth();
   const has = (p: string) => me?.role === 'tenant_admin' || Boolean(permissions?.permissions.includes(p));
-  const query = useRequests(projectId);
+  const list = useListState();
+  const query = useRequests(projectId, list);
   const [create, setCreate] = useState(false);
   const [act, setAct] = useState<{
     request: MaterialRequest;
@@ -726,6 +741,7 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
         }
         onRetry={query.refetch}
         empty={{ title: t('stock.requests_empty') }}
+        pagination={list.pagination}
       />
       {create && <RequestModal projectId={projectId} onClose={() => setCreate(false)} />}
       {act && (
@@ -741,7 +757,6 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
 }
 function RequestModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const { t } = useT();
-  const materials = useMaterials();
   const zones = useZones(projectId);
   const [material, setMaterial] = useState('');
   const [qty, setQty] = useState('');
@@ -784,14 +799,15 @@ function RequestModal({ projectId, onClose }: { projectId: string; onClose: () =
       }
     >
       <div className="stack">
-        <Select label={t('stock.material')} value={material} onChange={(e) => setMaterial(e.target.value)}>
-          <option value="">—</option>
-          {(materials.data?.items ?? []).map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} ({m.unit_id})
-            </option>
-          ))}
-        </Select>
+        <SearchSelect<Material>
+          path="/v1/materials"
+          label={t('stock.material')}
+          value={material}
+          onChange={(id) => setMaterial(id)}
+          getId={(m) => m.id}
+          getLabel={(m) => m.name}
+          getSub={(m) => m.unit_id}
+        />
         <div className="form-grid">
           <Input
             label={t('stock.request_qty')}
@@ -927,24 +943,22 @@ function RequestActionModal({
 function MaterialsTab() {
   const { t } = useT();
   const { me, permissions } = useAuth();
-  const materials = useMaterials();
+  const queryClient = useQueryClient();
+  const list = useListState();
+  const materials = useQuery({
+    queryKey: ['materials', list.q, list.offset, list.limit],
+    queryFn: () =>
+      api<ListResponse<Material>>(`/v1/materials${qs({ q: list.q, limit: list.limit, offset: list.offset })}`),
+  });
   const [create, setCreate] = useState(false);
-  const [search, setSearch] = useState('');
   const canCreate =
     me?.role === 'tenant_admin' ||
     permissions?.permissions.includes('stock.receive') ||
     permissions?.permissions.includes('estimates.import');
-  const rows = useMemo(
-    () =>
-      (materials.data?.items ?? []).filter(
-        (m) => !search || m.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-      ),
-    [materials.data, search],
-  );
   return (
     <div className="stack" style={{ gap: 12 }}>
       <div className="toolbar">
-        <SearchInput value={search} onChange={setSearch} />
+        <SearchInput value={list.search} onChange={list.setSearch} />
         <span className="spacer" />
         {canCreate && (
           <Button icon={<Plus />} onClick={() => setCreate(true)}>
@@ -962,13 +976,22 @@ function MaterialsTab() {
           },
           { key: 'unit', header: t('stock.material_unit'), render: (r) => r.unit_id },
         ]}
-        rows={rows}
+        rows={materials.data?.items}
         rowKey={(r) => r.id}
         loading={materials.isLoading}
         empty={{ title: t('stock.materials_empty') }}
+        pagination={list.pagination}
         dense
       />
-      {create && <NewMaterialModal onClose={() => setCreate(false)} onCreated={() => setCreate(false)} />}
+      {create && (
+        <NewMaterialModal
+          onClose={() => setCreate(false)}
+          onCreated={() => {
+            setCreate(false);
+            void queryClient.invalidateQueries({ queryKey: ['materials'] });
+          }}
+        />
+      )}
     </div>
   );
 }

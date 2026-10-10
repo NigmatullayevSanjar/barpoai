@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus } from 'lucide-react';
-import { api, ApiError, type ListResponse } from '@/lib/api';
+import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate } from '@/lib/format';
@@ -26,7 +26,7 @@ import { statusTone, type Project, type ProjectStatus } from './types';
 
 export const projectStatuses: ProjectStatus[] = ['planning', 'active', 'paused', 'completed'];
 export const useProjects = () =>
-  useQuery({ queryKey: ['projects'], queryFn: () => api<ListResponse<Project>>('/v1/projects?limit=100') });
+  useQuery({ queryKey: ['projects'], queryFn: () => apiAll<Project>('/v1/projects') });
 
 export function projectSchema(t: (k: string) => string) {
   return z.object({
@@ -106,8 +106,19 @@ export function ProjectsPage() {
   const list = useListState();
   const [status, setStatus] = useState<'all' | ProjectStatus>('all');
   const [open, setOpen] = useState(false);
-  const query = useProjects();
-  const rows = query.data?.items.filter((p) => status === 'all' || p.status === status);
+  const query = useQuery({
+    queryKey: ['projects', 'list', list.q, status, list.offset, list.limit],
+    queryFn: () =>
+      api<ListResponse<Project>>(
+        `/v1/projects${qs({
+          q: list.q,
+          status: status === 'all' ? undefined : status,
+          limit: list.limit,
+          offset: list.offset,
+        })}`,
+      ),
+  });
+  const rows = query.data?.items;
   const columns: Column<Project>[] = [
     {
       key: 'name',
@@ -172,7 +183,10 @@ export function ProjectsPage() {
         <Select
           aria-label={t('projects.status')}
           value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
+          onChange={(e) => {
+            setStatus(e.target.value as typeof status);
+            list.setOffset(0);
+          }}
         >
           <option value="all">{t('common.all')}</option>
           {projectStatuses.map((s) => (
@@ -194,7 +208,7 @@ export function ProjectsPage() {
         }
         onRetry={query.refetch}
         onRowClick={(r) => navigate(`/app/projects/${r.id}`)}
-        search={{ query: list.search, fields: (r) => [r.name, r.code, r.customer_name, r.address] }}
+        pagination={list.pagination}
         empty={{
           title: t('projects.empty'),
           description: can('projects', 'create') ? t('projects.empty_desc') : t('erp.no_project_access'),

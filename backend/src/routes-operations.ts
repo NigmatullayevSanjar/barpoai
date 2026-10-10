@@ -6,6 +6,10 @@ import {
   text,
   idParams,
   pageQuery,
+  searchQuery,
+  searchText,
+  likePattern,
+  queryBool,
   version,
   reason,
   qty,
@@ -15,6 +19,7 @@ import {
   stockInput,
   financeInput,
 } from './schemas.js';
+import { payableKinds, outstandingSql, notReversedSql } from './routes-finance-extra.js';
 import {
   projectScope,
   accountScope,
@@ -87,14 +92,15 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/materials',
-    summary: 'Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli)',
+    summary: 'Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli); q — nom bo‘yicha qidiruv',
     permission: 'projects.read',
-    query: pageQuery,
+    query: searchQuery,
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          'SELECT * FROM materials WHERE tenant_id=$1 AND archived_at IS NULL ORDER BY name,id LIMIT $2 OFFSET $3',
-          [actor.tenant_id, query.limit, query.offset],
+          `SELECT * FROM materials WHERE tenant_id=$1 AND archived_at IS NULL AND ($4::text IS NULL OR name ILIKE $4 ESCAPE '\\')
+           ORDER BY name,id LIMIT $2 OFFSET $3`,
+          [actor.tenant_id, query.limit, query.offset, query.q ? likePattern(query.q) : null],
         )
       ).rows,
     }),
@@ -249,10 +255,10 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/estimates',
-    summary: 'Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi',
+    summary: 'Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi; q — nom yoki muallif bo‘yicha qidiruv',
     permission: 'estimates.read',
     sensitive: true,
-    query: projectQuery,
+    query: projectQuery.extend({ q: searchText }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       return {
@@ -264,8 +270,16 @@ export function operationRoutes(add: (r: Endpoint) => void) {
                (SELECT coalesce(sum(l.total) FILTER(WHERE l.kind='material'),0)::text FROM estimate_lines l WHERE l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL) material_total,
                (SELECT coalesce(sum(l.total) FILTER(WHERE l.kind<>'material'),0)::text FROM estimate_lines l WHERE l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL) work_total
              FROM estimates e LEFT JOIN users u ON u.id=e.created_by
-             WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.archived_at IS NULL ORDER BY e.created_at DESC,e.id LIMIT $3 OFFSET $4`,
-            [actor.tenant_id, query.project_id, query.limit, query.offset],
+             WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.archived_at IS NULL
+               AND ($5::text IS NULL OR e.name ILIKE $5 ESCAPE '\\' OR u.display_name ILIKE $5 ESCAPE '\\')
+             ORDER BY e.created_at DESC,e.id LIMIT $3 OFFSET $4`,
+            [
+              actor.tenant_id,
+              query.project_id,
+              query.limit,
+              query.offset,
+              query.q ? likePattern(query.q) : null,
+            ],
           )
         ).rows,
       };
@@ -274,7 +288,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/estimates/:id',
-    summary: 'Joriy smeta va oylik qatorlar',
+    summary:
+      'Joriy smeta va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona bo‘yicha guruhlar (decimal)',
     permission: 'estimates.read',
     params: idParams,
     sensitive: true,
@@ -284,8 +299,49 @@ export function operationRoutes(add: (r: Endpoint) => void) {
         params.id,
       ]);
       await projectScope(db, actor, estimate.project_id);
+      // Guruh jamlari serverda hisoblanadi (frontend arifmetika qilmaydi). Pul maydonlari `total` va
+      // `value` nomida — narx huquqi bo'lmasa redactPrices ularni kesadi, `key`/`count` qoladi.
+      const groups = (
+        await db.query(
+          `WITH l AS (
+             SELECT l.kind,coalesce(l.category,'') category,coalesce(z.name,'') zone,l.total,
+               CASE WHEN l.kind='material'
+                 THEN (SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
+                 ELSE 0 END fact_value
+             FROM estimate_lines l LEFT JOIN zones z ON z.id=l.zone_id
+             WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL)
+           SELECT 'kind' grp,kind key,count(*)::int count,sum(total)::numeric(20,2)::text total,sum(fact_value)::numeric(20,2)::text value FROM l GROUP BY kind
+           UNION ALL SELECT 'category',category,count(*)::int,sum(total)::numeric(20,2)::text,sum(fact_value)::numeric(20,2)::text FROM l GROUP BY category
+           UNION ALL SELECT 'zone',zone,count(*)::int,sum(total)::numeric(20,2)::text,sum(fact_value)::numeric(20,2)::text FROM l GROUP BY zone`,
+          [actor.tenant_id, params.id],
+        )
+      ).rows;
+      // Narx huquqi bo'lmasa summa bo'yicha tartib ham oshkor bo'lmasin: nom bo'yicha saralanadi.
+      const byCost = await allowed(db, actor, 'prices.read');
+      const pick = (grp: string) =>
+        groups
+          .filter((g) => g.grp === grp)
+          .sort(
+            (a, b) =>
+              (byCost ? Number(b.total) - Number(a.total) : 0) || String(a.key).localeCompare(b.key),
+          )
+          .map(({ key, count, total, value }) => ({ key, count, total, value }));
+      const totals = await one(
+        db,
+        `SELECT coalesce(sum(l.total),0)::numeric(20,2)::text total,
+                coalesce(sum(l.total) FILTER(WHERE l.kind='material'),0)::numeric(20,2)::text material_total,
+                coalesce(sum(l.total) FILTER(WHERE l.kind<>'material'),0)::numeric(20,2)::text work_total
+         FROM estimate_lines l WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL`,
+        [actor.tenant_id, params.id],
+      );
       return {
         ...estimate,
+        totals: {
+          ...totals,
+          by_kind: pick('kind'),
+          by_category: pick('category'),
+          by_zone: pick('zone'),
+        },
         lines: (
           await db.query(
             `SELECT l.*,m.name material_name,z.name zone_name,
@@ -475,20 +531,31 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/counterparties',
-    summary: 'Kompaniya kontragentlari',
+    summary: 'Kompaniya kontragentlari; q — nom, INN, telefon, kontakt; archived=false — faqat faollar',
     permission: 'finance.read',
     page: 'counterparties',
-    query: pageQuery,
+    query: searchQuery.extend({ archived: queryBool.optional() }),
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
           `SELECT c.*,
              (-coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='payable'
-               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0))::text debt,
+               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0))::numeric(20,2)::text debt,
              coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='advance'
-               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0)::text advance
-           FROM counterparties c WHERE c.tenant_id=$1 ORDER BY c.archived_at NULLS FIRST,c.name,c.id LIMIT $2 OFFSET $3`,
-          [actor.tenant_id, query.limit, query.offset, actor.role, actor.id],
+               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0)::numeric(20,2)::text advance
+           FROM counterparties c WHERE c.tenant_id=$1
+             AND ($6::text IS NULL OR c.name ILIKE $6 ESCAPE '\\' OR c.inn ILIKE $6 ESCAPE '\\' OR c.phone ILIKE $6 ESCAPE '\\' OR c.contact ILIKE $6 ESCAPE '\\')
+             AND ($7::boolean IS NULL OR (c.archived_at IS NOT NULL)=$7)
+           ORDER BY c.archived_at NULLS FIRST,c.name,c.id LIMIT $2 OFFSET $3`,
+          [
+            actor.tenant_id,
+            query.limit,
+            query.offset,
+            actor.role,
+            actor.id,
+            query.q ? likePattern(query.q) : null,
+            query.archived ?? null,
+          ],
         )
       ).rows,
     }),
@@ -544,6 +611,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       counterparty_id: uuid.optional(),
       from: date.optional(),
       to: date.optional(),
+      // unpaid=true — faqat qoldig'i bor, qaytarilmagan qarz hujjatlari (invoyslar sahifasi).
+      unpaid: queryBool.optional(),
     }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
@@ -576,6 +645,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
              WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.kind=ANY($5::text[])
                AND (f.kind<>'reversal' OR EXISTS(SELECT 1 FROM finance_documents original WHERE original.tenant_id=f.tenant_id AND original.id=f.reverses_id AND original.kind=ANY($5::text[])))
                AND ($6::uuid IS NULL OR f.counterparty_id=$6) AND ($7::date IS NULL OR f.document_date>=$7) AND ($8::date IS NULL OR f.document_date<=$8)
+               AND ($9::boolean IS NOT TRUE OR (f.kind=ANY($10::text[]) AND ${notReversedSql} AND ${outstandingSql}>0))
              ORDER BY f.document_date DESC,f.created_at DESC,f.id LIMIT $3 OFFSET $4`,
             [
               actor.tenant_id,
@@ -586,6 +656,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
               query.counterparty_id ?? null,
               query.from ?? null,
               query.to ?? null,
+              query.unpaid ?? false,
+              payableKinds,
             ],
           )
         ).rows,

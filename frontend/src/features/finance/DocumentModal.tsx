@@ -4,15 +4,16 @@ import { api, qs, type ListResponse } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { formatDate, formatMoney, formatQuantity, todayIso } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select, Textarea } from '@/components/ui';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { normalizeNumber, useZones } from '@/features/estimates/model';
 import type { StockCommand } from '@/features/stock/model';
 import {
   cashKinds,
   payableKinds,
   useCashBalances,
-  useCounterparties,
   useFinanceMutation,
   usePayables,
+  type Counterparty,
   type DocKind,
 } from './model';
 
@@ -26,11 +27,11 @@ type Props = {
 /** Barcha moliyaviy hujjat turlari uchun bitta forma; maydonlar turga qarab ko'rinadi. */
 export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }: Props) {
   const { t, lang } = useT();
-  const counterparties = useCounterparties();
   const cash = useCashBalances();
   const zones = useZones(projectId);
   const [kind, setKind] = useState<DocKind>(initialKind ?? kinds[0]!);
   const [counterparty, setCounterparty] = useState(preset?.counterparty_id ?? '');
+  const [counterpartyName, setCounterpartyName] = useState<string | undefined>();
   const [cashAccount, setCashAccount] = useState('');
   const [targetCash, setTargetCash] = useState('');
   const [amount, setAmount] = useState(preset?.amount ?? '');
@@ -49,7 +50,10 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
       ),
     enabled: kind === 'supplier_invoice',
   });
-  const payables = usePayables(projectId, counterparty ? { counterparty_id: counterparty } : {});
+  const payables = usePayables(projectId, counterparty ? { counterparty_id: counterparty } : {}, {
+    offset: 0,
+    limit: 100,
+  });
   const needsCounterparty = [...payableKinds, 'payment', 'advance'].includes(kind);
   const needsCash = cashKinds.includes(kind);
   const selectedReceipt = receipts.data?.items.find((r) => r.id === receipt);
@@ -123,24 +127,26 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
         </Select>
         <div className="form-grid">
           {(needsCounterparty || kind === 'receipt') && (
-            <Select
+            <SearchSelect<Counterparty>
+              path="/v1/counterparties"
+              params={{ archived: false }}
               label={t('fin.counterparty')}
               required={needsCounterparty}
               value={counterparty}
-              onChange={(e) => {
-                setCounterparty(e.target.value);
+              valueLabel={
+                counterpartyName ??
+                payables.data?.items.find((p) => p.counterparty_id === counterparty)?.counterparty_name ??
+                undefined
+              }
+              onChange={(id, item) => {
+                setCounterparty(id);
+                setCounterpartyName(item?.name);
                 setInvoice('');
               }}
-            >
-              <option value="">—</option>
-              {(counterparties.data?.items ?? [])
-                .filter((c) => !c.archived_at)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {t(`fin.counterparties.kind.${c.kind}`)}
-                  </option>
-                ))}
-            </Select>
+              getId={(c) => c.id}
+              getLabel={(c) => c.name}
+              getSub={(c) => t(`fin.counterparties.kind.${c.kind}`)}
+            />
           )}
           {needsCash && (
             <Select

@@ -17,6 +17,7 @@ import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
 import { issueDueInvoices, periodEnd } from '../src/billing.js';
 import { hashPassword, digest } from '../src/security.js';
+import { dec } from '../src/money.js';
 import {
   createLinkToken,
   consumeLinkToken,
@@ -39,6 +40,7 @@ let admin: ReturnType<typeof createPool> | undefined,
   appPool: ReturnType<typeof createPool> | undefined,
   app: Awaited<ReturnType<typeof buildApp>>['app'] | undefined;
 const passed: string[] = [];
+const failed: string[] = [];
 try {
   docker(
     'run',
@@ -122,6 +124,21 @@ try {
   const auth = signups.find((s) => s.statusCode === 200)!.json();
   const adminToken = auth.access_token;
   passed.push('Preview does not consume invite; concurrent signup creates one admin/trial');
+  const tenantSearch = await call(
+    'GET',
+    '/v1/platform/tenants?q=sinov&state=trial',
+    undefined,
+    ownerToken,
+  );
+  assert.deepEqual(
+    tenantSearch.items.map((x: any) => x.id),
+    [t.id],
+  );
+  assert.equal(
+    (await call('GET', '/v1/platform/tenants?state=paid', undefined, ownerToken)).items.length,
+    0,
+  );
+  passed.push('Platform tenant list filters by q and access state on the server');
   const project = await call('POST', '/v1/projects', { name: 'Obyekt A' }, adminToken);
   const employee = async (role: string) => {
     const user = await call(
@@ -153,6 +170,121 @@ try {
     financier = await employee('financier'),
     manager = await employee('manager');
   passed.push('Employee first login requires password change; sessions revoked');
+  // ---- 1.1: ro'yxat qidiruvi va filtrlari serverda (sahifalash bilan birga ishlashi uchun)
+  const projectSearch = await call('GET', '/v1/projects?q=obyekt%20a', undefined, adminToken);
+  assert.deepEqual(
+    projectSearch.items.map((p: any) => p.id),
+    [project.id],
+  );
+  assert.equal((await call('GET', '/v1/projects?q=yoq', undefined, adminToken)).items.length, 0);
+  assert.equal(
+    (await call('GET', '/v1/projects?status=completed', undefined, adminToken)).items.length,
+    0,
+  );
+  const employeeSearch = await call(
+    'GET',
+    '/v1/employees?q=FORE&role=foreman&active=true',
+    undefined,
+    adminToken,
+  );
+  assert.deepEqual(
+    employeeSearch.items.map((e: any) => e.id),
+    [foreman.id],
+  );
+  assert.equal(
+    (await call('GET', '/v1/employees?active=false', undefined, adminToken)).items.length,
+    0,
+  );
+  await call('GET', '/v1/employees?active=yes', undefined, adminToken, undefined, 400);
+  passed.push('Project and employee lists filter by q, status, role and active on the server');
+  // ---- API-09: obyekt qidiruvi (kod, buyurtmachi, manzil, status) va prorab doirasi
+  const projectB = await call(
+    'POST',
+    '/v1/projects',
+    {
+      name: 'Obyekt B',
+      code: 'PRJ-77',
+      customer_name: 'Buyurtmachi Sardor',
+      address: 'Chilonzor 5-mavze',
+      status: 'active',
+    },
+    adminToken,
+  );
+  assert.equal(project.status, 'planning');
+  for (const filter of ['q=prj-77', 'q=sardor', 'q=chilonzor', 'status=active'])
+    assert.deepEqual(
+      (await call('GET', `/v1/projects?${filter}`, undefined, adminToken)).items.map(
+        (p: any) => p.id,
+      ),
+      [projectB.id],
+    );
+  assert.equal(
+    (await call('GET', '/v1/projects?q=obyekt%20b', undefined, foreman.token)).items.length,
+    0,
+  );
+  assert.deepEqual(
+    (await call('GET', '/v1/projects?q=obyekt', undefined, foreman.token)).items.map(
+      (p: any) => p.id,
+    ),
+    [project.id],
+  );
+  for (const filter of ['q=prj-77', 'q=sardor', 'q=chilonzor'])
+    assert.deepEqual(
+      (await call('GET', `/v1/projects?${filter}`, undefined, foreman.token)).items,
+      [],
+    );
+  await call('GET', `/v1/projects/${projectB.id}`, undefined, foreman.token, undefined, 404);
+  passed.push(
+    'Project q matches code, customer and address and status filters on the server; a foreman never finds or opens an unassigned project',
+  );
+  // ---- API-07/API-11: xodim qidiruvi (telefon, lavozim), hash chiqmasligi, active bayrog'i
+  const searcher = await call(
+    'POST',
+    '/v1/employees',
+    {
+      login: 'izlovchi',
+      display_name: 'Izlovchi Xodim',
+      password: pass,
+      role: 'manager',
+      phone: '+998901234567',
+      position: 'Sayt muhandisi',
+    },
+    adminToken,
+  );
+  const empIds = async (query: string) =>
+    (await call('GET', `/v1/employees?${query}`, undefined, adminToken)).items.map(
+      (e: any) => e.id as string,
+    );
+  assert.deepEqual(await empIds('q=%2B998901234567'), [searcher.id]);
+  assert.deepEqual(await empIds('q=901234567'), [searcher.id]);
+  assert.deepEqual(await empIds('q=muhandis'), [searcher.id]);
+  assert.deepEqual(await empIds('q=xodim'), [searcher.id]);
+  assert.deepEqual(await empIds('q=izlovchi'), [searcher.id]);
+  assert.deepEqual(await empIds('role=foreman'), [foreman.id]);
+  assert(!JSON.stringify(searcher).includes('password_hash'));
+  assert(!JSON.stringify(searcher).includes('scrypt$'));
+  const employeeJson = JSON.stringify(
+    await call('GET', '/v1/employees?limit=100', undefined, adminToken),
+  );
+  assert(!employeeJson.includes('password_hash') && !employeeJson.includes('scrypt$'));
+  await call(
+    'PATCH',
+    `/v1/employees/${searcher.id}`,
+    {
+      version: searcher.version,
+      display_name: searcher.display_name,
+      role: 'manager',
+      active: false,
+    },
+    adminToken,
+  );
+  assert.deepEqual(await empIds('active=false'), [searcher.id]);
+  assert(!(await empIds('active=true&limit=100')).includes(searcher.id));
+  assert((await empIds('active=true&limit=100')).includes(foreman.id));
+  assert.deepEqual(await empIds('active=0'), await empIds('active=false'));
+  passed.push(
+    'Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server',
+  );
   const financierPages = await call('GET', '/v1/me/permissions', undefined, financier.token);
   assert.equal(financierPages.pages.bank_cash.create, false);
   assert.equal(financierPages.pages.allocations.create, true);
@@ -180,6 +312,73 @@ try {
     { name: 'Sement', unit_id: 'kg' },
     adminToken,
   );
+  const materialSearch = await call('GET', '/v1/materials?q=SEM', undefined, foreman.token);
+  assert(materialSearch.items.some((m: any) => m.id === material.id));
+  assert.equal(
+    (await call('GET', '/v1/materials?q=%25', undefined, foreman.token)).items.length,
+    0,
+  );
+  passed.push('Material search is case-insensitive and escapes LIKE wildcards');
+  // ---- API-01..06, API-14: materiallar ro'yxati sahifalash, qidiruv va validatsiya
+  const numbered = Array.from({ length: 120 }, (_, i) => `Material ${String(i + 1).padStart(3, '0')}`);
+  const materialNames = [...numbered, 'AAA takror', 'AAA takror', 'AAA takror', 'Qum_mayda'];
+  for (const materialName of materialNames)
+    await call('POST', '/v1/materials', { name: materialName, unit_id: 'kg' }, adminToken);
+  const total = materialNames.length + 1;
+  const matIds = async (query: string) =>
+    (await call('GET', `/v1/materials?${query}`, undefined, foreman.token)).items.map(
+      (m: any) => m.id as string,
+    );
+  const page1 = await matIds('limit=100&offset=0'),
+    page2 = await matIds('limit=100&offset=100');
+  assert.equal(page1.length, 100);
+  assert.equal(page2.length, total - 100);
+  assert(!page1.some((id: string) => page2.includes(id)));
+  assert.equal(new Set([...page1, ...page2]).size, total);
+  assert((await matIds('q=sem')).includes(material.id));
+  const underscoreRows = (await call('GET', '/v1/materials?q=_', undefined, foreman.token)).items;
+  assert.deepEqual(
+    underscoreRows.map((m: any) => m.name),
+    ['Qum_mayda'],
+  );
+  assert.equal((await matIds('q=%25')).length, 0);
+  assert.deepEqual(await matIds('q=&limit=100&offset=0'), page1);
+  assert.deepEqual(await matIds('q=%20%20&limit=100&offset=0'), page1);
+  assert.equal(
+    (
+      await call('GET', `/v1/materials?q=${'a'.repeat(101)}`, undefined, foreman.token, undefined, 400)
+    ).error.code,
+    'VALIDATION_ERROR',
+  );
+  await call('GET', `/v1/materials?q=${'a'.repeat(100)}`, undefined, foreman.token);
+  for (const bad of ['limit=0', 'limit=101', 'offset=-1', 'limit=abc'])
+    assert.equal(
+      (await call('GET', `/v1/materials?${bad}`, undefined, foreman.token, undefined, 400)).error
+        .code,
+      'VALIDATION_ERROR',
+    );
+  passed.push(
+    'Material list pages without overlap or gaps, searches case-insensitively, treats _ and % literally, ignores blank q, caps q at 100 chars and rejects bad limit/offset with VALIDATION_ERROR',
+  );
+  const dupFirst = await call('GET', '/v1/materials?limit=2&offset=0', undefined, foreman.token);
+  const dupSecond = await call('GET', '/v1/materials?limit=2&offset=2', undefined, foreman.token);
+  const dupItems = [...dupFirst.items, ...dupSecond.items];
+  assert.equal(new Set(dupItems.map((m: any) => m.id)).size, 4);
+  assert.deepEqual(
+    dupItems.slice(0, 3).map((m: any) => m.name),
+    ['AAA takror', 'AAA takror', 'AAA takror'],
+  );
+  assert.equal(dupItems.filter((m: any) => m.name === 'AAA takror').length, 3);
+  assert.deepEqual(
+    dupItems.map((m: any) => m.id),
+    (await matIds('limit=4&offset=0')),
+  );
+  const aaa = dupItems.slice(0, 3).map((m: any) => m.id as string);
+  assert.deepEqual(aaa, [...aaa].sort());
+  const walked: string[] = [];
+  for (let offset = 0; offset < 4; offset++) walked.push(...(await matIds(`limit=1&offset=${offset}`)));
+  assert.deepEqual(walked, await matIds('limit=4&offset=0'));
+  passed.push('Material pages split a run of equal names deterministically: each duplicate appears exactly once');
   const opening = await call(
     'POST',
     '/v1/stock/commands',
@@ -321,6 +520,232 @@ try {
   );
   assert.equal(est.lines[0].effective_quantity, '26.000000');
   assert.equal(est.lines[0].total, '260.00');
+  // 1.2: jamlar serverdan, decimal; narx huquqi bo'lmagan rolga pul maydonlari kelmaydi, soni qoladi
+  const estDetail = await call('GET', `/v1/estimates/${est.id}`, undefined, financier.token);
+  assert.deepEqual(estDetail.totals, {
+    total: '260.00',
+    material_total: '260.00',
+    work_total: '0.00',
+    by_kind: [{ key: 'material', count: 1, total: '260.00', value: '0.00' }],
+    by_category: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
+    by_zone: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
+  });
+  const estForeman = await call('GET', `/v1/estimates/${est.id}`, undefined, foreman.token);
+  assert.equal(estForeman.totals.total, undefined);
+  assert.deepEqual(estForeman.totals.by_kind, [{ key: 'material', count: 1 }]);
+  assert.equal(estForeman.lines[0].fact_value, undefined);
+  assert.equal(estForeman.lines[0].fact_quantity, '0');
+  const estSearch = await call(
+    'GET',
+    `/v1/estimates?project_id=${project.id}&q=normali`,
+    undefined,
+    financier.token,
+  );
+  assert.deepEqual(
+    estSearch.items.map((e: any) => e.id),
+    [est.id],
+  );
+  passed.push('Estimate detail totals and kind/category/zone groups come from the server and are redacted without price permission');
+  // ---- EST-01/02/04/08: B obyektida 0.10 li qatorlar bilan jamlar, reviziya va eksport (A obyekti raqamlari o'zgarmasin)
+  await call(
+    'POST',
+    `/v1/employees/${foreman.id}/assignments`,
+    { project_id: projectB.id },
+    adminToken,
+  );
+  const zoneB = await call(
+    'POST',
+    `/v1/projects/${projectB.id}/zones`,
+    { name: 'Blok A' },
+    adminToken,
+  );
+  const est2 = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectB.id,
+      name: 'Kichik summalar',
+      lines: [
+        {
+          kind: 'material',
+          description: 'Beton',
+          material_id: material.id,
+          unit_id: 'kg',
+          category: 'Beton',
+          zone_id: zoneB.id,
+          quantity: '1',
+          unit_price: '0.10',
+        },
+        {
+          kind: 'labor',
+          description: 'Ish zonasiz',
+          unit_id: 'hour',
+          category: '',
+          quantity: '1',
+          unit_price: '0.20',
+        },
+        {
+          kind: 'service',
+          description: 'Xizmat',
+          unit_id: 'hour',
+          category: 'Ish',
+          zone_id: zoneB.id,
+          quantity: '1',
+          unit_price: '0.30',
+        },
+      ],
+    },
+    adminToken,
+  );
+  const est2Detail = await call('GET', `/v1/estimates/${est2.id}`, undefined, adminToken);
+  assert.equal(typeof est2Detail.totals.total, 'string');
+  // 0.1 + 0.2 + 0.3 === 0.6000000000000001 in floats, so a float regression fails here
+  assert.equal(est2Detail.totals.total, '0.60');
+  assert.equal(est2Detail.lines.length, 3);
+  assert.deepEqual(
+    est2Detail.lines.map((l: any) => l.total),
+    ['0.10', '0.20', '0.30'],
+  );
+  assert.equal(est2Detail.totals.material_total, '0.10');
+  assert.equal(est2Detail.totals.work_total, '0.50');
+  const sumOf = (groups: any[]) => groups.reduce((s, g) => s.plus(g.total), dec('0'));
+  for (const groups of [
+    est2Detail.totals.by_kind,
+    est2Detail.totals.by_category,
+    est2Detail.totals.by_zone,
+  ])
+    assert.equal(sumOf(groups).toFixed(2), est2Detail.totals.total);
+  const groupMap = (groups: any[]) =>
+    Object.fromEntries(groups.map((g: any) => [g.key, g.total as string]));
+  assert.deepEqual(groupMap(est2Detail.totals.by_kind), {
+    material: '0.10',
+    labor: '0.20',
+    service: '0.30',
+  });
+  assert.deepEqual(groupMap(est2Detail.totals.by_category), {
+    Beton: '0.10',
+    '': '0.20',
+    Ish: '0.30',
+  });
+  assert.deepEqual(groupMap(est2Detail.totals.by_zone), { 'Blok A': '0.40', '': '0.20' });
+  passed.push(
+    'Estimate totals are exact decimal strings and kind/category/zone group totals add up to the estimate total',
+  );
+  const sheetOf = async (token: string) => {
+    const res = await call('GET', `/v1/estimates/${est2.id}/export`, undefined, token);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(Buffer.from(res.base64, 'base64'));
+    const sheet = book.getWorksheet('Smeta')!;
+    const headers = (sheet.getRow(1).values as any[]).slice(1).map(String);
+    return { sheet, headers };
+  };
+  const adminSheet = await sheetOf(adminToken);
+  const totalCol = adminSheet.headers.indexOf('Jami') + 1;
+  assert(totalCol > 0 && adminSheet.headers.includes('Birlik narxi'));
+  const descCol = adminSheet.headers.indexOf('Nomi') + 1;
+  let exported = dec('0');
+  adminSheet.sheet.eachRow((row, i) => {
+    if (i === 1 || row.getCell(descCol).value === 'JAMI') return;
+    exported = exported.plus(String(row.getCell(totalCol).value));
+  });
+  assert.equal(exported.toFixed(2), '0.60');
+  const jamiRows: any[] = [];
+  adminSheet.sheet.eachRow((row) => {
+    if (row.getCell(descCol).value === 'JAMI') jamiRows.push(row.getCell(totalCol).value);
+  });
+  assert.equal(jamiRows.length, 1);
+  const jamiCell = jamiRows[0];
+  if (dec(String(jamiCell)).eq(est2Detail.totals.total))
+    passed.push('Estimate Excel export JAMI row equals totals.total exactly');
+  else
+    failed.push(
+      `Estimate Excel export JAMI row must equal totals.total: file=${jamiCell} totals=${est2Detail.totals.total}`,
+    );
+  const foremanSheet = await sheetOf(foreman.token);
+  assert(!foremanSheet.headers.includes('Jami') && !foremanSheet.headers.includes('Birlik narxi'));
+  let foremanHasJami = false;
+  foremanSheet.sheet.eachRow((row) => {
+    if (row.values && (row.values as any[]).includes('JAMI')) foremanHasJami = true;
+  });
+  assert(!foremanHasJami);
+  // Har eksport auditga yoziladi (handoff 9.8): admin va prorab eksporti, joriy reviziya bilan
+  const estExports = (
+    await admin.query(
+      "SELECT actor_id,details FROM audit_events WHERE action='export.estimate' AND resource_id=$1 ORDER BY created_at",
+      [est2.id],
+    )
+  ).rows;
+  assert.deepEqual(
+    estExports.map((r) => r.actor_id),
+    [auth.user.id, foreman.id],
+  );
+  assert(estExports.every((r) => r.details.revision === 1));
+  passed.push(
+    'Estimate Excel export sums to the estimate total, drops price columns without price permission and is audited',
+  );
+  const est2Revised = await call(
+    'PATCH',
+    `/v1/estimates/${est2.id}`,
+    {
+      project_id: projectB.id,
+      name: 'Kichik summalar',
+      version: 1,
+      lines: [
+        {
+          kind: 'labor',
+          description: 'Yangi ish 1',
+          unit_id: 'hour',
+          category: '',
+          quantity: '1',
+          unit_price: '0.40',
+        },
+        {
+          kind: 'labor',
+          description: 'Yangi ish 2',
+          unit_id: 'hour',
+          category: '',
+          quantity: '1',
+          unit_price: '0.05',
+        },
+      ],
+    },
+    adminToken,
+  );
+  assert.equal(est2Revised.revision, 2);
+  const est2After = await call('GET', `/v1/estimates/${est2.id}`, undefined, adminToken);
+  assert.equal(est2After.totals.total, '0.45');
+  assert.deepEqual(groupMap(est2After.totals.by_kind), { labor: '0.45' });
+  assert.deepEqual(groupMap(est2After.totals.by_zone), { '': '0.45' });
+  assert.deepEqual(groupMap(est2After.totals.by_category), { '': '0.45' });
+  assert.equal(est2After.totals.material_total, '0.00');
+  assert.equal(est2After.totals.work_total, '0.45');
+  const revisions = await call('GET', `/v1/estimates/${est2.id}/revisions`, undefined, adminToken);
+  assert.deepEqual(
+    revisions.items.map((r: any) => [r.revision, r.line_count, r.total]),
+    [
+      [2, 2, '0.45'],
+      [1, 3, '0.60'],
+    ],
+  );
+  assert.equal(
+    (
+      await admin.query(
+        'SELECT count(*)::int n FROM estimate_lines WHERE estimate_id=$1 AND archived_at IS NOT NULL',
+        [est2.id],
+      )
+    ).rows[0].n,
+    3,
+  );
+  const revisionOne = await call(
+    'GET',
+    `/v1/estimates/${est2.id}/revisions/1`,
+    undefined,
+    adminToken,
+  );
+  assert.equal(revisionOne.lines.length, 3);
+  passed.push(
+    'Estimate revision archives the old lines, keeps the old snapshot readable and recomputes the total',
+  );
   await call(
     'DELETE',
     `/v1/estimates/${est.id}`,
@@ -405,6 +830,25 @@ try {
     },
     adminToken,
   );
+  // mine bayrog'i: admin vazifada ijrochi ham, tekshiruvchi ham emas
+  const taskIds = async (flag: string) =>
+    (
+      await call('GET', `/v1/tasks?project_id=${project.id}${flag}`, undefined, adminToken)
+    ).items.map((x: any) => x.id as string);
+  const allTasks = await taskIds('');
+  assert(allTasks.includes(task.id));
+  assert.deepEqual(await taskIds('&mine=false'), allTasks);
+  assert.deepEqual(await taskIds('&mine=0'), allTasks);
+  assert.deepEqual(await taskIds('&mine=true'), []);
+  await call(
+    'GET',
+    `/v1/tasks?project_id=${project.id}&mine=yes`,
+    undefined,
+    adminToken,
+    undefined,
+    400,
+  );
+  passed.push('Task list mine=false/0 equals the unfiltered list, mine=true keeps only own tasks');
   await call(
     'POST',
     `/v1/tasks/${task.id}/transition`,
@@ -541,6 +985,71 @@ try {
     { name: 'Supplier', kind: 'supplier' },
     adminToken,
   );
+  const cpSearch = await call(
+    'GET',
+    '/v1/counterparties?q=supp&archived=false',
+    undefined,
+    adminToken,
+  );
+  assert.deepEqual(
+    cpSearch.items.map((c: any) => c.id),
+    [supplier.id],
+  );
+  assert.equal(
+    (await call('GET', '/v1/counterparties?archived=true', undefined, adminToken)).items.length,
+    0,
+  );
+  passed.push('Counterparty search by name/INN and archived filter are server-side');
+  // ---- API-07/API-12: INN, telefon, kontakt bo'yicha qidiruv va archived bayrog'i
+  const cp2 = await call(
+    'POST',
+    '/v1/counterparties',
+    {
+      name: 'Toshkent Qurilish Ta’minot',
+      kind: 'supplier',
+      inn: '301234567',
+      phone: '+998712001122',
+      contact: 'Akmal aka',
+    },
+    adminToken,
+  );
+  const cpIds = async (query: string) =>
+    (await call('GET', `/v1/counterparties?${query}`, undefined, adminToken)).items.map(
+      (c: any) => c.id as string,
+    );
+  for (const q of ['301234567', '712001122', 'akmal'])
+    assert.deepEqual(await cpIds(`q=${q}`), [cp2.id]);
+  // Yozuvsiz kontragent: qarz va avans ham 2 xonali pul satri
+  const cp2Row = (await call('GET', '/v1/counterparties?q=akmal', undefined, adminToken)).items[0];
+  assert.equal(cp2Row.debt, '0.00');
+  assert.equal(cp2Row.advance, '0.00');
+  await call(
+    'PATCH',
+    `/v1/counterparties/${cp2.id}`,
+    {
+      version: cp2.version,
+      name: cp2.name,
+      kind: 'supplier',
+      inn: cp2.inn,
+      phone: cp2.phone,
+      contact: cp2.contact,
+      archived: true,
+    },
+    adminToken,
+  );
+  assert.deepEqual(await cpIds('archived=true'), [cp2.id]);
+  assert.deepEqual(await cpIds('archived=1'), await cpIds('archived=true'));
+  assert(!(await cpIds('archived=false')).includes(cp2.id));
+  assert.deepEqual(await cpIds('archived=0'), await cpIds('archived=false'));
+  assert.deepEqual(await cpIds('archived=false'), [supplier.id]);
+  assert.equal(
+    (await call('GET', '/v1/counterparties?archived=yes', undefined, adminToken, undefined, 400))
+      .error.code,
+    'VALIDATION_ERROR',
+  );
+  passed.push(
+    'Counterparty q matches INN, phone and contact; archived=true/1 and false/0 are equivalent server filters',
+  );
   const alloc = await call(
     'POST',
     '/v1/finance/documents',
@@ -589,6 +1098,65 @@ try {
     advances: '0.00',
   });
   passed.push('Allocation, cost, cash payment and payable are not counted twice');
+  const unpaidDocs = await call(
+    'GET',
+    `/v1/finance/documents?project_id=${project.id}&unpaid=true`,
+    undefined,
+    adminToken,
+  );
+  assert(unpaidDocs.items.some((d: any) => d.id === expense.id && d.outstanding === '40.00'));
+  assert(unpaidDocs.items.every((d: any) => Number(d.outstanding) > 0 && !d.reversed));
+  await call(
+    'GET',
+    `/v1/finance/documents?project_id=${project.id}&unpaid=yes`,
+    undefined,
+    adminToken,
+    undefined,
+    400,
+  );
+  passed.push('Finance documents unpaid filter returns only payables with an outstanding balance');
+  // ---- API-07: unpaid=false/0 filtrni o'chiradi (to'langanlar ham qoladi)
+  const docIds = async (flag: string) =>
+    (
+      await call(
+        'GET',
+        `/v1/finance/documents?project_id=${project.id}${flag}`,
+        undefined,
+        adminToken,
+      )
+    ).items.map((d: any) => d.id as string);
+  const allDocs = await docIds('&unpaid=false');
+  assert(allDocs.includes(alloc.id) && allDocs.includes(expense.id));
+  for (const id of await docIds('&unpaid=true')) assert(allDocs.includes(id));
+  assert.deepEqual(await docIds('&unpaid=0'), allDocs);
+  assert.deepEqual(await docIds('&unpaid=false'), await docIds(''));
+  passed.push('Finance documents unpaid=false and unpaid=0 keep every document, unpaid=true is a subset');
+  // overdue bayrog'i: "false"/"0" haqiqatan false (avval z.coerce.boolean "false" ni true qilardi)
+  const payableIds = async (flag: string) =>
+    (
+      await call(
+        'GET',
+        `/v1/finance/payables?project_id=${project.id}${flag}`,
+        undefined,
+        adminToken,
+      )
+    ).items.map((d: any) => d.id as string);
+  const allPayables = await payableIds('');
+  assert(allPayables.includes(expense.id), 'expense has no due date and an outstanding balance');
+  assert.deepEqual(await payableIds('&overdue=false'), allPayables);
+  assert.deepEqual(await payableIds('&overdue=0'), allPayables);
+  assert(!(await payableIds('&overdue=true')).includes(expense.id));
+  await call(
+    'GET',
+    `/v1/finance/payables?project_id=${project.id}&overdue=yes`,
+    undefined,
+    adminToken,
+    undefined,
+    400,
+  );
+  passed.push(
+    'Payables overdue=false/0 keep documents without a past due date; other flag values are 400',
+  );
   await call(
     'POST',
     '/v1/finance/documents',
@@ -813,6 +1381,15 @@ try {
     (await call('GET', '/v1/me/notifications?unread=true', undefined, brigadierAgain)).unread,
     0,
   );
+  // unread=false: o'qilganlar ham qaytadi (avval "false" true deb olinib ro'yxat bo'sh chiqardi)
+  const readInbox = await call(
+    'GET',
+    '/v1/me/notifications?unread=false',
+    undefined,
+    brigadierAgain,
+  );
+  assert(readInbox.items.some((n: any) => n.payload.task_id === notifTask.id));
+  await call('GET', '/v1/me/notifications?unread=yes', undefined, brigadierAgain, undefined, 400);
   const queued = (
     await admin.query(
       "SELECT status,error_code FROM outbox WHERE kind='notification' AND recipient_id=$1",
@@ -1091,6 +1668,22 @@ try {
     await call('GET', `/v1/tasks/export?project_id=${project.id}`, undefined, brigadierAgain2),
   );
   assert(taskBook.getWorksheet('Vazifalar')!.rowCount >= 3);
+  // Eksportda ham mine=false filtrsiz bilan bir xil; admin hech bir vazifa ishtirokchisi emas
+  const taskRows = async (flag: string) =>
+    (
+      await load(
+        await call(
+          'GET',
+          `/v1/tasks/export?project_id=${project.id}${flag}`,
+          undefined,
+          adminAgain,
+        ),
+      )
+    ).getWorksheet('Vazifalar')!.rowCount;
+  const allTaskRows = await taskRows('');
+  assert(allTaskRows >= 3);
+  assert.equal(await taskRows('&mine=false'), allTaskRows);
+  assert.equal(await taskRows('&mine=true'), 1, 'header only');
   const stockBook = await load(
     await call(
       'GET',
@@ -1149,6 +1742,26 @@ try {
   passed.push(
     'Support staff reads diagnostics (queue, errors, tenants, migration); a support response notifies the requesting admin',
   );
+  const srOpen = await call(
+    'POST',
+    '/v1/support-requests',
+    { kind: 'support', message: 'Ochiq qolgan murojaat' },
+    adminAgain,
+  );
+  const openSupport = await call('GET', '/v1/platform/support?status=open', undefined, supportToken);
+  assert(openSupport.items.length > 0);
+  assert(!openSupport.items.some((s: any) => s.id === sr.id));
+  assert(openSupport.items.some((s: any) => s.id === srOpen.id));
+  assert(openSupport.items.every((s: any) => s.status === 'open'));
+  const closedSupport = await call(
+    'GET',
+    '/v1/platform/support?status=closed',
+    undefined,
+    supportToken,
+  );
+  assert(closedSupport.items.some((s: any) => s.id === sr.id));
+  assert(!closedSupport.items.some((s: any) => s.id === srOpen.id));
+  passed.push('Support requests are filtered by status on the server');
   // ---- 10: avtomatik 30 kunlik invoys, ortiqcha to'lov krediti, qoplanish zanjiri
   const plan = await call(
     'POST',
@@ -1286,6 +1899,21 @@ try {
   passed.push(
     'Next auto invoice consumes the carried credit; debt is computed per invoice; overdue invoice notifies the admin once without blocking',
   );
+  const listInvoices = async (params: string) =>
+    (
+      await call('GET', `/v1/platform/billing/invoices?${params}`, undefined, ownerToken)
+    ).items.map((i: any) => i.id as string);
+  const allInvoices = await listInvoices(`tenant_id=${t.id}&unpaid=false`);
+  assert(allInvoices.includes(inv1[0].id));
+  const unpaidInvoices = await listInvoices(`tenant_id=${t.id}&unpaid=true`);
+  assert(!unpaidInvoices.includes(inv1[0].id));
+  assert.equal(unpaidInvoices.length, allInvoices.length - 1);
+  assert.deepEqual(await listInvoices('q=sinov'), allInvoices);
+  assert.deepEqual(await listInvoices('q=yoq'), []);
+  await call('GET', '/v1/platform/billing/invoices?unpaid=yes', undefined, ownerToken, undefined, 400);
+  passed.push(
+    'Platform invoice list: unpaid=false keeps paid invoices, unpaid=true hides them, q filters by company, other flag values are 400',
+  );
   const manual = await call(
     'POST',
     '/v1/platform/billing/invoices',
@@ -1302,6 +1930,171 @@ try {
     periodEnd(periodEnd(periodEnd(secondStart))).toISOString(),
   );
   passed.push('Owner issues a manual invoice from the platform (default 30-day period)');
+  // ---- G1: kontragent qarzi faqat foydalanuvchi ko'ra oladigan obyektlar bo'yicha hisoblanadi
+  const financierLate = (
+    await call('POST', '/v1/auth/login', { login: 'financier', password: pass + '2' })
+  ).access_token;
+  await call(
+    'POST',
+    '/v1/finance/documents',
+    {
+      project_id: projectB.id,
+      kind: 'labor',
+      amount: '100',
+      counterparty_id: supplier.id,
+      description: 'B obyekt ish haqi hisobi',
+      document_date: '2026-10-02',
+    },
+    adminAgain,
+  );
+  // Known data: project A payable = 100 (labor) - 60 (payment) = 40; project B payable = 100 (labor)
+  await call(
+    'POST',
+    '/v1/finance/documents',
+    {
+      project_id: projectB.id,
+      kind: 'advance',
+      amount: '30',
+      counterparty_id: supplier.id,
+      cash_account_id: treasury.id,
+      description: 'B obyekt avans',
+      document_date: '2026-10-02',
+    },
+    adminAgain,
+  );
+  const supplierRow = async (token: string) =>
+    (await call('GET', '/v1/counterparties?q=supplier', undefined, token)).items.find(
+      (c: any) => c.id === supplier.id,
+    );
+  const adminRow = await supplierRow(adminAgain),
+    financierRow = await supplierRow(financierLate);
+  assert.equal(adminRow.debt, '140.00');
+  assert.equal(financierRow.debt, '40.00');
+  assert.equal(adminRow.advance, '30.00');
+  assert.equal(financierRow.advance, '0.00');
+  passed.push(
+    'Counterparty debt sums payables over all projects for the admin but only over assigned projects for the financier',
+  );
+  // ---- G2: boshqa kompaniyaning qidiruvi hech qachon bu kompaniya ma'lumotini ko'rsatmaydi
+  const newTenant = async (legalName: string, key: string, login: string) => {
+    const tenant = await call(
+      'POST',
+      '/v1/platform/tenants',
+      { legal_name: legalName, registration_key: key },
+      ownerToken,
+    );
+    const inv = await call(
+      'POST',
+      `/v1/platform/tenants/${tenant.id}/invites`,
+      undefined,
+      ownerToken,
+    );
+    const reg = await call('POST', '/v1/auth/register', {
+      token: inv.token,
+      login,
+      password: pass,
+      display_name: login,
+    });
+    return { tenant, token: reg.access_token as string };
+  };
+  const tenantB = await newTenant('Begona korxona', 'TEST-G2', 'adminb');
+  const adminBToken = tenantB.token;
+  const bMaterial = await call(
+    'POST',
+    '/v1/materials',
+    { name: 'Begona material', unit_id: 'kg' },
+    adminBToken,
+  );
+  const bCounterparty = await call(
+    'POST',
+    '/v1/counterparties',
+    { name: 'Begona kontragent', kind: 'supplier' },
+    adminBToken,
+  );
+  const bEmployee = await call(
+    'POST',
+    '/v1/employees',
+    { login: 'begona.xodim', display_name: 'Begona Xodim', password: pass, role: 'foreman' },
+    adminBToken,
+  );
+  const idsOf = async (url: string, token: string) =>
+    (await call('GET', url, undefined, token)).items.map((x: any) => x.id as string);
+  assert.deepEqual(await idsOf('/v1/materials?q=begona', adminBToken), [bMaterial.id]);
+  assert.deepEqual(await idsOf('/v1/counterparties?q=begona', adminBToken), [bCounterparty.id]);
+  assert.deepEqual(await idsOf('/v1/employees?q=begona', adminBToken), [bEmployee.id]);
+  assert.deepEqual(await idsOf('/v1/materials?q=sement', adminBToken), []);
+  assert.deepEqual(await idsOf('/v1/materials?q=material', adminBToken), [bMaterial.id]);
+  assert.deepEqual(await idsOf('/v1/counterparties?q=supplier', adminBToken), []);
+  assert.deepEqual(await idsOf('/v1/counterparties?q=toshkent', adminBToken), []);
+  assert.deepEqual(await idsOf('/v1/employees?q=izlovchi', adminBToken), []);
+  assert.deepEqual(await idsOf('/v1/employees?q=foreman', adminBToken), []);
+  assert.deepEqual(await idsOf('/v1/materials?q=begona', adminAgain), []);
+  assert.deepEqual(await idsOf('/v1/counterparties?q=begona', adminAgain), []);
+  assert.deepEqual(await idsOf('/v1/employees?q=begona', adminAgain), []);
+  passed.push('List search never crosses tenants: another company finds only its own materials, counterparties and employees');
+  // ---- G3: platforma ro'yxatidagi state filtri har bir kartadagi access_state bilan mos
+  const pendingTenant = await call(
+    'POST',
+    '/v1/platform/tenants',
+    { legal_name: 'Kutilayotgan korxona', registration_key: 'TEST-G3' },
+    ownerToken,
+  );
+  const setStatus = async (id: string, status: string) => {
+    const version = (await admin!.query('SELECT version FROM tenants WHERE id=$1', [id])).rows[0]
+      .version;
+    await call(
+      'PATCH',
+      `/v1/platform/tenants/${id}`,
+      { version, status, reason: 'Holat filtri sinovi' },
+      ownerToken,
+    );
+  };
+  const archivedTenant = await newTenant('Arxiv korxona', 'TEST-G4', 'adminarxiv');
+  await setStatus(archivedTenant.tenant.id, 'archived');
+  const blockedTenant = await newTenant('Bloklangan korxona', 'TEST-G5', 'adminblok');
+  await setStatus(blockedTenant.tenant.id, 'blocked');
+  // INSERT 003 dagi trial_once triggeriga tushmaydi (u faqat UPDATE da ishlaydi)
+  const overdueTenantId: string = (
+    await admin.query(
+      "INSERT INTO tenants(legal_name,registration_key,status,trial_started_at,trial_ends_at) VALUES('Muddati o‘tgan korxona','TEST-G6','active',now()-interval '40 days',now()-interval '26 days') RETURNING id",
+    )
+  ).rows[0].id;
+  const states = ['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived'] as const;
+  const byState: Record<string, string[]> = {};
+  for (const s of states) {
+    const list = await call(
+      'GET',
+      `/v1/platform/tenants?state=${s}&limit=100`,
+      undefined,
+      ownerToken,
+    );
+    byState[s] = list.items.map((x: any) => x.id as string);
+    for (const item of list.items) {
+      assert.equal(item.access_state, s);
+      const card = await call('GET', `/v1/platform/tenants/${item.id}`, undefined, ownerToken);
+      assert.equal(card.access_state, s);
+    }
+  }
+  for (const s of states) assert(byState[s]!.length > 0, `state ${s} has tenants`);
+  assert(byState.overdue!.includes(overdueTenantId));
+  assert(byState.pending!.includes(pendingTenant.id));
+  assert(byState.trial!.includes(tenantB.tenant.id));
+  assert(byState.paid!.includes(t.id));
+  assert(byState.blocked!.includes(blockedTenant.tenant.id));
+  assert(byState.archived!.includes(archivedTenant.tenant.id));
+  const everyone = (
+    await call('GET', '/v1/platform/tenants?limit=100', undefined, ownerToken)
+  ).items.map((x: any) => x.id as string);
+  const union = states.flatMap((s) => byState[s]!);
+  assert.equal(new Set(union).size, union.length, 'state lists are disjoint');
+  assert.deepEqual([...union].sort(), [...everyone].sort());
+  assert.deepEqual(
+    await idsOf('/v1/platform/tenants?q=&state=trial', ownerToken),
+    byState.trial,
+  );
+  passed.push(
+    'Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)',
+  );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');
@@ -1313,12 +2106,14 @@ try {
         executed_at: new Date().toISOString(),
         database: 'PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS',
         passed,
+        failed,
       },
       null,
       2,
     ),
   );
-  console.log(JSON.stringify({ passed: passed.length, checks: passed }, null, 2));
+  console.log(JSON.stringify({ passed: passed.length, failed, checks: passed }, null, 2));
+  process.exitCode = failed.length ? 1 : 0;
 } catch (error) {
   // Diagnostika: 5xx xatolar matni error_events jadvalida.
   if (admin)

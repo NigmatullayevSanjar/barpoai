@@ -16,6 +16,7 @@ import {
   Select,
   Stat,
   Textarea,
+  useListState,
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
@@ -46,11 +47,16 @@ export function ReportsPage() {
   const { t, lang } = useT();
   const { can } = useAuth();
   const sel = useProjectSelection();
+  const list = useListState();
   const [status, setStatus] = useState('');
   const [kind, setKind] = useState('');
   const [create, setCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const query = useReports(sel.projectId, { ...(status ? { status } : {}), ...(kind ? { kind } : {}) });
+  const query = useReports(
+    sel.projectId,
+    { ...(status ? { status } : {}), ...(kind ? { kind } : {}) },
+    { offset: list.offset, limit: list.limit },
+  );
   const rows = query.data?.items ?? [];
   const columns: Column<Report>[] = [
     {
@@ -119,13 +125,34 @@ export function ReportsPage() {
         }
       />
       <div className="toolbar">
-        <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
-        <Select aria-label={t('reports.kind')} value={kind} onChange={(e) => setKind(e.target.value)}>
+        <ProjectSelect
+          value={sel.projectId}
+          onChange={(id) => {
+            sel.setProjectId(id);
+            list.setOffset(0);
+          }}
+          projects={sel.projects}
+        />
+        <Select
+          aria-label={t('reports.kind')}
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="">{t('common.all')}</option>
           <option value="daily">{t('reports.kind.daily')}</option>
           <option value="weekly">{t('reports.kind.weekly')}</option>
         </Select>
-        <Select aria-label={t('common.status')} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <Select
+          aria-label={t('common.status')}
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="">{t('common.all')}</option>
           {(['submitted', 'returned', 'accepted'] as const).map((s) => (
             <option key={s} value={s}>
@@ -133,11 +160,7 @@ export function ReportsPage() {
             </option>
           ))}
         </Select>
-        {pending > 0 && (
-          <Badge tone="warning">
-            {t('reports.pending')}: {pending}
-          </Badge>
-        )}
+        {pending > 0 && <Badge tone="warning">{t('reports.pending_on_page', { n: pending })}</Badge>}
       </div>
       <DataTable
         columns={columns}
@@ -151,6 +174,7 @@ export function ReportsPage() {
         }
         onRetry={query.refetch}
         onRowClick={(r) => setSelected(r.id)}
+        pagination={list.pagination}
         empty={{ title: t('reports.empty'), description: t('reports.empty_desc') }}
       />
       {create && (

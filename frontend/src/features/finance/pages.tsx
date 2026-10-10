@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { api, ApiError, qs, type ListResponse } from '@/lib/api';
+import { api, ApiError, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney, monthStart } from '@/lib/format';
@@ -17,8 +17,10 @@ import {
   Select,
   Stat,
   Textarea,
+  useListState,
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { normalizeNumber } from '@/features/estimates/model';
 import { pageRoutes } from '@/lib/permissions';
@@ -51,9 +53,11 @@ function useProjectFilter(allowAll = true) {
 function ProjectFilter({
   f,
   allowAll = true,
+  onChange,
 }: {
   f: ReturnType<typeof useProjectFilter>;
   allowAll?: boolean;
+  onChange?: () => void;
 }) {
   const { t } = useT();
   return (
@@ -61,6 +65,7 @@ function ProjectFilter({
       aria-label={t('erp.select_project')}
       value={f.all ? '' : f.projectId || ''}
       onChange={(e) => {
+        onChange?.();
         if (!e.target.value) f.setAll(true);
         else {
           f.setAll(false);
@@ -258,15 +263,18 @@ export function DocumentsPage({
   const [to, setTo] = useState('');
   const [modal, setModal] = useState(false);
   const [unpaidOnly, setUnpaidOnly] = useState(page === 'invoices');
-  const query = useDocuments(sel.projectId, {
-    kind: kind || kinds.join(','),
-    from: from || undefined,
-    to: to || undefined,
-  });
-  const docs = query.data?.items.filter(
-    (d) =>
-      !unpaidOnly || page !== 'invoices' || (d.outstanding !== null && num(d.outstanding) > 0 && !d.reversed),
+  const list = useListState();
+  const query = useDocuments(
+    sel.projectId,
+    {
+      kind: kind || kinds.join(','),
+      from: from || undefined,
+      to: to || undefined,
+      unpaid: page === 'invoices' && unpaidOnly ? true : undefined,
+    },
+    list,
   );
+  const docs = query.data?.items;
   const titles = {
     accounting_documents: ['fin.docs.title', 'fin.docs.sub'],
     invoices: ['fin.invoices.title', 'fin.invoices.sub'],
@@ -296,8 +304,22 @@ export function DocumentsPage({
       {!prices && <Alert tone="warning">{t('fin.no_prices')}</Alert>}
       {page === 'bank_cash' && <CashAccountsPanel accounts={cash.data?.items ?? []} />}
       <div className="toolbar">
-        <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
-        <Select aria-label={t('fin.kind')} value={kind} onChange={(e) => setKind(e.target.value)}>
+        <ProjectSelect
+          value={sel.projectId}
+          onChange={(id) => {
+            sel.setProjectId(id);
+            list.setOffset(0);
+          }}
+          projects={sel.projects}
+        />
+        <Select
+          aria-label={t('fin.kind')}
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="">{t('common.all')}</option>
           {kinds.map((k) => (
             <option key={k} value={k}>
@@ -309,19 +331,32 @@ export function DocumentsPage({
           type="date"
           aria-label={t('fin.filter_from')}
           value={from}
-          onChange={(e) => setFrom(e.target.value)}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            list.setOffset(0);
+          }}
           style={{ width: 150 }}
         />
         <Input
           type="date"
           aria-label={t('fin.filter_to')}
           value={to}
-          onChange={(e) => setTo(e.target.value)}
+          onChange={(e) => {
+            setTo(e.target.value);
+            list.setOffset(0);
+          }}
           style={{ width: 150 }}
         />
         {page === 'invoices' && (
           <label className="checkbox">
-            <input type="checkbox" checked={unpaidOnly} onChange={(e) => setUnpaidOnly(e.target.checked)} />{' '}
+            <input
+              type="checkbox"
+              checked={unpaidOnly}
+              onChange={(e) => {
+                setUnpaidOnly(e.target.checked);
+                list.setOffset(0);
+              }}
+            />{' '}
             {t('fin.invoices.unpaid')}
           </label>
         )}
@@ -337,6 +372,7 @@ export function DocumentsPage({
         onRetry={query.refetch}
         projectId={sel.projectId}
         allowPay={page === 'invoices' && can('bank_cash', 'create')}
+        pagination={list.pagination}
       />
       {modal && <DocumentModal projectId={sel.projectId} kinds={kinds} onClose={() => setModal(false)} />}
       <span hidden>{lang}</span>
@@ -469,8 +505,8 @@ function CashAccountModal({ account, onClose }: { account: CashAccount | null; o
 export function CounterpartiesPage() {
   const { t, lang } = useT();
   const { can } = useAuth();
-  const query = useCounterparties();
-  const [search, setSearch] = useState('');
+  const list = useListState();
+  const query = useCounterparties({ q: list.q, offset: list.offset, limit: list.limit });
   const [edit, setEdit] = useState<Counterparty | 'new' | null>(null);
   const columns: Column<Counterparty>[] = [
     {
@@ -561,7 +597,7 @@ export function CounterpartiesPage() {
         }
       />
       <div className="toolbar">
-        <SearchInput value={search} onChange={setSearch} />
+        <SearchInput value={list.search} onChange={list.setSearch} />
       </div>
       <DataTable
         columns={columns}
@@ -574,7 +610,7 @@ export function CounterpartiesPage() {
             : null
         }
         onRetry={query.refetch}
-        search={{ query: search, fields: (r) => [r.name, r.inn, r.phone, r.contact] }}
+        pagination={list.pagination}
         empty={{ title: t('fin.counterparties.empty') }}
       />
       {edit && <CounterpartyModal c={edit === 'new' ? null : edit} onClose={() => setEdit(null)} />}
@@ -881,9 +917,9 @@ function BudgetModal({
 /* ---------------- Reconciliation (statement) ---------------- */
 export function ReconciliationPage() {
   const { t, lang } = useT();
-  const counterparties = useCounterparties();
   const params = new URLSearchParams(location.search);
   const [cp, setCp] = useState(params.get('counterparty') ?? '');
+  const [cpName, setCpName] = useState<string | undefined>();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const query = useQuery({
@@ -912,19 +948,20 @@ export function ReconciliationPage() {
     <div className="stack" style={{ gap: 14 }}>
       <PageHeader title={t('fin.rec.title')} description={t('fin.rec.sub')} />
       <div className="toolbar">
-        <Select
+        <SearchSelect<Counterparty>
+          path="/v1/counterparties"
           aria-label={t('fin.rec.select')}
+          placeholder={t('fin.rec.select')}
           value={cp}
-          onChange={(e) => setCp(e.target.value)}
-          style={{ minWidth: 280 }}
-        >
-          <option value="">{t('fin.rec.select')}</option>
-          {(counterparties.data?.items ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} · {t(`fin.counterparties.kind.${c.kind}`)}
-            </option>
-          ))}
-        </Select>
+          valueLabel={cpName ?? query.data?.counterparty.name}
+          onChange={(id, item) => {
+            setCp(id);
+            setCpName(item?.name);
+          }}
+          getId={(c) => c.id}
+          getLabel={(c) => c.name}
+          getSub={(c) => t(`fin.counterparties.kind.${c.kind}`)}
+        />
         <Input
           type="date"
           aria-label={t('fin.filter_from')}
@@ -994,7 +1031,8 @@ export function ReconciliationPage() {
 /* ---------------- Payables helper export for calendar ---------------- */
 export function PayablesList({ projectId }: { projectId: string }) {
   const { t, lang } = useT();
-  const q = usePayables(projectId);
+  const list = useListState();
+  const q = usePayables(projectId, {}, list);
   const columns: Column<Payable>[] = [
     {
       key: 'due',
@@ -1025,6 +1063,7 @@ export function PayablesList({ projectId }: { projectId: string }) {
       rows={q.data?.items}
       rowKey={(r) => r.id}
       loading={q.isLoading}
+      pagination={list.pagination}
       empty={{ title: t('fin.invoices.empty') }}
       dense
     />

@@ -5,8 +5,9 @@ import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatQuantity } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select, Textarea } from '@/components/ui';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useToast } from '@/components/ui/Toast';
-import { useMaterials, useZones, type EstimateLine, type EstimateSummary } from '@/features/estimates/model';
+import { useZones, type EstimateLine, type EstimateSummary, type Material } from '@/features/estimates/model';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
 import { normalizeNumber } from '@/features/estimates/model';
 import { stockKeys, type Balance, type StockAccount, type StockCommand, type CommandKind } from './model';
@@ -59,7 +60,6 @@ type CommandModalProps = {
 export function CommandModal({ kind, projectId, accounts, balances, preset, onClose }: CommandModalProps) {
   const { t } = useT();
   const { me } = useAuth();
-  const materials = useMaterials();
   const zones = useZones(projectId);
   const warehouses = accounts.filter((a) => a.kind === 'warehouse');
   const custodies = accounts.filter((a) => a.kind === 'custody' && a.custodian_role === 'brigadier');
@@ -75,6 +75,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
       (kind === 'receipt' || kind === 'opening' || kind === 'return' ? (warehouses[0]?.id ?? '') : ''),
   );
   const [material, setMaterial] = useState(preset?.material_id ?? '');
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [qty, setQty] = useState('');
   const [unitCost, setUnitCost] = useState('');
   const [reason, setReason] = useState('');
@@ -107,7 +108,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
       }),
     onClose,
   );
-  const unit = materials.data?.items.find((m) => m.id === material)?.unit_id ?? sourceBalance?.unit_id ?? '';
+  const unit = selectedMaterial?.unit_id ?? sourceBalance?.unit_id ?? '';
   const valid =
     material &&
     qty &&
@@ -165,32 +166,41 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
             ))}
           </Select>
         )}
-        <div className="row" style={{ alignItems: 'flex-end' }}>
+        {needsSource ? (
           <Select
-            wrapClassName="grow"
             label={t('stock.material')}
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
           >
             <option value="">—</option>
-            {needsSource
-              ? sourceMaterials.map((b) => (
-                  <option key={b.material_id} value={b.material_id}>
-                    {b.material_name} — {t('stock.available')}: {formatQuantity(b.available, b.unit_id)}
-                  </option>
-                ))
-              : (materials.data?.items ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.unit_id})
-                  </option>
-                ))}
+            {sourceMaterials.map((b) => (
+              <option key={b.material_id} value={b.material_id}>
+                {b.material_name} — {t('stock.available')}: {formatQuantity(b.available, b.unit_id)}
+              </option>
+            ))}
           </Select>
-          {!needsSource && (
-            <Button variant="secondary" onClick={() => setNewMaterial(true)}>
-              +
-            </Button>
-          )}
-        </div>
+        ) : (
+          <SearchSelect<Material>
+            path="/v1/materials"
+            label={t('stock.material')}
+            value={material}
+            valueLabel={
+              selectedMaterial?.name ?? balances.find((b) => b.material_id === material)?.material_name
+            }
+            onChange={(id, item) => {
+              setMaterial(id);
+              setSelectedMaterial(item);
+            }}
+            getId={(m) => m.id}
+            getLabel={(m) => m.name}
+            getSub={(m) => m.unit_id}
+            action={
+              <Button variant="secondary" onClick={() => setNewMaterial(true)}>
+                +
+              </Button>
+            }
+          />
+        )}
         <div className="form-grid">
           <Input
             label={`${t('stock.request_qty')}${unit ? ` (${unit})` : ''}`}
@@ -247,6 +257,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
           onClose={() => setNewMaterial(false)}
           onCreated={(m) => {
             setMaterial(m.id);
+            setSelectedMaterial(m);
             setNewMaterial(false);
           }}
         />
@@ -265,8 +276,8 @@ export function ReconcileModal({
   onClose: () => void;
 }) {
   const { t } = useT();
-  const materials = useMaterials();
   const [material, setMaterial] = useState(balances[0]?.material_id ?? '');
+  const [selectedName, setSelectedName] = useState('');
   const [counted, setCounted] = useState('');
   const [unitCost, setUnitCost] = useState('');
   const [reason, setReason] = useState('');
@@ -309,14 +320,21 @@ export function ReconcileModal({
       }
     >
       <div className="stack">
-        <Select label={t('stock.material')} value={material} onChange={(e) => setMaterial(e.target.value)}>
-          <option value="">—</option>
-          {(materials.data?.items ?? []).map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} ({m.unit_id})
-            </option>
-          ))}
-        </Select>
+        <SearchSelect<Material>
+          path="/v1/materials"
+          label={t('stock.material')}
+          value={material}
+          valueLabel={
+            balances.find((b) => b.material_id === material)?.material_name ?? selectedName
+          }
+          onChange={(id, item) => {
+            setMaterial(id);
+            setSelectedName(item?.name ?? '');
+          }}
+          getId={(m) => m.id}
+          getLabel={(m) => m.name}
+          getSub={(m) => m.unit_id}
+        />
         {current && (
           <Alert tone={Number(current.reserved) > 0 ? 'warning' : 'info'}>
             {t('stock.quantity')}: {formatQuantity(current.quantity, current.unit_id)} · {t('stock.reserved')}

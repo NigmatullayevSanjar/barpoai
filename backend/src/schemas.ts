@@ -89,3 +89,10 @@ export const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   offset: z.coerce.number().int().min(0).max(100000).default(0),
 });
+// Ro'yxat qidiruvi; handler bo'sh satrni "yo'q" deb oladi (`query.q ? likePattern(query.q) : null`).
+export const searchText = z.string().trim().max(100).optional();
+export const searchQuery = pageQuery.extend({ q: searchText });
+/** `%`/`_` ni qochirib ILIKE naqshi; `ILIKE $n ESCAPE '\'` bilan ishlatiladi. */
+export const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+// Query bayrog'i: "true"/"1" → true, "false"/"0" → false; z.coerce.boolean() "false" satrini true qiladi.
+export const queryBool = z.stringbool({ truthy: ['true', '1'], falsy: ['false', '0'] });

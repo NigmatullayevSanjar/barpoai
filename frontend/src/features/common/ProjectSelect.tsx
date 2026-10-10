@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, type ListResponse } from '@/lib/api';
+import { apiAll } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Select } from '@/components/ui';
 import type { Project } from '@/features/projects/types';
@@ -12,7 +12,7 @@ export function useProjectSelection() {
   const [params, setParams] = useSearchParams();
   const projects = useQuery({
     queryKey: ['projects'],
-    queryFn: () => api<ListResponse<Project>>('/v1/projects?limit=100'),
+    queryFn: () => apiAll<Project>('/v1/projects'),
   });
   const items = projects.data?.items ?? [];
   const fromUrl = params.get('project');

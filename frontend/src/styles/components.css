@@ -738,6 +738,37 @@
 .dropdown .item:hover {
   background: var(--surface-2);
 }
+.combobox {
+  position: relative;
+}
+/* Portal orqali body'ga chiqadi; joylashuvi inline (fixed) beriladi */
+.combobox-list {
+  top: auto;
+  right: auto;
+  min-width: 260px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 120;
+}
+.combobox-list .item.active {
+  background: var(--surface-2);
+}
+.combobox-list .item[aria-selected='true'] .cell-main {
+  color: var(--brand-700);
+}
+.combobox-list .item.muted {
+  cursor: default;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.combobox-list .cell-sub {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.toolbar .combobox {
+  min-width: 280px;
+}
 .dropdown .item svg {
   width: 16px;
   height: 16px;

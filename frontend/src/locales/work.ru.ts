@@ -80,6 +80,7 @@ export const workRu: Record<string, string> = {
   'reports.created': 'Отчёт отправлен',
   'reports.saved': 'Сохранено',
   'reports.pending': 'На проверке',
+  'reports.pending_on_page': 'На проверке (на этой странице): {n}',
   'reports.correction': 'Корректировка прогресса',
   'reports.correction_hint':
     'Исходная запись не меняется; разница (плюс или минус) сохраняется отдельно с причиной.',

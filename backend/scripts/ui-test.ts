@@ -8,7 +8,7 @@ import { createPool } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
 import { hashPassword } from '../src/security.js';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Locator } from 'playwright';
 import ExcelJS from 'exceljs';
 import { tmpdir } from 'node:os';
 import { pageRoutes, tenantNav } from '../../frontend/src/lib/permissions.ts';
@@ -278,6 +278,41 @@ try {
   await adminPage.goto(webURL + '/app');
   await adminPage.getByRole('link', { name: /Navoiy 28 turar-joy/ }).waitFor();
   checks.push('Company dashboard lists real projects and counters');
+  // Server qidiruvli tanlov (SearchSelect): matn yoziladi, ro'yxatdan variant bosiladi.
+  const pickOption = async (
+    scope: Locator,
+    label: string | RegExp,
+    text: string,
+    option?: string | RegExp,
+  ) => {
+    const input = scope.getByLabel(label, { exact: typeof label === 'string' });
+    await input.click();
+    if (text) await input.fill(text);
+    // Ro'yxat portal orqali body'ga chiqadi, shuning uchun dialog ichidan emas, sahifadan qidiriladi.
+    const page = scope.page();
+    const options = option ? page.getByRole('option', { name: option }) : page.getByRole('option');
+    await options.first().click();
+  };
+  // 5b2. 100 tadan ortiq material: qidiruvli tanlov 101-chi va undan keyingisini ham topadi
+  for (let i = 1; i <= 120; i++) {
+    const m = await adminPage.request.post(webURL + '/v1/materials', {
+      data: { name: 'Tosh ' + String(i).padStart(3, '0'), unit_id: 'kg' },
+      headers: { 'Idempotency-Key': randomUUID(), Origin: webURL },
+    });
+    assert.equal(m.status(), 200, await m.text());
+  }
+  await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Yangi smeta' }).first().click();
+  const pickRow = adminPage.locator('table.grid-editor tbody tr').first();
+  await pickRow.getByLabel('Turi', { exact: true }).selectOption('material');
+  await pickOption(pickRow, 'Material', 'Tosh 118', /Tosh 118/);
+  assert.equal(await pickRow.getByRole('combobox', { name: 'Material' }).inputValue(), 'Tosh 118');
+  // Tanlov natijasi: setMaterial qator nomi va birligini materialdan to'ldiradi
+  assert.equal(await pickRow.getByLabel('Nomi', { exact: true }).inputValue(), 'Tosh 118');
+  assert.equal(await pickRow.getByLabel('Birlik', { exact: true }).inputValue(), 'kg');
+  // Fokus ketgach SearchSelect close() tanlanmagan bo'lsa matnni tozalardi; tanlangan bo'lsa qoladi
+  await adminPage.getByLabel('Smeta nomi').click();
+  assert.equal(await pickRow.getByRole('combobox', { name: 'Material' }).inputValue(), 'Tosh 118');
   // 5c. Smeta: qo‘lda yaratish, material, reviziya, Excel import (stage 05)
   await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Yangi smeta' }).first().click();
@@ -364,10 +399,26 @@ try {
   const stockUrl = webURL + '/app/stock?project=' + projectUrl.split('/').pop();
   await adminPage.goto(stockUrl);
   await adminPage.getByRole('button', { name: 'Kirim', exact: true }).click();
+  await pickOption(adminPage.getByRole('dialog'), 'Material', 'Tosh 118', /Tosh 118/);
+  assert.equal(
+    await adminPage.getByRole('dialog').getByLabel('Material', { exact: true }).inputValue(),
+    'Tosh 118',
+  );
   await adminPage
     .getByRole('dialog')
-    .getByLabel('Material', { exact: true })
-    .selectOption({ label: 'Sement M500 (kg)' });
+    .getByLabel(/^Miqdor/)
+    .click();
+  assert.equal(
+    await adminPage.getByRole('dialog').getByLabel('Material', { exact: true }).inputValue(),
+    'Tosh 118',
+  );
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Bekor qilish' }).click();
+  await adminPage.getByRole('dialog').waitFor({ state: 'detached' });
+  checks.push(
+    'Material pickers (estimate editor, stock receipt) find a material beyond the first 100 by server search',
+  );
+  await adminPage.getByRole('button', { name: 'Kirim', exact: true }).click();
+  await pickOption(adminPage.getByRole('dialog'), 'Material', 'Sement', /Sement M500/);
   await adminPage
     .getByRole('dialog')
     .getByLabel(/^Miqdor/)
@@ -455,10 +506,7 @@ try {
   );
   await brigadierPage.getByRole('tab', { name: /So‘rovlar/ }).click();
   await brigadierPage.getByRole('button', { name: 'Material so‘rash' }).click();
-  await brigadierPage
-    .getByRole('dialog')
-    .getByLabel('Material', { exact: true })
-    .selectOption({ index: 1 });
+  await pickOption(brigadierPage.getByRole('dialog'), 'Material', 'Sement', /Sement M500/);
   await brigadierPage.getByRole('dialog').getByLabel('Miqdor', { exact: true }).fill('100');
   await brigadierPage
     .getByRole('dialog')
@@ -495,9 +543,7 @@ try {
   await adminPage.goto(webURL + '/app/finance/invoices?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Invoys / dalolatnoma' }).first().click();
   await dialog().getByLabel('Turi').selectOption('supplier_invoice');
-  await dialog()
-    .getByLabel(/^Kontragent/)
-    .selectOption({ index: 1 });
+  await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
   await dialog()
     .getByLabel(/Bog‘lanadigan ombor kirimi/)
     .selectOption({ index: 1 });
@@ -526,9 +572,7 @@ try {
   await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Hujjat yaratish' }).first().click();
   await dialog().getByLabel('Turi').selectOption('service');
-  await dialog()
-    .getByLabel(/^Kontragent/)
-    .selectOption({ index: 1 });
+  await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
   await dialog()
     .getByLabel(/^Summa/)
     .fill('500000');
@@ -538,9 +582,7 @@ try {
   await dialog().waitFor({ state: 'detached' });
   await adminPage.goto(webURL + '/app/finance/payment-requests');
   await adminPage.getByRole('button', { name: 'To‘lov so‘rovi' }).first().click();
-  await dialog()
-    .getByLabel(/^Kontragent/)
-    .selectOption({ index: 1 });
+  await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
   await dialog()
     .getByLabel(/Bog‘langan hujjat/)
     .selectOption({ index: 1 });
@@ -946,11 +988,167 @@ try {
     'Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions and every allowed page renders without errors',
   );
 
+  // 7a. 100 tadan ortiq obyekt: ProjectSelect barcha sahifalarni (apiAll) yuklaydi
+  for (let i = 1; i <= 101; i++) {
+    const r = await adminPage.request.post(webURL + '/v1/projects', {
+      data: { name: 'Obyekt ' + String(i).padStart(3, '0') },
+      headers: { 'Idempotency-Key': randomUUID(), Origin: webURL },
+    });
+    assert.equal(r.status(), 200, await r.text());
+  }
+  await adminPage.goto(webURL + '/app/tasks');
+  const projectSelect = adminPage.locator('select[aria-label="Obyektni tanlang"]');
+  await projectSelect.waitFor();
+  await adminPage.waitForFunction(
+    () => document.querySelectorAll('select[aria-label="Obyektni tanlang"] option').length === 102,
+  );
+  // Asl obyekt + 101 ta; bo'sh ro'yxat uchun placeholder option faqat ro'yxat bo'sh bo'lganda chiqadi
+  assert.equal(await projectSelect.locator('option').count(), 102);
+  assert.equal(await projectSelect.locator('option', { hasText: 'Obyekt 101' }).count(), 1);
+  checks.push('Project select loads every page of a 100+ project list (apiAll)');
+
+  // 7b. 404 holatlari: begona/yo'q yozuv va noma'lum manzil AppShell ichidagi 404 sahifasini ko'rsatadi
+  await managerPage.goto(webURL + '/app/projects/' + randomUUID());
+  await managerPage.getByRole('heading', { name: 'Yozuv topilmadi' }).waitFor();
+  await managerPage.getByRole('button', { name: 'Ro‘yxatga qaytish' }).click();
+  await managerPage.getByRole('heading', { name: 'Obyektlar' }).first().waitFor();
+  await managerPage.goto(webURL + '/app/bunday-sahifa-yoq');
+  await managerPage.getByRole('heading', { name: 'Sahifa topilmadi' }).waitFor();
+  await managerPage.getByRole('button', { name: 'Bosh sahifaga' }).click();
+  await managerPage.waitForURL(/\/app$/);
+  checks.push(
+    'Unknown record id and unknown route render the in-app 404 page with SPA navigation back',
+  );
+
+  // 7c. Yo'q, biriktirilmagan va begona kompaniya obyekti bir xil 404 ko'rinishini beradi
+  const projectB = await adminPage.request.post(webURL + '/v1/projects', {
+    data: { name: 'Obyekt B maxfiy' },
+    headers: { 'Idempotency-Key': randomUUID(), Origin: webURL },
+  });
+  assert.equal(projectB.status(), 200, await projectB.text());
+  const projectBId = (await projectB.json()).id as string;
+  const managerAssignments = await owner.query(
+    'SELECT count(*)::int n FROM project_assignments a JOIN users u ON u.id=a.user_id WHERE u.login=$1',
+    ['ui.manager'],
+  );
+  assert.equal(managerAssignments.rows[0].n, 0);
+  const foreignTenant = (
+    await owner.query(
+      "INSERT INTO tenants(legal_name,registration_key) VALUES('Begona kompaniya','FOREIGN-1') RETURNING id",
+    )
+  ).rows[0];
+  const foreignProject = (
+    await owner.query(
+      "INSERT INTO projects(tenant_id,name) VALUES($1,'Begona obyekt') RETURNING id",
+      [foreignTenant.id],
+    )
+  ).rows[0];
+  const notFoundViews = [];
+  for (const id of [randomUUID(), projectBId, foreignProject.id as string]) {
+    await managerPage.goto(webURL + '/app/projects/' + id);
+    await managerPage.getByRole('heading', { name: 'Yozuv topilmadi' }).waitFor();
+    const card = managerPage.locator('.state');
+    notFoundViews.push({
+      heading: await card.locator('h3').innerText(),
+      description: await card.locator('p').innerText(),
+      buttons: await card.getByRole('button').allInnerTexts(),
+      icon: await card.locator('svg').first().getAttribute('class'),
+    });
+  }
+  assert.deepEqual(notFoundViews[1], notFoundViews[0]);
+  assert.deepEqual(notFoundViews[2], notFoundViews[0]);
+  checks.push(
+    'Missing, unassigned and foreign-tenant project ids render the identical not-found view (existence is not revealed)',
+  );
+
+  // 7d. Tafsilot so'rovi xatolari: 5xx va tarmoq uzilishi qayta urinish bilan, 403 va 404 alohida
+  const mockCtx = await browser!.newContext({
+    viewport: { width: 1440, height: 1000 },
+    locale: 'uz-UZ',
+  });
+  const mockPage = await mockCtx.newPage();
+  // Soxta 4xx/5xx javoblar ataylab: faqat pageerror va console xatolari yig'iladi
+  mockPage.on('pageerror', (e) => errors.push(e.message));
+  mockPage.on(
+    'console',
+    (m) =>
+      m.type() === 'error' &&
+      !/Failed to load resource/.test(m.text()) &&
+      errors.push('console: ' + m.text()),
+  );
+  await login(mockPage, 'ui.admin', password);
+  await mockPage.getByText('UI sinov qurilish').first().waitFor();
+  const detailPath = `**/v1/projects/${projectId}`;
+  const detailUrl = webURL + '/app/projects/' + projectId;
+  const retry = mockPage.getByRole('button', { name: 'Qayta urinish' });
+  let calls = 0;
+  await mockPage.route(detailPath, (r) => {
+    calls++;
+    void r.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'INTERNAL_ERROR' }, request_id: 'ui' }),
+    });
+  });
+  await mockPage.goto(detailUrl);
+  await retry.waitFor({ timeout: 30000 });
+  // Avtomatik qayta urinishlar tugaganini kutamiz, so'ng faqat tugma bosilishi so'rov yuborishini tekshiramiz
+  await delay(1500);
+  const before = calls;
+  await delay(500);
+  assert.equal(calls, before, 'no automatic retries may still be in flight');
+  await retry.click();
+  await delay(1000);
+  assert.ok(calls > before, 'retry must re-request the detail');
+  await mockPage.unroute(detailPath);
+  // TanStack Query 5xx'ni o'zi qayta urinadi: tugma yo'qolgan bo'lishi mumkin, u holda sahifa o'zi tiklanadi.
+  const projectHeading = mockPage.getByRole('heading', { name: /Navoiy 28 turar-joy/ });
+  await retry.or(projectHeading).first().waitFor();
+  if (await retry.isVisible()) await retry.click();
+  await projectHeading.waitFor();
+  let aborts = 0;
+  await mockPage.route(detailPath, (r) => {
+    aborts++;
+    void r.abort('failed');
+  });
+  await mockPage.goto(detailUrl);
+  await retry.waitFor({ timeout: 30000 });
+  assert.equal(await mockPage.getByRole('heading', { name: 'Yozuv topilmadi' }).count(), 0);
+  await delay(1500);
+  const abortsBefore = aborts;
+  await retry.click();
+  await delay(1000);
+  assert.ok(aborts > abortsBefore, 'retry must re-request the detail after a network failure');
+  await mockPage.unroute(detailPath);
+  await mockPage.route(detailPath, (r) => {
+    void r.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'FORBIDDEN' }, request_id: 'ui' }),
+    });
+  });
+  await mockPage.goto(detailUrl);
+  await mockPage.getByRole('heading', { name: 'Bu sahifaga ruxsat yo‘q' }).waitFor();
+  await mockPage.unroute(detailPath);
+  checks.push(
+    'Detail page distinguishes server error and network failure (retry re-requests) from 403 and 404',
+  );
+  // ERR-07: UUID bo'lmagan id serverda 400 (shu kontekstda 4xx tinglovchisi yo'q), ko'rinishi 404
+  for (const path of ['/app/projects/abc', '/app/estimates/abc', '/app/estimates/abc/edit']) {
+    await mockPage.goto(webURL + path);
+    await mockPage.getByRole('heading', { name: 'Yozuv topilmadi' }).waitFor();
+    assert.equal(await retry.count(), 0, `${path} must not offer a retry`);
+  }
+  await mockCtx.close();
+  checks.push('Malformed (non-UUID) detail ids render the not-found view without a retry button');
+
   // 8. Chiqish cookie'ni tozalaydi
   await managerPage.getByRole('button', { name: /Sinov menejeri/ }).click();
   await managerPage.getByRole('button', { name: 'Chiqish' }).click();
   await managerPage.getByRole('heading', { name: 'Hisobingizga kiring' }).waitFor();
   await managerPage.goto(webURL + '/app');
+  await managerPage.getByRole('heading', { name: 'Hisobingizga kiring' }).waitFor();
+  await managerPage.goto(webURL + '/app/bunday-sahifa-yoq');
   await managerPage.getByRole('heading', { name: 'Hisobingizga kiring' }).waitFor();
   checks.push('Logout clears the session cookie and protected routes redirect to login');
   assert.deepEqual(errors, []);

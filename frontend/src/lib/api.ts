@@ -74,6 +74,22 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
 /** Ro'yxat javoblari: { items: [...] } */
 export type ListResponse<T> = { items: T[] };
 
+/**
+ * Ma'lumotnoma ro'yxatining barcha sahifalari (server limiti 100).
+ * Faqat kompaniya hajmi bilan chegaralangan tanlovlar uchun (obyektlar, xodimlar);
+ * jadval ro'yxatlari sahifalanadi, chegarasiz tanlovlar (material, kontragent) server qidiruvi bilan.
+ */
+export async function apiAll<T>(path: string): Promise<ListResponse<T>> {
+  const items: T[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const page = await api<ListResponse<T>>(
+      `${path}${path.includes('?') ? '&' : '?'}limit=100&offset=${offset}`,
+    );
+    items.push(...page.items);
+    if (page.items.length < 100) return { items };
+  }
+}
+
 export const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(params))

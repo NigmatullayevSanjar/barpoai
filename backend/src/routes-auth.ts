@@ -3,7 +3,16 @@ import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
 import { login, registerInvite, issueSession, publicUser } from './auth.js';
 import { digest, hashPassword, verifyPassword, verifyTelegram } from './security.js';
-import { password, loginName, text, identifier, phone, pageQuery, uuid } from './schemas.js';
+import {
+  password,
+  loginName,
+  text,
+  identifier,
+  phone,
+  pageQuery,
+  uuid,
+  queryBool,
+} from './schemas.js';
 import { invariant } from './errors.js';
 import { createLinkToken, telegramStatus, unlinkTelegram } from './telegram.js';
 const authLimit = (max: number) => ({
@@ -208,7 +217,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
     path: '/v1/me/notifications',
     summary: 'O‘z bildirishnomalari; unread soni bilan',
     passwordChange: true,
-    query: pageQuery.extend({ unread: z.coerce.boolean().optional() }),
+    query: pageQuery.extend({ unread: queryBool.optional() }),
     handler: async ({ db, actor, query }) => {
       if (actor.tenant_id)
         await db.query("SELECT set_config('app.tenant_id',$1,true)", [actor.tenant_id]);

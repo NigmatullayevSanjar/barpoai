@@ -80,6 +80,7 @@ export const workUz: Record<string, string> = {
   'reports.created': 'Hisobot yuborildi',
   'reports.saved': 'Saqlandi',
   'reports.pending': 'Tekshiruvdagi',
+  'reports.pending_on_page': 'Tekshiruvdagi (shu sahifada): {n}',
   'reports.correction': 'Progressni tuzatish',
   'reports.correction_hint':
     'Asl yozuv o‘zgarmaydi; farq (musbat yoki manfiy) sabab bilan alohida saqlanadi.',

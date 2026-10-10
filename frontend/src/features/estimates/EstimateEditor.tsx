@@ -3,10 +3,12 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Copy, Plus, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatMoney, formatQuantity, monthStart } from '@/lib/format';
 import { Alert, Button, Input, Modal, PageHeader, Select } from '@/components/ui';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useToast } from '@/components/ui/Toast';
 import { useProjects } from '@/features/projects/ProjectsPage';
 import {
@@ -17,7 +19,6 @@ import {
   normalizeNumber,
   toApiLine,
   totalOf,
-  useMaterials,
   useUnits,
   useZones,
   validateLine,
@@ -39,9 +40,11 @@ export function EstimateEditorPage() {
   if (id && !existing.data) {
     if (existing.isError)
       return (
-        <Alert tone="danger">
-          {errorMessage(t, (existing.error as ApiError).code, (existing.error as ApiError).status)}
-        </Alert>
+        <DetailError
+          error={existing.error}
+          onRetry={existing.refetch}
+          backTo={{ to: '/app/estimates', label: t('common.back_to_list') }}
+        />
       );
     return (
       <div className="card">
@@ -61,7 +64,6 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
   const queryClient = useQueryClient();
   const projects = useProjects();
   const units = useUnits();
-  const materials = useMaterials();
   const zones = useZones(projectId);
   const [name, setName] = useState(existing?.name ?? '');
   const [lines, setLines] = useState<LineDraft[]>(() =>
@@ -70,24 +72,23 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
   const [touched, setTouched] = useState(false);
   const [monthsFor, setMonthsFor] = useState<string | null>(null);
   const [materialModal, setMaterialModal] = useState<string | null>(null);
-  const materialList = materials.data?.items ?? [];
   const project = projects.data?.items.find((p) => p.id === projectId);
   const errorsByKey = useMemo(
-    () => new Map(lines.map((l) => [l.key, validateLine(l, materialList, t)])),
-    [lines, materialList, t],
+    () => new Map(lines.map((l) => [l.key, validateLine(l, t)])),
+    [lines, t],
   );
   const invalidCount = [...errorsByKey.values()].filter((e) => Object.keys(e).length > 0).length;
   const total = lines.reduce((s, l) => s + totalOf(l), 0);
   const update = (key: string, patch: Partial<LineDraft>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  const setMaterial = (key: string, materialId: string) => {
-    const m = materialList.find((x) => x.id === materialId);
+  const setMaterial = (key: string, m: Material | null) =>
     update(key, {
-      material_id: materialId,
+      material_id: m?.id ?? '',
+      material_name: m?.name ?? '',
+      material_unit: m?.unit_id ?? '',
       unit_id: m?.unit_id ?? '',
       description: lines.find((l) => l.key === key)?.description || (m?.name ?? ''),
     });
-  };
   const save = useMutation({
     mutationFn: () => {
       const body = { project_id: projectId, name: name.trim(), lines: lines.map((l, i) => toApiLine(l, i)) };
@@ -234,29 +235,25 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                   <td>
                     {l.kind === 'material' ? (
                       <>
-                        <div className="row" style={{ gap: 4 }}>
-                          <select
-                            className="select grow"
-                            value={l.material_id}
-                            aria-label={t('est.col.material')}
-                            aria-invalid={e.material_id ? 'true' : undefined}
-                            onChange={(ev) => setMaterial(l.key, ev.target.value)}
-                          >
-                            <option value="">—</option>
-                            {materialList.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.name} ({m.unit_id})
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon={<Plus />}
-                            aria-label={t('est.material_new')}
-                            onClick={() => setMaterialModal(l.key)}
-                          />
-                        </div>
+                        <SearchSelect<Material>
+                          path="/v1/materials"
+                          value={l.material_id}
+                          valueLabel={l.material_name}
+                          onChange={(_id, item) => setMaterial(l.key, item)}
+                          getId={(m) => m.id}
+                          getLabel={(m) => m.name}
+                          getSub={(m) => m.unit_id}
+                          aria-label={t('est.col.material')}
+                          action={
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={<Plus />}
+                              aria-label={t('est.material_new')}
+                              onClick={() => setMaterialModal(l.key)}
+                            />
+                          }
+                        />
                         {e.material_id && <span className="cell-error">{e.material_id}</span>}
                       </>
                     ) : (
@@ -471,12 +468,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
           onClose={() => setMaterialModal(null)}
           onCreated={(m) => {
             // Yangi material ro'yxat yangilanishini kutmasdan qatorga yoziladi.
-            const current = lines.find((l) => l.key === materialModal);
-            update(materialModal, {
-              material_id: m.id,
-              unit_id: m.unit_id,
-              description: current?.description || m.name,
-            });
+            setMaterial(materialModal, m);
             setMaterialModal(null);
           }}
         />
@@ -606,7 +598,10 @@ export function NewMaterialModal({
     mutationFn: () =>
       api<Material>('/v1/materials', { method: 'POST', body: { name: name.trim(), unit_id: unit } }),
     onSuccess: async (m) => {
-      await queryClient.invalidateQueries({ queryKey: ['materials'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['materials'] }),
+        queryClient.invalidateQueries({ queryKey: ['search-select', '/v1/materials'] }),
+      ]);
       toast.success(t('est.material_created'));
       onCreated(m);
     },

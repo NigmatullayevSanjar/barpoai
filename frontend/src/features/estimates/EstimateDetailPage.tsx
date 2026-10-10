@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, Download, History, Pencil } from 'lucide-react';
 import { saveBase64File } from '@/lib/download';
 import { api, ApiError } from '@/lib/api';
+import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/lib/format';
@@ -22,7 +23,14 @@ import {
 } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useProjects } from '@/features/projects/ProjectsPage';
-import { lineKinds, sumBy, type EstimateDetail, type EstimateLine, type LineKind } from './model';
+import {
+  lineKinds,
+  type EstimateDetail,
+  type EstimateGroupTotal,
+  type EstimateLine,
+  type EstimateTotals,
+  type LineKind,
+} from './model';
 
 type Tab = 'lines' | 'summary' | 'revisions';
 export function EstimateDetailPage() {
@@ -44,7 +52,7 @@ export function EstimateDetailPage() {
   const [reason, setReason] = useState('');
   const d = query.data;
   const project = projects.data?.items.find((p) => p.id === d?.project_id);
-  const pricesVisible = Boolean(d?.lines.length === 0 || d?.lines.some((l) => l.unit_price !== undefined));
+  const pricesVisible = d?.totals.total !== undefined;
   const visible = useMemo(
     () =>
       (d?.lines ?? []).filter(
@@ -57,7 +65,6 @@ export function EstimateDetailPage() {
       ),
     [d, kind, search],
   );
-  const total = sumBy(d?.lines ?? [], (l) => Number(l.total ?? 0));
   const archiveMutation = useMutation({
     mutationFn: () =>
       api(`/v1/estimates/${id}`, { method: 'DELETE', body: { version: d!.revision, reason } }),
@@ -76,9 +83,11 @@ export function EstimateDetailPage() {
   });
   if (query.isError)
     return (
-      <Alert tone="danger">
-        {errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
-      </Alert>
+      <DetailError
+        error={query.error}
+        onRetry={query.refetch}
+        backTo={{ to: '/app/estimates', label: t('common.back_to_list') }}
+      />
     );
   if (!d)
     return (
@@ -86,10 +95,6 @@ export function EstimateDetailPage() {
         <div className="card-pad muted">{t('common.loading')}</div>
       </div>
     );
-  const materialTotal = sumBy(
-    d.lines.filter((l) => l.kind === 'material'),
-    (l) => Number(l.total ?? 0),
-  );
   return (
     <div className="stack" style={{ gap: 14 }}>
       <PageHeader
@@ -137,13 +142,9 @@ export function EstimateDetailPage() {
       />
       {pricesVisible ? (
         <div className="grid-4">
-          <Stat accent label={t('est.total')} value={formatMoney(total, lang, false)} sub="UZS" />
-          <Stat label={t('est.material_total')} value={formatMoney(materialTotal, lang, false)} sub="UZS" />
-          <Stat
-            label={t('est.work_total')}
-            value={formatMoney(total - materialTotal, lang, false)}
-            sub="UZS"
-          />
+          <Stat accent label={t('est.total')} value={formatMoney(d.totals.total, lang, false)} sub="UZS" />
+          <Stat label={t('est.material_total')} value={formatMoney(d.totals.material_total, lang, false)} sub="UZS" />
+          <Stat label={t('est.work_total')} value={formatMoney(d.totals.work_total, lang, false)} sub="UZS" />
           <Stat
             label={t('est.lines')}
             value={d.lines.length}
@@ -181,10 +182,20 @@ export function EstimateDetailPage() {
               ))}
             </Select>
           </div>
-          <LinesTable lines={visible} pricesVisible={pricesVisible} />
+          <LinesTable
+            lines={visible}
+            pricesVisible={pricesVisible}
+            total={
+              search
+                ? undefined
+                : kind === 'all'
+                  ? d.totals.total
+                  : d.totals.by_kind.find((g) => g.key === kind)?.total
+            }
+          />
         </>
       )}
-      {tab === 'summary' && <SummaryTab lines={d.lines} pricesVisible={pricesVisible} />}
+      {tab === 'summary' && <SummaryTab totals={d.totals} pricesVisible={pricesVisible} />}
       {tab === 'revisions' && <RevisionsTab id={id} current={d.revision} />}
       <ConfirmDialog
         open={archive}
@@ -209,9 +220,16 @@ export function EstimateDetailPage() {
   );
 }
 
-function LinesTable({ lines, pricesVisible }: { lines: EstimateLine[]; pricesVisible: boolean }) {
+function LinesTable({
+  lines,
+  pricesVisible,
+  total,
+}: {
+  lines: EstimateLine[];
+  pricesVisible: boolean;
+  total?: string;
+}) {
   const { t, lang } = useT();
-  const total = sumBy(lines, (l) => Number(l.total ?? 0));
   let lastCategory: string | null | undefined;
   return (
     <div className="table-wrap">
@@ -298,7 +316,7 @@ function LinesTable({ lines, pricesVisible }: { lines: EstimateLine[]; pricesVis
             );
           })}
         </tbody>
-        {pricesVisible && (
+        {pricesVisible && total !== undefined && (
           <tfoot>
             <tr>
               <td colSpan={8} style={{ textAlign: 'right', fontWeight: 600 }}>
@@ -350,26 +368,16 @@ function FragmentRow({
   );
 }
 
-function SummaryTab({ lines, pricesVisible }: { lines: EstimateLine[]; pricesVisible: boolean }) {
+function SummaryTab({ totals, pricesVisible }: { totals: EstimateTotals; pricesVisible: boolean }) {
   const { t, lang } = useT();
-  const group = (key: (l: EstimateLine) => string) => {
-    const map = new Map<string, { plan: number; factValue: number; count: number }>();
-    for (const l of lines) {
-      const k = key(l);
-      const g = map.get(k) ?? { plan: 0, factValue: 0, count: 0 };
-      g.plan += Number(l.total ?? 0);
-      g.factValue += Number(l.fact_value ?? 0);
-      g.count += 1;
-      map.set(k, g);
-    }
-    return [...map.entries()].sort((a, b) => b[1].plan - a[1].plan);
-  };
   const Table = ({
     title,
     rows,
+    name,
   }: {
     title: string;
-    rows: [string, { plan: number; factValue: number; count: number }][];
+    rows: EstimateGroupTotal[];
+    name: (key: string) => string;
   }) => (
     <section className="card">
       <div className="card-header">
@@ -385,14 +393,18 @@ function SummaryTab({ lines, pricesVisible }: { lines: EstimateLine[]; pricesVis
           </tr>
         </thead>
         <tbody>
-          {rows.map(([k, g]) => (
-            <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
-              <td>{k}</td>
+          {rows.map((g) => (
+            <tr key={g.key} style={{ borderTop: '1px solid var(--border)' }}>
+              <td>{name(g.key)}</td>
               <td className="num">{g.count}</td>
-              {pricesVisible && <td className="num">{formatMoney(g.plan, lang, false)}</td>}
+              {pricesVisible && <td className="num">{formatMoney(g.total, lang, false)}</td>}
               {pricesVisible && (
                 <td className="num">
-                  {g.factValue ? formatMoney(g.factValue, lang, false) : <span className="muted">—</span>}
+                  {g.value && g.value !== '0.00' ? (
+                    formatMoney(g.value, lang, false)
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
               )}
             </tr>
@@ -403,9 +415,9 @@ function SummaryTab({ lines, pricesVisible }: { lines: EstimateLine[]; pricesVis
   );
   return (
     <div className="grid-3" style={{ alignItems: 'start' }}>
-      <Table title={t('est.by_kind')} rows={group((l) => t(`est.kind.${l.kind}`))} />
-      <Table title={t('est.by_category')} rows={group((l) => l.category ?? '—')} />
-      <Table title={t('est.by_zone')} rows={group((l) => l.zone_name ?? '—')} />
+      <Table title={t('est.by_kind')} rows={totals.by_kind} name={(k) => t(`est.kind.${k}`)} />
+      <Table title={t('est.by_category')} rows={totals.by_category} name={(k) => k || '—'} />
+      <Table title={t('est.by_zone')} rows={totals.by_zone} name={(k) => k || '—'} />
     </div>
   );
 }

@@ -94,7 +94,7 @@ Natija: har bir ekran va amalning aniq kiruvchi ma’lumoti, natijasi, vakolati 
 - [x] Kompaniyalar ma’lumotini bazada ajratish, bog‘lanishlar va hisob invariantlari mavjud.
 - [ ] Har endpoint javobidagi maydonlarni qat’iy shartnoma bilan belgilash; maxfiy maydonlar chiqmasligini tekshirish.
 - [ ] Yangi talablar uchun keyingi raqamli migratsiyalarni yozish; ishlatilgan migratsiyalarni o‘zgartirmaslik.
-- [ ] Frontenddagi qidiruv/filtr/sahifalash ehtiyojlarini mavjud API bilan solishtirib, yetishmaydiganlarini qo‘shish.
+- [x] 2026-10-09: ro‘yxat endpointlariga `q` qidiruv va filtrlar (`status`, `role`, `active`, `archived`, `unpaid`, `state`) qo‘shildi; frontend jadvallari server sahifalashda (10/25/50), material va kontragent tanlovlari server qidiruvli (`docs/TZ_VA_NARX_REJASI.md`, 1.1).
 
 Bog‘liqlik: 01. Qabul mezoni: toza va avvalgi sxemali test bazasida migratsiya o‘tadi, ikki kompaniya ma’lumoti aralashmaydi.
 

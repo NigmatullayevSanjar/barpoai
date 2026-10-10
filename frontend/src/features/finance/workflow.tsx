@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { api, ApiError, qs, type ListResponse } from '@/lib/api';
+import { api, apiAll, ApiError, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney, formatQuantity, monthStart, todayIso } from '@/lib/format';
@@ -16,8 +16,10 @@ import {
   Select,
   Stat,
   Textarea,
+  useListState,
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { ExportButton } from '@/features/common/ExportButton';
 import { normalizeNumber } from '@/features/estimates/model';
@@ -27,10 +29,10 @@ import {
   monthLabel,
   num,
   useCashBalances,
-  useCounterparties,
   useFinanceMutation,
   usePayables,
   usePaymentRequests,
+  type Counterparty,
   type PaymentRequest,
   type PayrollEntry,
   type PayrollPeriod,
@@ -42,12 +44,13 @@ export function PaymentRequestsPage() {
   const { can, me, permissions } = useAuth();
   const f = useProjectFilter();
   const [status, setStatus] = useState('');
+  const list = useListState();
   const [create, setCreate] = useState(false);
   const [act, setAct] = useState<{
     r: PaymentRequest;
     action: 'approve' | 'reject' | 'cancel' | 'pay';
   } | null>(null);
-  const query = usePaymentRequests(f.projectId, status || undefined);
+  const query = usePaymentRequests(f.projectId, status || undefined, list);
   const canApprove = me?.role === 'tenant_admin' || permissions?.permissions.includes('finance.allocate');
   const canPay = can('bank_cash', 'create');
   const tone = {
@@ -168,8 +171,15 @@ export function PaymentRequestsPage() {
         }
       />
       <div className="toolbar">
-        <ProjectFilter f={f} />
-        <Select aria-label={t('common.status')} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <ProjectFilter f={f} onChange={() => list.setOffset(0)} />
+        <Select
+          aria-label={t('common.status')}
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            list.setOffset(0);
+          }}
+        >
           <option value="">{t('common.all')}</option>
           {(['pending', 'approved', 'paid', 'rejected', 'cancelled'] as const).map((s) => (
             <option key={s} value={s}>
@@ -189,6 +199,7 @@ export function PaymentRequestsPage() {
             : null
         }
         onRetry={query.refetch}
+        pagination={list.pagination}
         empty={{ title: t('fin.pr.empty') }}
       />
       {create && (
@@ -212,14 +223,14 @@ function PaymentRequestModal({
   onClose: () => void;
 }) {
   const { t, lang } = useT();
-  const counterparties = useCounterparties();
   const [project, setProject] = useState(defaultProject);
   const [cp, setCp] = useState('');
+  const [cpName, setCpName] = useState<string | undefined>();
   const [doc, setDoc] = useState('');
   const [amount, setAmount] = useState('');
   const [due, setDue] = useState('');
   const [purpose, setPurpose] = useState('');
-  const payables = usePayables(project, cp ? { counterparty_id: cp } : {});
+  const payables = usePayables(project, cp ? { counterparty_id: cp } : {}, { offset: 0, limit: 100 });
   const save = useFinanceMutation(
     () =>
       api('/v1/finance/payment-requests', {
@@ -271,23 +282,21 @@ function PaymentRequestModal({
             </option>
           ))}
         </Select>
-        <Select
+        <SearchSelect<Counterparty>
+          path="/v1/counterparties"
+          params={{ archived: false }}
           label={t('fin.counterparty')}
           value={cp}
-          onChange={(e) => {
-            setCp(e.target.value);
+          valueLabel={cpName}
+          onChange={(id, item) => {
+            setCp(id);
+            setCpName(item?.name);
             setDoc('');
           }}
-        >
-          <option value="">—</option>
-          {(counterparties.data?.items ?? [])
-            .filter((c) => !c.archived_at)
-            .map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-        </Select>
+          getId={(c) => c.id}
+          getLabel={(c) => c.name}
+          getSub={(c) => t(`fin.counterparties.kind.${c.kind}`)}
+        />
         <Select
           wrapClassName="span-2"
           label={t('fin.pr.document')}
@@ -774,7 +783,7 @@ function PayrollEntryModal({
   const { t } = useT();
   const employees = useQuery({
     queryKey: ['employees'],
-    queryFn: () => api<ListResponse<Employee>>('/v1/employees?limit=100'),
+    queryFn: () => apiAll<Employee>('/v1/employees'),
   });
   const [employee, setEmployee] = useState(entry?.employee_id ?? '');
   const [position, setPosition] = useState(entry?.position ?? '');

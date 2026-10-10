@@ -494,23 +494,48 @@ export function Avatar({ name, size }: { name: string; size?: 'sm' }) {
     .join('');
   return <span className={`avatar ${size ?? ''}`}>{initials || '?'}</span>;
 }
+export const pageSizes = [10, 25, 50];
 export function Pagination({
   offset,
   limit,
   count,
   onChange,
+  onLimitChange,
 }: {
   offset: number;
   limit: number;
   count: number;
   onChange: (offset: number) => void;
+  /** Berilsa 10/25/50 qatorlar soni tanlovi ko'rsatiladi */
+  onLimitChange?: (limit: number) => void;
 }) {
   const { t } = useT();
   const page = Math.floor(offset / limit) + 1;
   const hasNext = count >= limit;
+  const sizes = pageSizes.includes(limit) ? pageSizes : [...pageSizes, limit].sort((a, b) => a - b);
   return (
     <div className="table-footer">
-      <span>{t('common.page', { page })}</span>
+      <span className="row" style={{ gap: 12 }}>
+        <span>{t('common.page', { page })}</span>
+        {onLimitChange && (
+          <label className="row" style={{ gap: 6 }}>
+            <span>{t('common.per_page')}</span>
+            <select
+              className="select"
+              aria-label={t('common.per_page')}
+              value={limit}
+              onChange={(e) => onLimitChange(Number(e.target.value))}
+              style={{ width: 'auto', padding: '4px 28px 4px 8px' }}
+            >
+              {sizes.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </span>
       <span className="row">
         <Button
           size="sm"
@@ -527,12 +552,28 @@ export function Pagination({
     </div>
   );
 }
-/** Oddiy boshqariladigan ro'yxat holati: qidiruv + sahifalash */
-export function useListState(limit = 30) {
+/** Qiymat o'zgarishini kechiktiradi (server qidiruvi har tugmada yuborilmasin). */
+export function useDebounced<T>(value: T, ms = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
+/**
+ * Boshqariladigan ro'yxat holati: qidiruv, sahifalash va qatorlar soni.
+ * `search` — kiritilgan matn, `q` — kechiktirilgan qiymat (server so'roviga shu ketadi).
+ * Filtr o'zgarganda `setOffset(0)` chaqiriladi.
+ */
+export function useListState(initialLimit = 25) {
   const [search, setSearch] = useState('');
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(initialLimit);
+  const q = useDebounced(search.trim());
   return {
     search,
+    q,
     setSearch: (v: string) => {
       setSearch(v);
       setOffset(0);
@@ -540,5 +581,19 @@ export function useListState(limit = 30) {
     offset,
     setOffset,
     limit,
+    setLimit: (n: number) => {
+      setLimit(n);
+      setOffset(0);
+    },
+    /** DataTable `pagination` propi uchun tayyor obyekt */
+    pagination: {
+      offset,
+      limit,
+      onChange: setOffset,
+      onLimitChange: (n: number) => {
+        setLimit(n);
+        setOffset(0);
+      },
+    },
   };
 }

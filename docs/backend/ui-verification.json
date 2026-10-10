@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-07T12:55:30.405Z",
+  "executed_at": "2026-10-10T12:07:05.137Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -15,6 +15,7 @@
     "Estimate created in the grid editor with labor and material lines; totals match decimal arithmetic",
     "Editing an estimate creates an immutable new revision and keeps history",
     "Excel import: inspect headers, auto-map columns, resolve material by name, preview then commit",
+    "Material pickers (estimate editor, stock receipt) find a material beyond the first 100 by server search",
     "Warehouse receipt posts stock and inventory value from the UI",
     "Brigadier accepts a transfer partially and submits a consumption proposal",
     "Consumption review posts expense 150 x 1200 and leaves warehouse 800 (100 still reserved) and custody 50",
@@ -37,6 +38,11 @@
     "Overpayment becomes tenant credit; the company billing page shows the credit balance and next invoice date",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
     "Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions and every allowed page renders without errors",
+    "Project select loads every page of a 100+ project list (apiAll)",
+    "Unknown record id and unknown route render the in-app 404 page with SPA navigation back",
+    "Missing, unassigned and foreign-tenant project ids render the identical not-found view (existence is not revealed)",
+    "Detail page distinguishes server error and network failure (retry re-requests) from 403 and 404",
+    "Malformed (non-UUID) detail ids render the not-found view without a retry button",
     "Logout clears the session cookie and protected routes redirect to login",
     "No uncaught React/browser errors"
   ]

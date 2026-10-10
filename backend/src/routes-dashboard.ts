@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit, type Db, type Row } from './db.js';
-import { uuid, phone, version, date } from './schemas.js';
+import { uuid, phone, version, date, queryBool } from './schemas.js';
 import { allowed, pageAllowed, projectScope } from './permissions.js';
 import { invariant } from './errors.js';
 import { accessState } from './auth.js';
@@ -387,7 +387,7 @@ export function dashboardRoutes(add: (r: Endpoint) => void) {
       status: z
         .enum(['todo', 'in_progress', 'submitted', 'returned', 'accepted', 'open'])
         .optional(),
-      mine: z.coerce.boolean().optional(),
+      mine: queryBool.optional(),
     }),
     handler: async ({ db, actor, query }) => {
       const project = await projectScope(db, actor, query.project_id);

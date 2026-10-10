@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { type Endpoint } from './http.js';
-import { one } from './db.js';
+import { audit, one } from './db.js';
+import { dec, money } from './money.js';
 import { idParams, text } from './schemas.js';
 import { projectScope, allowed } from './permissions.js';
 import { inspectWorkbook } from './estimates.js';
@@ -130,11 +131,12 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
       if (prices && lines.length) {
         const totalRow = sheet.addRow({
           description: 'JAMI',
-          total: lines.reduce((s, l) => s + Number(l.total), 0),
+          total: Number(money(lines.reduce((s, l) => s.plus(l.total), dec('0')))),
         });
         totalRow.font = { bold: true };
       }
       const buffer = Buffer.from(await book.xlsx.writeBuffer());
+      await audit(db, actor, 'export.estimate', params.id, { revision: estimate.revision });
       const safe =
         `${project.code ?? project.name}-${estimate.name}-rev${estimate.revision}`.replace(
           /[^\w.-]+/g,

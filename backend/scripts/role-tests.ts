@@ -723,7 +723,16 @@ try {
       }
     return null;
   };
-  const priceKeys = ['unit_price', 'unit_cost', 'total', 'value', 'value_delta', 'amount', 'price'];
+  const priceKeys = [
+    'unit_price',
+    'unit_cost',
+    'total',
+    'value',
+    'value_delta',
+    'amount',
+    'price',
+    'fact_value',
+  ];
   // Narx huquqi yo'q rollar: prorab (smeta o'qiydi, narx yo'q) va brigadir (ombor/ish qatorlari/dashboard).
   const priceChecks: [string, string, string][] = [
     ['estimate card (foreman)', `/v1/estimates/${estimate.id}`, staff.foreman!.token],
