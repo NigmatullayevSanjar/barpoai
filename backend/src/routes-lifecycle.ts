@@ -159,6 +159,11 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
         invariant(report.status !== 'accepted', 'REPORT_FILE_LOCKED');
       }
       await db.query('UPDATE files SET archived_at=now() WHERE id=$1', [params.id]);
+      // Obyekt rasmi arxivlansa havola tozalanadi (ochiq tahrir oynasi VERSION_CONFLICT oladi).
+      await db.query(
+        'UPDATE projects SET image_file_id=NULL,version=version+1 WHERE tenant_id=$1 AND image_file_id=$2',
+        [actor.tenant_id, params.id],
+      );
       await audit(db, actor, 'file.archive', params.id, { reason: body.reason });
       return { ok: true };
     },

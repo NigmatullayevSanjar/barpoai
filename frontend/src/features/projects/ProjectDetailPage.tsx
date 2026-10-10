@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Archive, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Archive, Image as ImageIcon, Pencil, Plus, Trash2, Upload, UserPlus } from 'lucide-react';
 import { api, apiAll, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DetailError } from '@/app/guards';
@@ -23,14 +23,16 @@ import {
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
+import { readAsBase64, useFileContent } from '@/features/work/model';
 import {
   ProjectFields,
+  checkDates,
   ProjectStatusBadge,
   projectSchema,
   toProjectBody,
   type ProjectForm,
 } from './ProjectsPage';
-import type { Employee, Member, ProjectDetail, Zone } from './types';
+import { zoneKinds, type Employee, type Member, type ProjectDetail, type Zone, type ZoneKind } from './types';
 
 type Tab = 'overview' | 'zones' | 'members' | 'warehouses';
 export function ProjectDetailPage() {
@@ -178,6 +180,7 @@ export function ProjectDetailPage() {
 function Overview({ d }: { d: ProjectDetail }) {
   const { t, lang } = useT();
   const { can } = useAuth();
+  const image = useFileContent(d.image_file_id && can('files') ? d.image_file_id : null);
   return (
     <div className="grid-2" style={{ alignItems: 'start' }}>
       <section className="card">
@@ -185,6 +188,20 @@ function Overview({ d }: { d: ProjectDetail }) {
           <h3>{t('projects.tab.overview')}</h3>
         </div>
         <div className="card-pad">
+          {image.data && (
+            <img
+              src={`data:${image.data.mime_type};base64,${image.data.base64}`}
+              alt={d.name}
+              style={{
+                display: 'block',
+                width: '100%',
+                maxHeight: 240,
+                objectFit: 'cover',
+                borderRadius: 'var(--radius, 8px)',
+                marginBottom: 16,
+              }}
+            />
+          )}
           <dl className="kv">
             <dt>{t('projects.code')}</dt>
             <dd>{d.code ?? '—'}</dd>
@@ -192,6 +209,8 @@ function Overview({ d }: { d: ProjectDetail }) {
             <dd>{d.customer_name ?? '—'}</dd>
             <dt>{t('projects.address')}</dt>
             <dd>{d.address ?? '—'}</dd>
+            <dt>{t('projects.area_m2')}</dt>
+            <dd>{d.area_m2 ?? '—'}</dd>
             <dt>{t('projects.planned_start')}</dt>
             <dd>{formatDate(d.planned_start, lang)}</dd>
             <dt>{t('projects.planned_end')}</dt>
@@ -250,13 +269,42 @@ function EditProjectModal({
 }) {
   const { t } = useT();
   const toast = useToast();
+  const { can } = useAuth();
+  const canImage = can('files', 'create');
+  const input = useRef<HTMLInputElement>(null);
+  const [picked, setPicked] = useState<File | null>(null);
+  const [removed, setRemoved] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const current = useFileContent(canImage && !removed && !picked ? d.image_file_id : null);
+  useEffect(() => {
+    if (!picked) {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(picked);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [picked]);
+  const pickFile = (f: File) => {
+    if (!['image/jpeg', 'image/png'].includes(f.type))
+      return toast.error(errorMessage(t, 'FILE_SIGNATURE_INVALID', 400));
+    if (f.size > 5 * 1024 * 1024) return toast.error(errorMessage(t, 'FILE_SIZE_INVALID', 400));
+    setPicked(f);
+    setRemoved(false);
+  };
+  // Bir xil tanlangan fayl qayta urinishda qayta yuklanmasin (server idempotency kaliti bo'yicha bir marta saqlaydi).
+  const uploadKey = useMemo(() => crypto.randomUUID(), [picked]);
+  const shown = preview ?? (current.data ? `data:${current.data.mime_type};base64,${current.data.base64}` : null);
+  const hasImage = Boolean(picked) || (!removed && Boolean(d.image_file_id));
   const form = useForm<ProjectForm & { forecast_end: string; actual_start: string; actual_end: string }>({
     resolver: zodResolver(
-      projectSchema(t).extend({
-        forecast_end: projectSchema(t).shape.planned_start,
-        actual_start: projectSchema(t).shape.planned_start,
-        actual_end: projectSchema(t).shape.planned_start,
-      }),
+      projectSchema(t)
+        .extend({
+          forecast_end: projectSchema(t).shape.planned_start,
+          actual_start: projectSchema(t).shape.planned_start,
+          actual_end: projectSchema(t).shape.planned_start,
+        })
+        .superRefine((v, ctx) => checkDates(v, ctx, t)),
     ),
     defaultValues: {
       name: d.name,
@@ -267,23 +315,40 @@ function EditProjectModal({
       status: d.status,
       planned_start: d.planned_start ?? '',
       planned_end: d.planned_end ?? '',
+      area_m2: d.area_m2 ?? '',
       forecast_end: d.forecast_end ?? '',
       actual_start: d.actual_start ?? '',
       actual_end: d.actual_end ?? '',
     },
   });
   const save = useMutation({
-    mutationFn: (v: ProjectForm & { forecast_end: string; actual_start: string; actual_end: string }) =>
-      api(`/v1/projects/${d.id}`, {
+    mutationFn: async (v: ProjectForm & { forecast_end: string; actual_start: string; actual_end: string }) => {
+      let imageId = removed ? null : d.image_file_id;
+      if (picked) {
+        const uploaded = await api<{ id: string }>('/v1/files', {
+          method: 'POST',
+          idempotencyKey: uploadKey,
+          body: {
+            project_id: d.id,
+            name: picked.name.slice(0, 200),
+            mime_type: picked.type,
+            base64: await readAsBase64(picked),
+          },
+        });
+        imageId = uploaded.id;
+      }
+      return api(`/v1/projects/${d.id}`, {
         method: 'PATCH',
         body: {
           ...toProjectBody(v),
           version: d.version,
+          image_file_id: imageId,
           forecast_end: v.forecast_end || null,
           actual_start: v.actual_start || null,
           actual_end: v.actual_end || null,
         },
-      }),
+      });
+    },
     onSuccess: async () => {
       await onDone();
       toast.success(t('common.saved'));
@@ -316,9 +381,64 @@ function EditProjectModal({
         <ProjectFields form={form as never} />
         <div className="form-grid">
           <Input type="date" label={t('projects.actual_start')} {...form.register('actual_start')} />
-          <Input type="date" label={t('projects.actual_end')} {...form.register('actual_end')} />
+          <Input
+            type="date"
+            label={t('projects.actual_end')}
+            error={form.formState.errors.actual_end?.message}
+            {...form.register('actual_end')}
+          />
           <Input type="date" label={t('projects.forecast_end')} {...form.register('forecast_end')} />
         </div>
+        {canImage && (
+          <div className="stack" style={{ gap: 8 }}>
+            <span className="text-sm">{t('projects.image')}</span>
+            <div className="row" style={{ gap: 12 }}>
+              <div
+                style={{
+                  width: 96,
+                  height: 96,
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  background: 'var(--surface-2)',
+                }}
+              >
+                {shown ? (
+                  <img src={shown} alt={d.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <ImageIcon size={20} style={{ margin: 36, color: 'var(--muted)' }} />
+                )}
+              </div>
+              <Button variant="secondary" icon={<Upload />} onClick={() => input.current?.click()}>
+                {t('projects.image_pick')}
+              </Button>
+              {hasImage && (
+                <Button
+                  variant="ghost"
+                  icon={<Trash2 />}
+                  onClick={() => {
+                    setPicked(null);
+                    setRemoved(true);
+                  }}
+                >
+                  {t('projects.image_remove')}
+                </Button>
+              )}
+              <input
+                ref={input}
+                type="file"
+                accept="image/jpeg,image/png"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) pickFile(f);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+            <p className="muted text-xs">{t('projects.image_hint')}</p>
+          </div>
+        )}
       </form>
     </Modal>
   );
@@ -338,17 +458,27 @@ function ZonesTab({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [parent, setParent] = useState('');
+  const [kind, setKind] = useState<ZoneKind>('other');
+  const [floors, setFloors] = useState('');
+  const [editing, setEditing] = useState<Zone | null>(null);
   const create = useMutation({
     mutationFn: () =>
       api(`/v1/projects/${d.id}/zones`, {
         method: 'POST',
-        body: { name, ...(parent ? { parent_id: parent } : {}) },
+        body: {
+          name,
+          ...(parent ? { parent_id: parent } : {}),
+          kind,
+          ...(kind === 'block' && floors ? { floors_count: Number(floors) } : {}),
+        },
       }),
     onSuccess: async () => {
       await onChange();
       setOpen(false);
       setName('');
       setParent('');
+      setKind('other');
+      setFloors('');
       toast.success(t('common.saved'));
     },
     onError: (e: ApiError) => toast.error(errorMessage(t, e.code, e.status)),
@@ -388,9 +518,29 @@ function ZonesTab({
                 paddingLeft: 20 + depth * 22,
                 borderBottom: '1px solid var(--border)',
               }}
+              className="row-between"
             >
-              {depth > 0 && <span className="muted">└ </span>}
-              {zone.name}
+              <span className="row" style={{ gap: 8 }}>
+                <span>
+                  {depth > 0 && <span className="muted">└ </span>}
+                  {zone.name}
+                </span>
+                <Badge tone={zone.kind === 'block' ? 'brand' : 'neutral'}>
+                  {t(`projects.zone_kind.${zone.kind}`)}
+                </Badge>
+                {zone.kind === 'block' && zone.floors_count && (
+                  <span className="muted text-sm">{t('projects.zone_floors_n', { n: zone.floors_count })}</span>
+                )}
+              </span>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Pencil />}
+                  aria-label={t('projects.zone_edit')}
+                  onClick={() => setEditing(zone)}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -407,7 +557,7 @@ function ZonesTab({
             <Button
               onClick={() => create.mutate()}
               loading={create.isPending}
-              disabled={name.trim().length < 1}
+              disabled={name.trim().length < 1 || !floorsValid(floors)}
             >
               {t('common.add')}
             </Button>
@@ -416,6 +566,7 @@ function ZonesTab({
       >
         <div className="stack">
           <Input label={t('projects.zone_name')} value={name} onChange={(e) => setName(e.target.value)} />
+          <ZoneKindFields kind={kind} floors={floors} onKind={setKind} onFloors={setFloors} />
           <Select
             label={t('projects.zone_parent')}
             value={parent}
@@ -431,7 +582,113 @@ function ZonesTab({
           </Select>
         </div>
       </Modal>
+      {editing && (
+        <EditZoneModal key={editing.id} d={d} zone={editing} onClose={() => setEditing(null)} onDone={onChange} />
+      )}
     </section>
+  );
+}
+
+/** Qavatlar soni: bo'sh yoki 1..500 butun son (serverdagi zoneFloors bilan bir xil). */
+const floorsValid = (floors: string) => floors === '' || /^(?:[1-9]\d{0,2}|500)$/.test(floors);
+function ZoneKindFields({
+  kind,
+  floors,
+  onKind,
+  onFloors,
+}: {
+  kind: ZoneKind;
+  floors: string;
+  onKind: (k: ZoneKind) => void;
+  onFloors: (v: string) => void;
+}) {
+  const { t } = useT();
+  return (
+    <>
+      <Select label={t('projects.zone_kind')} value={kind} onChange={(e) => onKind(e.target.value as ZoneKind)}>
+        {zoneKinds.map((k) => (
+          <option key={k} value={k}>
+            {t(`projects.zone_kind.${k}`)}
+          </option>
+        ))}
+      </Select>
+      {kind === 'block' && (
+        <Input
+          type="number"
+          min={1}
+          max={500}
+          label={t('projects.zone_floors')}
+          value={floors}
+          error={floorsValid(floors) ? undefined : t('projects.zone_floors_invalid')}
+          onChange={(e) => onFloors(e.target.value)}
+        />
+      )}
+    </>
+  );
+}
+
+function EditZoneModal({
+  d,
+  zone,
+  onClose,
+  onDone,
+}: {
+  d: ProjectDetail;
+  zone: Zone;
+  onClose: () => void;
+  onDone: () => Promise<unknown>;
+}) {
+  const { t } = useT();
+  const toast = useToast();
+  const [name, setName] = useState(zone.name);
+  const [kind, setKind] = useState<ZoneKind>(zone.kind);
+  const [floors, setFloors] = useState(zone.floors_count ? String(zone.floors_count) : '');
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/v1/projects/${d.id}/zones/${zone.id}`, {
+        method: 'PATCH',
+        body: {
+          version: zone.version,
+          name,
+          kind,
+          floors_count: kind === 'block' && floors ? Number(floors) : null,
+        },
+      }),
+    onSuccess: async () => {
+      await onDone();
+      onClose();
+      toast.success(t('common.saved'));
+    },
+    onError: (e: ApiError) =>
+      toast.error(
+        e.code === 'VERSION_CONFLICT' ? t('common.version_conflict') : errorMessage(t, e.code, e.status),
+      ),
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={t('projects.zone_edit')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={() => save.mutate()}
+            loading={save.isPending}
+            disabled={name.trim().length < 1 || !floorsValid(floors)}
+          >
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack">
+        <Input label={t('projects.zone_name')} value={name} onChange={(e) => setName(e.target.value)} />
+        <ZoneKindFields kind={kind} floors={floors} onKind={setKind} onFloors={setFloors} />
+      </div>
+    </Modal>
   );
 }
 

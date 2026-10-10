@@ -93,7 +93,7 @@ d:\Ismoil\VScode\Frontend\Frontend\
    ├─ backend/                    Node.js API + worker + migratsiyalar + testlar
    │  ├─ .env (gitignored), .env.example, compose.yaml, Dockerfile, docker/init.sh
    │  ├─ src/                     ~9k qator TypeScript
-   │  ├─ migrations/              001…013 SQL
+   │  ├─ migrations/              001…014 SQL
    │  ├─ scripts/                 integration.ts, ui-test.ts, role-tests.ts, docker-smoke.mjs, docs.ts
    │  ├─ tests/domain.test.ts     unit testlar
    │  ├─ storage/                 lokal private fayllar (gitignored)
@@ -395,8 +395,9 @@ To‘liq DDL: `docs/backend/BARPO_DATABASE_SPEC.md` (`npm run docs` migratsiyala
 | 011_tasks_reports_files | `tasks.description`, `files.task_id`, progress_corrections |
 | 012_settings_support_diagnostics | `tenants`: address, phone, settings (jsonb); `support_requests`: response, responded_by, responded_at; error_events |
 | 013_billing_credit_auto_invoice | billing_credits; `billing_invoices.source` (manual/auto); `billing_entries.created_by` nullable (worker yozuvlari uchun) |
+| 014_project_zone_profile | `projects`: area_m2, image_file_id (kompozit FK → shu obyekt fayli); `zones`: kind (block/entrance/floor/other), floors_count (faqat block), version |
 
-**Qoida:** qo‘llangan migratsiyani hech qachon tahrirlamang, faqat keyingi raqam (`014_*.sql`). Runner advisory lock bilan ishlaydi va `schema_migrations` ga yozadi. Qayta ishga tushirish no-op.
+**Qoida:** qo‘llangan migratsiyani hech qachon tahrirlamang, faqat keyingi raqam (`015_*.sql`). Runner advisory lock bilan ishlaydi va `schema_migrations` ga yozadi. Qayta ishga tushirish no-op.
 
 ### 8.1. Holat va tur qiymatlari (CHECK)
 
@@ -404,6 +405,7 @@ To‘liq DDL: `docs/backend/BARPO_DATABASE_SPEC.md` (`npm run docs` migratsiyala
 |---|---|
 | tenants.status | pending, active, blocked, archived |
 | projects.status | planning, active, paused, completed |
+| zones.kind | block, entrance, floor, other (`floors_count` faqat block) |
 | tasks.status | todo, in_progress, submitted, returned, accepted |
 | reports.status / kind | submitted, returned, accepted / daily, weekly |
 | estimate_lines.kind | material, labor, equipment, service |
@@ -446,7 +448,7 @@ To‘liq DDL: `docs/backend/BARPO_DATABASE_SPEC.md` (`npm run docs` migratsiyala
 - Parolni tiklash: admin bir martalik reset token chiqaradi (`/reset-password#token=…`, 30 daqiqa). Parol hech qachon qaytarilmaydi yoki ko‘rsatilmaydi.
 - Deaktivatsiya: ochiq vazifa yoki custody qoldig‘i bo‘lsa `HANDOVER_REQUIRED`, `OPEN_TASKS_EXIST` yoki `STOCK_HANDOVER_REQUIRED`. Avval vazifani boshqaga biriktirish va materialni qaytarish kerak.
 - Adminlikni topshirish: `POST /v1/company/ownership` — atomik, ikkala tomonning sessiyasi bekor qilinadi. Oddiy xodim API admin’ni o‘zgartira olmaydi. O‘z rolini o‘zgartirish taqiqlangan (`SELF_ROLE_CHANGE_FORBIDDEN`).
-- Obyekt: nom, kod, manzil, buyurtmachi, tavsif, holat, `planned_end` (o‘zgarmas boshlang‘ich reja) va `forecast_end` (hisobotdan). Zonalar daraxt shaklida, parent o‘zgarmas. Brigadir obyektga biriktirilganda custody hisobi avtomatik ochiladi.
+- Obyekt: nom, kod, manzil, buyurtmachi, tavsif, holat, `area_m2`, rasm (`image_file_id` — faqat shu obyektga yuklangan JPEG/PNG fayl), `planned_end` (o‘zgarmas boshlang‘ich reja) va `forecast_end` (hisobotdan); tugash sanasi boshlanishdan oldin bo‘lsa `DATE_RANGE_INVALID` (400). PATCH to‘liq almashtirish rejimida: yuborilmagan ixtiyoriy maydon `null` bo‘ladi (`status` joriy qiymatini saqlaydi); rasm fayli arxivlansa havola avtomatik tozalanadi. Zonalar daraxt shaklida, parent o‘zgarmas; tur `kind` (block/entrance/floor/other), `floors_count` faqat blok uchun, tahrir `version` bilan (`zone.create`/`zone.update` audit). Brigadir obyektga biriktirilganda custody hisobi avtomatik ochiladi.
 
 ### 9.3. Smeta
 
@@ -583,6 +585,7 @@ POST /v1/billing/checkout → 503
 # Obyektlar, katalog
 GET|POST /v1/projects                   GET|PATCH|DELETE /v1/projects/{id}
 GET|POST /v1/projects/{id}/zones        GET /v1/projects/{id}/dashboard (finance.read)
+PATCH /v1/projects/{id}/zones/{zone_id} (nom, tur, qavatlar; version)
 GET  /v1/projects/{id}/work-lines (reports.read, narxsiz)
 GET  /v1/catalog                        GET|POST /v1/materials
 
@@ -631,7 +634,7 @@ GET  /v1/dashboard   GET /v1/integrations   GET /v1/audit   GET /v1/audit/export
 
 | HTTP | Kodlar |
 |---|---|
-| 400 | VALIDATION_ERROR (`fields:[{path,message}]`), INVALID_INPUT, IDEMPOTENCY_KEY_REQUIRED, RETURN_REASON_REQUIRED, INVALID_ACCEPTANCE_QUANTITY, WORKBOOK_LIMIT, FORMULAS_NOT_ALLOWED, UNSAFE_WORKBOOK, FILE_SIGNATURE_INVALID, FILE_SIZE_INVALID, PAYMENT_ALLOCATION_REQUIRED, RECEIPT_MATCH_REQUIRED |
+| 400 | VALIDATION_ERROR (`fields:[{path,message}]`), INVALID_INPUT, DATE_RANGE_INVALID, IDEMPOTENCY_KEY_REQUIRED, RETURN_REASON_REQUIRED, INVALID_ACCEPTANCE_QUANTITY, WORKBOOK_LIMIT, FORMULAS_NOT_ALLOWED, UNSAFE_WORKBOOK, FILE_SIGNATURE_INVALID, FILE_SIZE_INVALID, PAYMENT_ALLOCATION_REQUIRED, RECEIPT_MATCH_REQUIRED |
 | 401 | UNAUTHORIZED, INVALID_CREDENTIALS, INVALID_TELEGRAM_SIGNATURE |
 | 403 | FORBIDDEN, PAGE_ACTION_FORBIDDEN, TENANT_BLOCKED, TENANT_ARCHIVED, PASSWORD_CHANGE_REQUIRED, CSRF_ORIGIN_REJECTED, SELF_REVIEW_FORBIDDEN, DELEGATION_EXCEEDS_OWN_PERMISSIONS |
 | 404 | NOT_FOUND (biriktirilmagan obyekt yoki ombor va chet kompaniya ID’si ham) |
@@ -721,7 +724,7 @@ Sidebar (`tenantNav`) uch guruh: Asosiy (dashboard, obyektlar, smetalar, vazifal
 
 **Yangi endpoint.** Tegishli `routes-*.ts` da `add({ method, path, summary, body/params/query (zod strictObject), permission yoki page+action, idempotent (yozuv uchun true), sensitive (narx bo‘lsa), handler })`. Handler `ctx.db` (tranzaksiya ichida) va `ctx.actor` bilan ishlaydi. Obyektga oid bo‘lsa `projectScope`, ombor hisobi bo‘lsa `accountScope`. Holat o‘zgarsa `version` tekshiruvi va `audit()`. Keyin `npm run docs`, `npm run test:roles` va kerak bo‘lsa integration testga qadam qo‘shing.
 
-**Yangi migratsiya.** `backend/migrations/014_<nom>.sql`. Kompaniya jadvali bo‘lsa `tenant_id`, FORCE RLS va `tenant_isolation` siyosati (001 dagi `format(...)` naqshi). Pul `numeric(20,2)`, miqdor 6 xonali. Keyin `npm run docs` (DATABASE_SPEC qayta yaratiladi) va integration test.
+**Yangi migratsiya.** `backend/migrations/015_<nom>.sql`. Kompaniya jadvali bo‘lsa `tenant_id`, FORCE RLS va `tenant_isolation` siyosati (001 dagi `format(...)` naqshi). Pul `numeric(20,2)`, miqdor 6 xonali. Keyin `npm run docs` (DATABASE_SPEC qayta yaratiladi) va integration test.
 
 **Yangi kompaniya sahifasi.** Backend `pages` + yangi migratsiyada `role_page_permissions` sahifa CHECK ro‘yxatini kengaytirish → frontend `pages`, `pageRoutes`, `tenantNav`, `App.tsx` dagi `tenantPages` → ikkala lokalda `page.<kalit>`. `pages` backend va frontendda bir xil bo‘lishi shart, `test:ui` buni tekshiradi.
 
@@ -736,7 +739,7 @@ Sidebar (`tenantNav`) uch guruh: Asosiy (dashboard, obyektlar, smetalar, vazifal
 | 01 Talablar va hisob qoidalari | **ochiq**: ekran↔API jadvali, tarif narx/limit, trial tartibi, tannarx usuli, saqlash muddati, ish haqi va prognoz qoidalari, provayderlar ro‘yxati |
 | 02 Baza va API asosi | asos bor; **ochiq**: qat’iy javob DTO’lari, qidiruv/filtr/sahifalash bo‘shliqlari |
 | 03 Login, taklif, ruxsatlar | bajarilgan (2026-10-04); **ochiq**: admin tiklashda shaxsni tekshirish, sessiya tugashi va bloklanishda har rolni to‘g‘ri sahifaga qaytarishni tekshirish |
-| 04 Kompaniya, xodim, obyekt | bajarilgan; **ochiq**: API’da yo‘q amallar (masalan zona tahriri) |
+| 04 Kompaniya, xodim, obyekt | bajarilgan (zona tahriri, obyekt maydoni va rasmi — 2026-10-10); **ochiq**: API’da yo‘q boshqa amallar |
 | 05 Smeta | bajarilgan; **ochiq**: reviziyalararo barqaror ish qatori identifikatori, obyekt/zona bo‘yicha boshlang‘ich va joriy reja–fakt |
 | 06 Ombor | bajarilgan; **ochiq**: retry’da bir xil Idempotency-Key saqlash (frontend) |
 | 07 Moliya | bajarilgan; **ochiq**: invoys narx farqini taqsimlash, bitta invoys–ko‘p kirim, avansni invoysga hisoblash |

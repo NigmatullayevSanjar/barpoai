@@ -1,12 +1,12 @@
 # BARPO AI — 11-bosqich: rol bo‘yicha to‘liq sinov hisoboti
 
-Bajarildi: 2026-10-10T12:04:30.257Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
+Bajarildi: 2026-10-10T12:55:37.821Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
 
 ## Natija
 
 - ✅ Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan
 - ✅ Role × GET endpoint matrix: 63 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)
-- ✅ Cross-tenant isolation: 14 id-routes and 5 writes with foreign ids are rejected; lists stay tenant-scoped
+- ✅ Cross-tenant isolation: 14 id-routes and 6 writes with foreign ids are rejected; lists stay tenant-scoped
 - ✅ Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; brigadier responses carry no price fields
 - ✅ Replays with the same idempotency key, parallel version races, double accept and double reversal never write money/material/progress twice
 

@@ -339,4 +339,5 @@ export const uz: Record<string, string> = {
   'error.SIGNUP_REQUIRED': 'Kompaniya hali ro‘yxatdan o‘tmagan.',
   'error.BILLING_AMOUNT_EXCEEDED': 'Summa invoys qoldig‘idan oshib ketdi.',
   'error.TELEGRAM_ACCOUNT_IN_USE': 'Bu Telegram akkaunt boshqa hisobga ulangan.',
+  'error.DATE_RANGE_INVALID': 'Tugash sanasi boshlanishdan oldin bo‘lmasin.',
 };

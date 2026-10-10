@@ -572,6 +572,11 @@ try {
   }
   const crossWrites: [string, string, unknown][] = [
     ['PATCH', `/v1/projects/${projectA1.id}`, { version: projectA1.version, name: 'Hijack' }],
+    [
+      'PATCH',
+      `/v1/projects/${projectA1.id}/zones/${zone.id}`,
+      { version: zone.version, name: 'Hijack', kind: 'block' },
+    ],
     ['POST', `/v1/tasks/${task.id}/transition`, { version: task.version, status: 'in_progress' }],
     ['POST', `/v1/employees/${staff.foreman!.id}/assignments`, { project_id: projectB1.id }],
     [
@@ -604,6 +609,14 @@ try {
     const r = await raw(method, url, body, B.adminToken);
     if (r.status < 400) leaks.push(`${method} ${url} → ${r.status} for other tenant`);
   }
+  // Chet kompaniya admini uchun zona ham obyekt kabi 404 (mavjudligi oshkor bo'lmaydi), 403 yoki 400 emas
+  await call(
+    'PATCH',
+    `/v1/projects/${projectA1.id}/zones/${zone.id}`,
+    { version: zone.version, name: 'Hijack', kind: 'block' },
+    B.adminToken,
+    404,
+  );
   const rA = await raw('GET', `/v1/projects/${projectB1.id}`, undefined, A.adminToken);
   if (rA.status === 200) leaks.push('tenant A admin reads tenant B project');
   const mB = await raw('GET', '/v1/materials', undefined, B.adminToken);
@@ -612,7 +625,7 @@ try {
   findings.push(...leaks);
   assert.deepEqual(leaks, [], 'cross-tenant leaks');
   passed.push(
-    `Cross-tenant isolation: ${crossGets.length} id-routes and 5 writes with foreign ids are rejected; lists stay tenant-scoped`,
+    `Cross-tenant isolation: ${crossGets.length} id-routes and ${crossWrites.length} writes with foreign ids are rejected; lists stay tenant-scoped`,
   );
 
   // ---------------------------------------------------------------- 3. Individual taqiq, sahifa CRUD, chegaralar, narx

@@ -28,6 +28,17 @@ export const projectStatuses: ProjectStatus[] = ['planning', 'active', 'paused',
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: () => apiAll<Project>('/v1/projects') });
 
+const AREA_RE = /^(0|[1-9]\d{0,9})(\.\d{1,2})?$/;
+export function checkDates(
+  v: { planned_start: string; planned_end: string; actual_start?: string; actual_end?: string },
+  ctx: z.RefinementCtx,
+  t: (k: string) => string,
+) {
+  if (v.planned_start && v.planned_end && v.planned_end < v.planned_start)
+    ctx.addIssue({ code: 'custom', path: ['planned_end'], message: t('projects.date_order') });
+  if (v.actual_start && v.actual_end && v.actual_end < v.actual_start)
+    ctx.addIssue({ code: 'custom', path: ['actual_end'], message: t('projects.date_order') });
+}
 export function projectSchema(t: (k: string) => string) {
   return z.object({
     name: z.string().trim().min(2, t('common.required')).max(200),
@@ -38,6 +49,10 @@ export function projectSchema(t: (k: string) => string) {
     status: z.enum(['planning', 'active', 'paused', 'completed']),
     planned_start: z.string(),
     planned_end: z.string(),
+    area_m2: z
+      .string()
+      .trim()
+      .refine((x) => x === '' || (AREA_RE.test(x) && /[1-9]/.test(x)), t('projects.area_invalid')),
   });
 }
 export type ProjectForm = z.infer<ReturnType<typeof projectSchema>>;
@@ -50,6 +65,7 @@ export const toProjectBody = (v: ProjectForm) => ({
   status: v.status,
   planned_start: v.planned_start || null,
   planned_end: v.planned_end || null,
+  area_m2: v.area_m2 || null,
 });
 export function ProjectFields({ form }: { form: ReturnType<typeof useForm<ProjectForm>> }) {
   const { t } = useT();
@@ -83,7 +99,19 @@ export function ProjectFields({ form }: { form: ReturnType<typeof useForm<Projec
       />
       <Input label={t('projects.address')} error={e.address?.message} {...form.register('address')} />
       <Input type="date" label={t('projects.planned_start')} {...form.register('planned_start')} />
-      <Input type="date" label={t('projects.planned_end')} {...form.register('planned_end')} />
+      <Input
+        type="date"
+        label={t('projects.planned_end')}
+        error={e.planned_end?.message}
+        {...form.register('planned_end')}
+      />
+      <Input
+        label={t('projects.area_m2')}
+        inputMode="decimal"
+        placeholder="1250.50"
+        error={e.area_m2?.message}
+        {...form.register('area_m2')}
+      />
       <Textarea
         wrapClassName="span-2"
         label={t('projects.description')}
@@ -226,7 +254,9 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const form = useForm<ProjectForm>({
-    resolver: zodResolver(projectSchema(t)),
+    resolver: zodResolver(
+      projectSchema(t).superRefine((v, ctx) => checkDates(v, ctx, t)),
+    ),
     defaultValues: {
       name: '',
       code: '',
@@ -236,6 +266,7 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
       status: 'planning',
       planned_start: '',
       planned_end: '',
+      area_m2: '',
     },
   });
   const create = useMutation({

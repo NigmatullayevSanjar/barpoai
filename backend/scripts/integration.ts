@@ -237,6 +237,186 @@ try {
   passed.push(
     'Project q matches code, customer and address and status filters on the server; a foreman never finds or opens an unassigned project',
   );
+  // ---- 1.3 (OBJ-02/OBJ-04): obyekt maydoni, sana tartibi, rasm; zona turi, qavatlar soni, tahrir (version) va audit
+  await call(
+    'POST',
+    '/v1/projects',
+    { name: 'Sana xato', planned_start: '2026-10-10', planned_end: '2026-10-01' },
+    adminToken,
+    undefined,
+    400,
+  );
+  await call('POST', '/v1/projects', { name: 'Maydon xato', area_m2: '0' }, adminToken, undefined, 400);
+  const projectC = await call(
+    'POST',
+    '/v1/projects',
+    { name: 'Obyekt C', area_m2: '1250.50', planned_start: '2026-10-01', planned_end: '2026-10-01' },
+    adminToken,
+  );
+  assert.equal(projectC.area_m2, '1250.50');
+  assert.equal(projectC.image_file_id, null);
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 1, name: 'Obyekt C', actual_start: '2026-10-05', actual_end: '2026-10-04' },
+    adminToken,
+    undefined,
+    400,
+  );
+  const png1x1 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const facade = await call(
+    'POST',
+    '/v1/files',
+    { project_id: projectC.id, name: 'fasad.png', mime_type: 'image/png', base64: png1x1 },
+    adminToken,
+  );
+  const foreignFile = await call(
+    'POST',
+    '/v1/files',
+    { project_id: project.id, name: 'boshqa.png', mime_type: 'image/png', base64: png1x1 },
+    adminToken,
+  );
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 1, name: 'Obyekt C', image_file_id: foreignFile.id },
+    adminToken,
+    undefined,
+    404,
+  );
+  const withImage = await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 1, name: 'Obyekt C', area_m2: '1300', image_file_id: facade.id },
+    adminToken,
+  );
+  assert.equal(withImage.image_file_id, facade.id);
+  assert.equal(withImage.area_m2, '1300.00');
+  assert.equal(
+    (await call('GET', `/v1/projects/${projectC.id}`, undefined, adminToken)).image_file_id,
+    facade.id,
+  );
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 2, name: 'Obyekt C', image_file_id: facade.id, planned_start: '2026-10-10', planned_end: '2026-10-01' },
+    adminToken,
+    undefined,
+    400,
+  );
+  const noImage = await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 2, name: 'Obyekt C', area_m2: '1300', image_file_id: null },
+    adminToken,
+  );
+  assert.equal(noImage.image_file_id, null);
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 3, name: 'Obyekt C', image_file_id: facade.id },
+    adminToken,
+  );
+  // Rasm fayli arxivlansa obyektdagi havola tozalanadi va versiya oshadi; arxivlangan faylni qayta ulab bo'lmaydi
+  await call('DELETE', `/v1/files/${facade.id}`, { reason: 'Eski fasad rasmi olib tashlandi' }, adminToken);
+  const cleared = await call('GET', `/v1/projects/${projectC.id}`, undefined, adminToken);
+  assert.equal(cleared.image_file_id, null);
+  assert.equal(cleared.version, 5);
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}`,
+    { version: 5, name: 'Obyekt C', image_file_id: facade.id },
+    adminToken,
+    undefined,
+    404,
+  );
+  await assert.rejects(
+    admin.query('UPDATE projects SET image_file_id=$1 WHERE id=$2', [foreignFile.id, projectC.id]),
+    /projects_image_file_fk/,
+  );
+  const block = await call(
+    'POST',
+    `/v1/projects/${projectC.id}/zones`,
+    { name: 'A blok', kind: 'block', floors_count: 9 },
+    adminToken,
+  );
+  assert.equal(block.kind, 'block');
+  assert.equal(block.floors_count, 9);
+  assert.equal(block.version, 1);
+  const floorZone = await call(
+    'POST',
+    `/v1/projects/${projectC.id}/zones`,
+    { name: '1-qavat', parent_id: block.id, kind: 'floor', floors_count: 3 },
+    adminToken,
+  );
+  assert.equal(floorZone.floors_count, null);
+  assert.equal(
+    (await call('POST', `/v1/projects/${projectC.id}/zones`, { name: 'Hovli' }, adminToken)).kind,
+    'other',
+  );
+  const edited = await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 1, name: 'B blok', kind: 'block', floors_count: 12 },
+    adminToken,
+  );
+  assert.equal(edited.name, 'B blok');
+  assert.equal(edited.floors_count, 12);
+  assert.equal(edited.version, 2);
+  assert.equal(edited.parent_id, null);
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 1, name: 'Eskirgan', kind: 'block' },
+    adminToken,
+    undefined,
+    409,
+  );
+  const retyped = await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 2, name: 'B blok', kind: 'entrance', floors_count: 5 },
+    adminToken,
+  );
+  assert.equal(retyped.floors_count, null);
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 3, name: 'B blok', kind: 'block', parent_id: null },
+    adminToken,
+    undefined,
+    400,
+  );
+  // Sahifa amali (projects.update) scope'dan oldin tekshiriladi: prorab uchun 403, begona obyekt/zona uchun 404
+  await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 3, name: 'Chet', kind: 'block' },
+    foreman.token,
+    undefined,
+    403,
+  );
+  await call(
+    'PATCH',
+    `/v1/projects/${project.id}/zones/${block.id}`,
+    { version: 3, name: 'Chet obyekt', kind: 'block' },
+    adminToken,
+    undefined,
+    404,
+  );
+  assert.deepEqual(
+    (
+      await admin.query(
+        'SELECT action FROM audit_events WHERE resource_id=$1 ORDER BY created_at,action',
+        [block.id],
+      )
+    ).rows.map((r) => r.action),
+    ['zone.create', 'zone.update', 'zone.update'],
+  );
+  passed.push(
+    'Project area, date order and image file are validated; zones carry kind/floors and are edited with version check, scope and audit',
+  );
   // ---- API-07/API-11: xodim qidiruvi (telefon, lavozim), hash chiqmasligi, active bayrog'i
   const searcher = await call(
     'POST',

@@ -12,11 +12,23 @@ export type Project = {
   actual_start: string | null;
   actual_end: string | null;
   forecast_end: string | null;
+  area_m2: string | null;
+  image_file_id: string | null;
   archived_at: string | null;
   version: number;
   created_at: string;
 };
-export type Zone = { id: string; project_id: string; parent_id: string | null; name: string };
+export type ZoneKind = 'block' | 'entrance' | 'floor' | 'other';
+export const zoneKinds: ZoneKind[] = ['block', 'entrance', 'floor', 'other'];
+export type Zone = {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  name: string;
+  kind: ZoneKind;
+  floors_count: number | null;
+  version: number;
+};
 export type Member = {
   id: string;
   display_name: string;

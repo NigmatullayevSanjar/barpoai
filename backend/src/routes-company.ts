@@ -5,6 +5,7 @@ import {
   uuid,
   text,
   date,
+  area,
   idParams,
   pageQuery,
   searchQuery,
@@ -68,7 +69,11 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     status: projectStatus.optional(),
     planned_start: date.nullable().optional(),
     planned_end: date.nullable().optional(),
+    area_m2: area.nullable().optional(),
   });
+  // Tugash boshlanishdan oldin bo'lmasin (ISO sanalar matn sifatida solishtiriladi); baza CHECK'i 409 o'rniga 400.
+  const dateOrder = (start?: string | null, end?: string | null) =>
+    invariant(!start || !end || end >= start, 'DATE_RANGE_INVALID', 400);
   add({
     method: 'POST',
     path: '/v1/projects',
@@ -77,9 +82,10 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     body: projectBody,
     idempotent: true,
     handler: async ({ db, actor, body }) => {
+      dateOrder(body.planned_start, body.planned_end);
       const row = await one(
         db,
-        'INSERT INTO projects(tenant_id,name,code,address,customer_name,description,status,planned_start,planned_end) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+        'INSERT INTO projects(tenant_id,name,code,address,customer_name,description,status,planned_start,planned_end,area_m2) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [
           actor.tenant_id,
           body.name,
@@ -90,6 +96,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.status ?? 'planning',
           body.planned_start ?? null,
           body.planned_end ?? null,
+          body.area_m2 ?? null,
         ],
       );
       await db.query('INSERT INTO project_assignments VALUES($1,$2,$3)', [
@@ -104,7 +111,8 @@ export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'PATCH',
     path: '/v1/projects/:id',
-    summary: 'Obyekt va alohida forecastni yangilash',
+    summary:
+      'Obyekt va alohida forecastni yangilash; image_file_id — shu obyektga yuklangan JPEG/PNG fayl (null — olib tashlash)',
     permission: 'projects.write',
     params: idParams,
     body: projectBody.extend({
@@ -112,15 +120,26 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       forecast_end: date.nullable().optional(),
       actual_start: date.nullable().optional(),
       actual_end: date.nullable().optional(),
+      image_file_id: uuid.nullable().optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, body, params }) => {
       const current = await projectScope(db, actor, params.id);
       invariant(current.version === body.version, 'VERSION_CONFLICT');
+      dateOrder(body.planned_start, body.planned_end);
+      dateOrder(body.actual_start, body.actual_end);
+      // Yangi rasm: faqat shu obyektga yuklangan, hisobot/vazifaga bog'lanmagan, arxivlanmagan fayl.
+      // O'zgarmagan id qayta tekshirilmaydi (arxivlangan eski rasm obyekt tahririni bloklamasin).
+      if (body.image_file_id && body.image_file_id !== current.image_file_id)
+        await one(
+          db,
+          'SELECT id FROM files WHERE tenant_id=$1 AND id=$2 AND project_id=$3 AND report_id IS NULL AND task_id IS NULL AND archived_at IS NULL FOR SHARE',
+          [actor.tenant_id, body.image_file_id, params.id],
+        );
       const row = await one(
         db,
         `UPDATE projects SET name=$3,code=$4,address=$5,customer_name=$6,description=$7,status=$8,planned_start=$9,planned_end=$10,
-           forecast_end=$11,actual_start=$12,actual_end=$13,version=version+1 WHERE id=$1 AND version=$2 RETURNING *`,
+           forecast_end=$11,actual_start=$12,actual_end=$13,area_m2=$14,image_file_id=$15,version=version+1 WHERE id=$1 AND version=$2 RETURNING *`,
         [
           params.id,
           body.version,
@@ -135,27 +154,77 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.forecast_end ?? null,
           body.actual_start ?? null,
           body.actual_end ?? null,
+          body.area_m2 ?? null,
+          body.image_file_id ?? null,
         ],
       );
       await audit(db, actor, 'project.update', row.id);
       return row;
     },
   });
+  const zoneKind = z.enum(['block', 'entrance', 'floor', 'other']);
+  const zoneFloors = z.number().int().min(1).max(500).nullable().optional();
   add({
     method: 'POST',
     path: '/v1/projects/:id/zones',
-    summary: 'O‘zgarmas parent bilan zona yaratish',
+    summary: 'O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun saqlanadi',
     permission: 'projects.write',
     params: idParams,
-    body: z.strictObject({ name: text, parent_id: uuid.optional() }),
+    body: z.strictObject({
+      name: text,
+      parent_id: uuid.optional(),
+      kind: zoneKind.optional(),
+      floors_count: zoneFloors,
+    }),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
-      return one(
+      const kind = body.kind ?? 'other';
+      const row = await one(
         db,
-        'INSERT INTO zones(tenant_id,project_id,name,parent_id) VALUES($1,$2,$3,$4) RETURNING *',
-        [actor.tenant_id, params.id, body.name, body.parent_id ?? null],
+        'INSERT INTO zones(tenant_id,project_id,name,parent_id,kind,floors_count) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+        [
+          actor.tenant_id,
+          params.id,
+          body.name,
+          body.parent_id ?? null,
+          kind,
+          kind === 'block' ? (body.floors_count ?? null) : null,
+        ],
       );
+      await audit(db, actor, 'zone.create', row.id, { project_id: params.id });
+      return row;
+    },
+  });
+  add({
+    method: 'PATCH',
+    path: '/v1/projects/:id/zones/:zone_id',
+    summary: 'Zona nomi, turi va qavatlar sonini tahrirlash (version bilan); parent o‘zgarmaydi',
+    permission: 'projects.write',
+    params: z.strictObject({ id: uuid, zone_id: uuid }),
+    body: z.strictObject({ version, name: text, kind: zoneKind, floors_count: zoneFloors }),
+    idempotent: true,
+    handler: async ({ db, actor, params, body }) => {
+      await projectScope(db, actor, params.id);
+      const zone = await one(
+        db,
+        'SELECT * FROM zones WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',
+        [actor.tenant_id, params.id, params.zone_id],
+      );
+      invariant(zone.version === body.version, 'VERSION_CONFLICT');
+      const row = await one(
+        db,
+        'UPDATE zones SET name=$2,kind=$3,floors_count=$4,version=version+1 WHERE tenant_id=$5 AND id=$1 RETURNING *',
+        [
+          zone.id,
+          body.name,
+          body.kind,
+          body.kind === 'block' ? (body.floors_count ?? null) : null,
+          actor.tenant_id,
+        ],
+      );
+      await audit(db, actor, 'zone.update', row.id, { project_id: params.id });
+      return row;
     },
   });
   add({

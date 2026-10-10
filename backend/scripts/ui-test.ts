@@ -232,24 +232,57 @@ try {
   await adminPage.getByRole('dialog').getByLabel('Obyekt nomi').fill('Navoiy 28 turar-joy');
   await adminPage.getByRole('dialog').getByLabel('Loyiha kodi').fill('NAV-28');
   await adminPage.getByRole('dialog').getByLabel('Buyurtmachi').fill('Toshkent Invest');
+  await adminPage.getByRole('dialog').getByLabel('Maydon, m²').fill('1250.5');
   await adminPage
     .getByRole('dialog')
     .getByRole('button', { name: 'Yaratish', exact: true })
     .click();
   await adminPage.getByRole('heading', { name: /Navoiy 28 turar-joy/ }).waitFor();
+  await adminPage.getByText('1250.50', { exact: true }).waitFor();
+  // 1.3: obyekt rasmi tahrir oynasida yuklanadi (JPEG/PNG), kartada ko'rinadi
+  await adminPage.getByRole('button', { name: 'Tahrirlash', exact: true }).click();
+  await adminPage
+    .getByRole('dialog')
+    .locator('input[type=file]')
+    .setInputFiles({
+      name: 'fasad.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Saqlash', exact: true })
+    .click();
+  await adminPage.locator('img[alt="Navoiy 28 turar-joy"]').waitFor();
+  // 1.3: zona turi (blok) va qavatlar soni, keyin tahrir
   await adminPage.getByRole('tab', { name: /Zonalar/ }).click();
   await adminPage.getByRole('button', { name: 'Zona qo‘shish' }).click();
   await adminPage
     .getByRole('dialog')
     .getByLabel(/Zona nomi/)
     .fill('A blok');
+  await adminPage.getByRole('dialog').getByLabel('Zona turi').selectOption('block');
+  await adminPage.getByRole('dialog').getByLabel('Qavatlar soni').fill('9');
   await adminPage
     .getByRole('dialog')
     .getByRole('button', { name: 'Qo‘shish', exact: true })
     .click();
   await adminPage.getByText('A blok').waitFor();
+  await adminPage.getByText('9 qavat').waitFor();
+  await adminPage.getByRole('button', { name: 'Zonani tahrirlash' }).click();
+  await adminPage.getByRole('dialog').getByLabel('Qavatlar soni').fill('12');
+  await adminPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Saqlash', exact: true })
+    .click();
+  await adminPage.getByText('12 qavat').waitFor();
   const projectUrl = adminPage.url();
-  checks.push('Admin creates a project with code and customer and adds a zone from the UI');
+  checks.push(
+    'Admin creates a project with area and photo, adds a block zone with floors and edits it from the UI',
+  );
   await adminPage.goto(webURL + '/app/employees');
   await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).first().click();
   const dlg = adminPage.getByRole('dialog');

@@ -7,6 +7,11 @@ export const amount = z.string().regex(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/);
 export const qty = z.string().regex(/^(0|[1-9]\d{0,17})(\.\d{1,6})?$/);
 export const positiveAmount = amount.refine((s) => /[1-9]/.test(s), 'Musbat qiymat kerak');
 export const positiveQty = qty.refine((s) => /[1-9]/.test(s), 'Musbat miqdor kerak');
+// Maydon, m²: numeric(12,2) ga sig'adigan musbat decimal string.
+export const area = z
+  .string()
+  .regex(/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/)
+  .refine((s) => /[1-9]/.test(s), 'Musbat maydon kerak');
 export const password = z.string().min(12).max(128);
 export const loginName = z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/);
 // Telefon: +998 va 9 raqam; bo'sh joy, qavs va chiziqlar normalizatsiyada olib tashlanadi.

@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T12:04:01.017Z",
+  "executed_at": "2026-10-10T12:55:37.790Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -8,6 +8,7 @@
     "Employee first login requires password change; sessions revoked",
     "Project and employee lists filter by q, status, role and active on the server",
     "Project q matches code, customer and address and status filters on the server; a foreman never finds or opens an unassigned project",
+    "Project area, date order and image file are validated; zones carry kind/floors and are edited with version check, scope and audit",
     "Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server",
     "Material search is case-insensitive and escapes LIKE wildcards",
     "Material list pages without overlap or gaps, searches case-insensitively, treats _ and % literally, ignores blank q, caps q at 100 chars and rejects bad limit/offset with VALIDATION_ERROR",

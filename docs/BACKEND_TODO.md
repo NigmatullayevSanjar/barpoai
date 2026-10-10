@@ -115,7 +115,8 @@ Bog‘liqlik: 02. Qabul mezoni: ruxsatsiz amal UI, bevosita URL va API orqali ha
 - [x] Kompaniya yaratish/bloklash, xodim yaratish/yangilash, obyekt/zona va biriktirish endpointlari mavjud.
 - [x] Xodimni deaktivatsiya qilishda ochiq vazifa va materialni topshirish tekshiruvlari mavjud.
 - [x] 2026-10-04: platforma kompaniyalari (ro‘yxat, karta, taklif, tarif, invoys, to‘lov, bloklash), xodimlar (ro‘yxat, yaratish, karta, biriktirish, parol tiklash havolasi, individual ruxsatlar, adminlikni topshirish) va obyektlar (ro‘yxat, karta, zonalar, xodimlar, omborlar, tahrir, arxiv) real API bilan ulangan; migratsiya 007 (obyekt kodi/manzil/buyurtmachi/holat, xodim lavozimi). Brauzer e2e 14/14.
-- [ ] Frontend talab qiladigan, API katalogida yo‘q amallarni aniqlab qo‘shish; masalan, kerak bo‘lsa zona tahriri va ro‘yxat tafsilotlari.
+- [x] 2026-10-10: zona tahriri `PATCH /v1/projects/:id/zones/:zone_id` (nom, tur, qavatlar soni; version va audit `zone.create`/`zone.update`; parent o‘zgarmas); obyektda `area_m2` va rasm (`image_file_id`, shu obyekt fayli), sana tartibi `DATE_RANGE_INVALID`; migratsiya 014 (docs/TZ_VA_NARX_REJASI.md, 1.3).
+- [ ] API katalogida yo‘q boshqa amallarni frontend talabiga qarab qo‘shish (ro‘yxat tafsilotlari va h.k.).
 - [ ] Demo formalaridagi eski tanlangan yozuv holatini tozalash, noto‘g‘ri faol-xodim filtrini tuzatish.
 
 Bog‘liqlik: 03. Qabul mezoni: yaratilgan xodim/obyekt sahifa yangilanganda saqlanadi; foydalanuvchi faqat biriktirilgan doirada ishlaydi.

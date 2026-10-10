@@ -327,4 +327,5 @@ export const ru: Record<string, string> = {
   'error.SIGNUP_REQUIRED': 'Компания ещё не зарегистрирована.',
   'error.BILLING_AMOUNT_EXCEEDED': 'Сумма превышает остаток по счёту.',
   'error.TELEGRAM_ACCOUNT_IN_USE': 'Этот Telegram уже привязан к другому аккаунту.',
+  'error.DATE_RANGE_INVALID': 'Дата окончания не может быть раньше начала.',
 };
