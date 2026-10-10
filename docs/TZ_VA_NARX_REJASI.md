@@ -1,8 +1,8 @@
 # BARPO AI — TZ va xonadon narxi bo‘yicha ish rejasi
 
 > **Sana:** 2026-10-09.
-> **Manbalar:** `docs/BARPO_AI_HANDOFF.md`, `docs/research/COMPETITORS.md`, Figma TZ (`BARPO_AI_Figma_TZ.docx`, v1.0, 10.09.2026; repoda yo‘q).
-> **Ishlatish:** har bosqich alohida Claude Code sessiyasida bajariladi. Tayyor promptlar 6-bo‘limda, modellar 6.0 da. Bir vaqtda bitta sessiya ishlasin yoki har biri alohida worktree’da.
+> **Manbalar:** `docs/BARPO_AI_HANDOFF.md`, `docs/research/COMPETITORS.md`, Figma TZ (v1.0, 10.09.2026): asl hujjat `docs/tz/BARPO_AI_Figma_TZ.docx`, qidirish uchun matn nusxasi `docs/tz/BARPO_AI_Figma_TZ.md`.
+> **Ishlatish:** har bosqich alohida Claude Code sessiyasida bajariladi. Tayyor promptlar 6-bo‘limda, modellar 6.0 da. Bir vaqtda bitta sessiya ishlasin yoki har biri alohida worktree’da. Boshqa kompyuterda davom ettirish va ochiq ishlar — 9-bo‘lim.
 > 1-bo‘limdagi qarorlar majburiy. Ular handoff’dagi eski qoidalardan ustun.
 
 ---
@@ -456,3 +456,57 @@ D9 tufayli TZ’ning quyidagi bandlari kodda bo‘lmaydi. Dizayner ularni chizma
 - **D-01, FIN-01:** ish haqi moduli kodda bor.
 - **G-05, SZ-02:** USD qo‘llanadi, lekin almashtirgich ko‘rinishida (bir vaqtda bitta valyuta). Valyuta tanlash va kurs sozlamasi o‘rniga CBU kursi.
 - **OBJ-07, Q03:** xonadonlar ro‘yxati va narx varaqasi qo‘shiladi; sotuv, bron va CRM qo‘shilmaydi.
+
+---
+
+## 9. Boshqa kompyuterda davom ettirish (2026-10-10)
+
+### 9.1. Joriy holat
+
+- **Bajarilgan va commit qilingan:** 1.1, 1.2, 1.5 (`ec91638`), 1.3 (`af70f57`).
+- **Bosqich 1 test natijalari:** `docs/tests/BOSQICH_1_NATIJA.md` — 57 o‘tdi; UI-11 ma’lum cheklov; ERR-03 qisman tekshirilgan.
+- **Keyingi qadam:** Bosqich 3 (xonadonlar) — prompt 6.7, `/model claude-opus-5-5`. Undan keyin Bosqich 2, so‘ng 4. R1 va R2 hal qilingan, to‘siq yo‘q.
+- **Istalgan payt:** 1.4 (dashboard grafiklari).
+
+### 9.2. Yangi kompyuterni tayyorlash
+
+1. **Dasturlar:** Git, Node.js ≥ 24, pnpm 10, Docker Desktop, Google Chrome (`test:ui` uchun), Claude Code.
+2. **Repo:** `git clone https://github.com/Ismoil59/barpoai.git`. Repo private, shuning uchun GitHub akkauntiga kirish kerak.
+3. **`backend/.env`:** git’da yo‘q, unda baza parollari va Telegram bot tokeni bor.
+   - Eski kompyuterdan xavfsiz yo‘l bilan ko‘chiring (flesh, parol menejeri) yoki `backend/.env.example` dan yangisini yarating.
+   - Chat yoki git orqali yubormang.
+4. **Telegram:** bitta bot tokeni bilan ikki kompyuterda worker ishlamasin, `getUpdates` konflikt beradi. Eski kompyuterda `backend` papkasida `docker compose down` qiling yoki yangi kompyuterda alohida test bot ishlating.
+5. **Ishga tushirish:** handoff 4.2 bo‘yicha.
+   - Yangi baza bo‘sh bo‘ladi: birinchi platforma egasini handoff 4.3 bo‘yicha yarating.
+   - Eski kompyuterdagi “Sinov kompaniya” va `SINOV-` test ma’lumotlari ko‘chmaydi.
+6. **`COMPOSE_PROJECT_NAME=barpo`:** faqat eski kompyuterdagi nom to‘qnashuvi uchun kerak edi (handoff 4.1). Yangi kompyuterda shart emas, lekin qo‘yib qo‘ysangiz zarari yo‘q.
+7. **Testlar:** handoff 11-bo‘limdagi buyruqlar.
+
+### 9.3. Yangi Claude sessiyasini boshlash
+
+Claude Code’ni repo papkasida oching. Birinchi xabar:
+
+```text
+CLAUDE.md, docs/BARPO_AI_HANDOFF.md va docs/TZ_VA_NARX_REJASI.md ni o‘qi (ayniqsa 1-, 3- va 9-bo‘limlar).
+Joriy holatni va keyingi qadamni qisqa ayt, hech narsani o‘zgartirma.
+```
+
+Keyin keyingi bosqich uchun 6-bo‘limdagi promptni yangi sessiyada ishlating. TZ ID’lari (G-13, OBJ-07 va h.k.) `docs/tz/BARPO_AI_Figma_TZ.md` da qidiriladi.
+
+### 9.4. Ochiq ishlar (testlar va tekshiruvlar topgan, hali rejalashtirilmagan)
+
+Qator raqamlari 2026-10-10 holatiga tegishli.
+
+| # | Ish | Manba | Taklif |
+|---|---|---|---|
+| O1 | Invoysga bog‘lanadigan ombor kirimlari tanlovi `limit=100`: 101-chi eski, hali bog‘lanmagan kirim chiqmaydi | NATIJA UI-11, `DocumentModal.tsx:49` | `GET /v1/stock/commands` ga `unmatched=true` filtri va `SearchSelect` |
+| O2 | Telegram bot material ro‘yxati `LIMIT 60`, qidiruvsiz: 60+ materialli kompaniya bot orqali material so‘ray olmaydi | `telegram-flows.ts:153` | Botda nom bo‘yicha qidiruv yoki sahifalash |
+| O3 | Frontendda pul yig‘indisi: kassalar (`finance/pages.tsx:387`), budjet (`:755–756`), to‘lov kalendari (`workflow.tsx:483, 525`), smeta importi oldindan ko‘rish (`ImportWizard.tsx:153`) | NATIJA UI-10, EST-06 | Jamlarni serverdan olish (`CLAUDE.md` qoidasi) |
+| O4 | Tarmoq xatosi (status 0) avtomatik qayta urinilmaydi | `frontend/src/app/App.tsx:141` | Retry shartini tuzatish |
+| O5 | Obyekt PATCH’ida `FOR UPDATE` yo‘q: poyga holatida 409 o‘rniga 404 | 1.3 tekshiruvi | `FOR UPDATE` qo‘shish |
+| O6 | Blok bo‘lmagan zonaga `floors_count` xatosiz tashlab yuboriladi | 1.3 | 400 qaytarish |
+| O7 | `top_debt` va obyekt yig‘masi yozuv bo‘lmasa `'0'` qaytarishi mumkin, `'0.00'` emas | Tuzatish sessiyasi | `::numeric(20,2)` |
+| O8 | `docs/backend/BARPO_API_GUIDE.md` dagi auditga yoziladigan eksportlar ro‘yxatida smeta eksporti yo‘q | Tuzatish sessiyasi | Hujjatni yangilash |
+| O9 | `/admin/tenants/abc` va Billing default sahifa hajmi uchun UI testi yo‘q; ERR-03 ning super_admin va support qismi tekshirilmagan | NATIJA | `ui-test.ts` ga qo‘shish (bootstrap bilan) |
+| O10 | `PayablesList` (`finance/pages.tsx`) hech qayerda ishlatilmaydi | Kod ko‘rib chiqish | So‘rab, o‘chirish yoki ulash |
+| O11 | Rasm almashtirilganda eski fayl qoladi (yetim fayllar) | 1.3, BACKEND_TODO 08 | 08-bosqich bilan |
