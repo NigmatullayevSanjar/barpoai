@@ -287,7 +287,7 @@ try {
   await adminPage.getByRole('tab', { name: /Xonadonlar/ }).click();
   await adminPage.getByRole('button', { name: 'Xonadon qo‘shish' }).click();
   const premiseDlg = adminPage.getByRole('dialog');
-  await premiseDlg.getByLabel('Raqam', { exact: true }).fill('12');
+  await premiseDlg.getByLabel(/^Raqam/).fill('12');
   await premiseDlg.getByLabel('Zona (blok, kirish, qavat)').selectOption({ index: 1 });
   await premiseDlg.getByLabel('Qavat', { exact: true }).fill('3');
   await premiseDlg.getByLabel('Xonalar', { exact: true }).fill('2');
