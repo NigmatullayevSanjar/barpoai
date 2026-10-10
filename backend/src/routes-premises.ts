@@ -14,6 +14,7 @@ import {
   readPremisesWorkbook,
   planPremisesImport,
   applyPremisesPlan,
+  lockProjectPremises,
 } from './premises.js';
 /** Xonadonlar (Bosqich 3): ro'yxat, CRUD, arxiv va Excel import. Ruxsat zonalar bilan bir xil: projects.read / projects.write. */
 export function premiseRoutes(add: (r: Endpoint) => void) {
@@ -101,6 +102,7 @@ export function premiseRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
+      await lockProjectPremises(db, params.id);
       await checkPlace(db, actor, params.id, body);
       const row = await one(
         db,
@@ -131,6 +133,7 @@ export function premiseRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     handler: async ({ db, actor, params: p, body }) => {
       await projectScope(db, actor, p.id);
+      await lockProjectPremises(db, p.id);
       const premise = await lockPremise(db, actor, p);
       invariant(premise.version === body.version, 'VERSION_CONFLICT');
       invariant(!premise.archived_at, 'PREMISE_ARCHIVED');
@@ -170,6 +173,7 @@ export function premiseRoutes(add: (r: Endpoint) => void) {
       idempotent: true,
       handler: async ({ db, actor, params: p, body }) => {
         await projectScope(db, actor, p.id);
+        await lockProjectPremises(db, p.id);
         const premise = await lockPremise(db, actor, p);
         invariant(premise.version === body.version, 'VERSION_CONFLICT');
         invariant(
@@ -248,6 +252,7 @@ export function premiseRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
+      await lockProjectPremises(db, params.id);
       const preview = await one(
         db,
         "SELECT * FROM import_previews WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND kind='premises' FOR UPDATE",

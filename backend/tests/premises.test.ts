@@ -81,7 +81,7 @@ test('premises workbook keeps real sheet row numbers across blank rows', async (
   assert.deepEqual(
     rows.map((r) => [r.raw.row, r.raw.number, r.raw.floor, r.raw.area]),
     [
-      [2, '12', '3', '65.4'],
+      [2, '12', '3', '65.40'],
       [5, '15', '4', '4,5'],
     ],
   );
@@ -111,4 +111,20 @@ test('floor may not exceed the nearest block floors_count', () => {
   assert.equal(floorAllowed(zones, 'e', 10), false);
   assert.equal(floorAllowed(zones, 'o', 99), true);
   assert.equal(floorAllowed(zones, null, 99), true);
+});
+test('premises workbook: float noise in area is trimmed, odd numbers and long text are cell errors', async () => {
+  const rows = await readPremisesWorkbook(
+    await book(templateHeaders.uz, [
+      [null, null, null, 7, 'Kvartira', 1, 65.30000000000001],
+      [null, null, null, 1e21, 'Kvartira', 1, 40],
+      [null, null, null, 0.1 + 0.2, 'Kvartira', 1, 40],
+      ['x'.repeat(501), null, null, '9', 'Kvartira', 1, 40],
+    ]),
+  );
+  assert.deepEqual(rows[0]!.raw.area, '65.30');
+  assert.deepEqual(rows[0]!.errors, []);
+  assert.deepEqual(rows[1]!.errors, [{ field: 'number', code: 'INVALID_CELL' }]);
+  assert.deepEqual(rows[2]!.errors, [{ field: 'number', code: 'INVALID_CELL' }]);
+  assert.deepEqual(rows[3]!.errors, [{ field: 'block', code: 'TOO_LONG' }]);
+  assert.equal(rows[3]!.raw.block, null);
 });

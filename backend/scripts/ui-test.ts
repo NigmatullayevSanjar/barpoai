@@ -293,7 +293,7 @@ try {
   await premiseDlg.getByLabel('Xonalar', { exact: true }).fill('2');
   await premiseDlg.getByLabel('Maydon, m²').fill('65,4');
   await premiseDlg.getByRole('button', { name: 'Saqlash', exact: true }).click();
-  await adminPage.getByText(/Jami: 1 ta, 65,4 m²/).waitFor();
+  await adminPage.getByText(/Jami: 1 ta, 65[.,]4 m²/).waitFor();
   const premisesBook = new ExcelJS.Workbook();
   const premisesSheet = premisesBook.addWorksheet('Xonadonlar');
   premisesSheet.addRow(['Blok', 'Kirish', 'Qavat', 'Raqam', 'Tur', 'Xonalar', 'Maydon, m²']);
@@ -310,7 +310,7 @@ try {
   await adminPage.getByRole('dialog').getByRole('button', { name: 'Import qilish' }).click();
   await adminPage.getByRole('dialog').getByText('Import yakunlandi').first().waitFor();
   await adminPage.getByRole('dialog').getByRole('button', { name: 'Yopish' }).click();
-  await adminPage.getByText(/Jami: 2 ta, 135,9 m²/).waitFor();
+  await adminPage.getByText(/Jami: 2 ta, 135[.,]9 m²/).waitFor();
   checks.push('Premises tab: add a premise from the form and import another from Excel; total count and area come from the server');
   await adminPage.goto(webURL + '/app/employees');
   await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).first().click();

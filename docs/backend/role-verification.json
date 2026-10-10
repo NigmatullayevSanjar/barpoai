@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T19:01:07.423Z",
+  "executed_at": "2026-10-10T19:09:13.283Z",
   "passed": [
     "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan",
     "Role × GET endpoint matrix: 65 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",

@@ -6,6 +6,13 @@ import { area } from './schemas.js';
 import { loadWorkbook } from './estimates.js';
 import { digest } from './security.js';
 
+/**
+ * Obyekt bo'yicha xonadon qulfi (015 dagi triggerlar bilan bir xil kalit). Yozuvchi handlerlar uni har qanday
+ * FOR UPDATE dan oldin oladi — zona tahriri bilan qulf tartibi teskari bo'lib deadlock bermasin.
+ */
+export const lockProjectPremises = (db: Db, projectId: string) =>
+  db.query('SELECT pg_advisory_xact_lock(1503, hashtext($1))', [projectId]);
+
 export const premiseKinds = ['apartment', 'commercial', 'parking', 'storage'] as const;
 export type PremiseKind = (typeof premiseKinds)[number];
 /** Shablon sarlavhalari: qat'iy tartib, uz yoki ru. */
@@ -51,21 +58,32 @@ const fields = ['block', 'entrance', 'floor', 'number', 'kind', 'rooms', 'area']
 const normalizeHeader = (h: string) =>
   h.trim().toLowerCase().replace(/²/g, '2').replace(/\s+/g, '');
 
-function cellText(value: ExcelJS.CellValue): { text: string | null; error?: string } {
+// Katak matni 500 belgidan oshmaydi: uzun satr javob va digest hajmini portlatmasin.
+const MAX_CELL = 500;
+function cellText(
+  value: ExcelJS.CellValue,
+  field: (typeof fields)[number],
+): { text: string | null; error?: string } {
   if (value === null || value === undefined) return { text: null };
-  if (typeof value === 'string') return { text: value.trim() || null };
-  if (typeof value === 'number') return { text: String(value) };
-  if (typeof value === 'object' && 'richText' in value)
-    return {
-      text:
-        value.richText
-          .map((p) => p.text)
-          .join('')
-          .trim() || null,
-    };
-  if (typeof value === 'object' && ('formula' in value || 'sharedFormula' in value))
+  let text: string;
+  if (typeof value === 'string') text = value.trim();
+  else if (typeof value === 'number') {
+    // Raqam katagi faqat butun son; maydon katagidagi float shovqini (65.30000000000001) 2 xonaga keltiriladi.
+    if (field === 'number' && !Number.isSafeInteger(value))
+      return { text: null, error: 'INVALID_CELL' };
+    const rounded = Math.round(value * 100) / 100;
+    text =
+      field === 'area' && Math.abs(value - rounded) < 1e-9 ? rounded.toFixed(2) : String(value);
+  } else if (typeof value === 'object' && 'richText' in value)
+    text = value.richText
+      .map((p) => p.text)
+      .join('')
+      .trim();
+  else if (typeof value === 'object' && ('formula' in value || 'sharedFormula' in value))
     return { text: null, error: 'FORMULA_NOT_ALLOWED' };
-  return { text: null, error: 'INVALID_CELL' };
+  else return { text: null, error: 'INVALID_CELL' };
+  if (text.length > MAX_CELL) return { text: null, error: 'TOO_LONG' };
+  return { text: text || null };
 }
 
 /** Qat'iy shablon: birinchi varaq, sarlavhalar aynan uz yoki ru tartibida. Bo'sh qatorlar o'tkaziladi, raqam siljimaydi. */
@@ -87,7 +105,7 @@ export async function readPremisesWorkbook(base64: string) {
     const raw = { row: i } as RawPremise;
     const errors: FieldError[] = [];
     fields.forEach((field, n) => {
-      const cell = cellText(excelRow.getCell(n + 1).value);
+      const cell = cellText(excelRow.getCell(n + 1).value, field);
       raw[field] = cell.text;
       if (cell.error) errors.push({ field, code: cell.error });
     });
@@ -239,6 +257,8 @@ export async function planPremisesImport(
       if (seen.has(k)) errors.push({ field: 'number', code: 'DUPLICATE_IN_FILE' });
       seen.add(k);
       match = existingByKey.get(k);
+      // Shablon faqat blok va kirishni ifodalaydi: kirish berilmasa xonadonning chuqurroq zonasi (shu blok ichida) saqlanadi.
+      if (match && !raw.entrance) zoneId = match.zone_id;
     }
     if (values && errors.length === 0)
       action = !match

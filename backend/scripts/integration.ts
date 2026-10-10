@@ -2520,6 +2520,17 @@ try {
     [updated12.id, updated12.floor, updated12.area_m2, updated12.version],
     [a12new.id, 5, '71.00', 2],
   );
+  // Kirish ko'rsatilmasa blok ichidagi chuqurroq zona (masalan, qavat) qayta importda saqlanadi
+  const floorB3 = await zone({ name: '3-qavat', kind: 'floor', parent_id: blockB.id });
+  await premise({ number: '150', zone_id: floorB3.id, floor: 3, rooms: 1, area_m2: '50' });
+  const keepZone = await call(
+    'POST',
+    `${pxUrl}/premises/import/preview`,
+    { file_base64: await premisesFile([['B', null, 3, '150', 'Kvartira', 1, 50]]) },
+    adminAgain,
+  );
+  assert.deepEqual(keepZone.summary, { create: 0, update: 0, unchanged: 1, error: 0 });
+  assert.equal(keepZone.rows[0].zone_id, floorB3.id);
   // Xatolar varaqdagi qator raqami bilan; id yo'q — commit qilib bo'lmaydi
   const badFile = await premisesFile([
     ['C', null, 1, '201', 'Kvartira', 1, 40],
