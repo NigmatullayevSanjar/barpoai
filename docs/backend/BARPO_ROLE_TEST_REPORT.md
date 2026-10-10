@@ -1,12 +1,12 @@
 # BARPO AI — 11-bosqich: rol bo‘yicha to‘liq sinov hisoboti
 
-Bajarildi: 2026-10-10T12:55:37.821Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
+Bajarildi: 2026-10-10T19:01:07.421Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
 
 ## Natija
 
 - ✅ Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan
-- ✅ Role × GET endpoint matrix: 63 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)
-- ✅ Cross-tenant isolation: 14 id-routes and 6 writes with foreign ids are rejected; lists stay tenant-scoped
+- ✅ Role × GET endpoint matrix: 65 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)
+- ✅ Cross-tenant isolation: 16 id-routes and 9 writes with foreign ids are rejected; lists stay tenant-scoped
 - ✅ Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; brigadier responses carry no price fields
 - ✅ Replays with the same idempotency key, parallel version races, double accept and double reversal never write money/material/progress twice
 
@@ -14,20 +14,20 @@ Ochiq xatolar: yo‘q
 
 ## Rol × GET endpoint matritsasi
 
-Har rol uchun 63 ta GET endpoint chaqirildi; kutilgan natija `/v1/me/permissions` (sahifa CRUD + domen ruxsati) va marshrut metama’lumotidan hisoblandi. «Mos kelmadi» ustuni 0 bo‘lishi shart.
+Har rol uchun 65 ta GET endpoint chaqirildi; kutilgan natija `/v1/me/permissions` (sahifa CRUD + domen ruxsati) va marshrut metama’lumotidan hisoblandi. «Mos kelmadi» ustuni 0 bo‘lishi shart.
 
 | Rol | Ruxsat kutilgan | 403 kutilgan | Mos kelmadi |
 | --- | --- | --- | --- |
-| foreman | 31 | 32 | 0 |
-| brigadier | 26 | 37 | 0 |
-| warehouse_manager | 26 | 37 | 0 |
-| financier | 39 | 24 | 0 |
-| accountant | 39 | 24 | 0 |
-| manager | 18 | 45 | 0 |
-| tenant_admin | 55 | 8 | 0 |
-| platform_owner | 9 | 54 | 0 |
-| super_admin | 6 | 57 | 0 |
-| support | 5 | 58 | 0 |
+| foreman | 33 | 32 | 0 |
+| brigadier | 28 | 37 | 0 |
+| warehouse_manager | 28 | 37 | 0 |
+| financier | 41 | 24 | 0 |
+| accountant | 41 | 24 | 0 |
+| manager | 20 | 45 | 0 |
+| tenant_admin | 57 | 8 | 0 |
+| platform_owner | 9 | 56 | 0 |
+| super_admin | 6 | 59 | 0 |
+| support | 5 | 60 | 0 |
 
 Parametri to‘ldirilmagan (matritsadan tashqari) endpointlar: yo‘q.
 

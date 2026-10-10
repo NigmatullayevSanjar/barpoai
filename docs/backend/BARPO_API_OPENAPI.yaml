@@ -8637,6 +8637,615 @@ paths:
         "410": *a142
         "429": *a142
         "503": *a142
+  /v1/projects/{id}/premises:
+    get:
+      summary: Obyekt xonadonlari; q — raqam; block_id (yoki none — bloksiz), floor, kind, archived filtrlari; jami soni va
+        maydoni filtr bo‘yicha serverda
+      operationId: get_v1_projects__id_premises
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: limit
+          in: query
+          required: true
+          schema:
+            default: 30
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: true
+          schema:
+            default: 0
+            type: integer
+            minimum: 0
+            maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 20
+        - name: block_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              - type: string
+                const: none
+        - name: floor
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: -10
+            maximum: 500
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - apartment
+              - commercial
+              - parking
+              - storage
+        - name: archived
+          in: query
+          required: true
+          schema:
+            default: false
+            type: boolean
+      x-permission: projects.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a143
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a143
+        "402": *a143
+        "403": *a143
+        "404": *a143
+        "409": *a143
+        "410": *a143
+        "429": *a143
+        "503": *a143
+    post:
+      summary: Xonadon yaratish; raqam blok ichida (blok yo‘q bo‘lsa obyekt ichida) takrorlanmaydi — PREMISE_NUMBER_CONFLICT
+      operationId: post_v1_projects__id_premises
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: projects.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a144
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a144
+        "402": *a144
+        "403": *a144
+        "404": *a144
+        "409": *a144
+        "410": *a144
+        "429": *a144
+        "503": *a144
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                number:
+                  type: string
+                  minLength: 1
+                  maxLength: 20
+                kind:
+                  type: string
+                  enum:
+                    - apartment
+                    - commercial
+                    - parking
+                    - storage
+                zone_id:
+                  anyOf:
+                    - type: string
+                      format: uuid
+                      pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                    - type: "null"
+                floor:
+                  anyOf:
+                    - type: integer
+                      minimum: -10
+                      maximum: 500
+                    - type: "null"
+                rooms:
+                  anyOf:
+                    - type: integer
+                      minimum: 0
+                      maximum: 50
+                    - type: "null"
+                area_m2:
+                  type: string
+                  pattern: ^(0|[1-9]\d{0,9})(\.\d{1,2})?$
+              required:
+                - number
+                - kind
+                - zone_id
+                - floor
+                - rooms
+                - area_m2
+              additionalProperties: false
+  /v1/projects/{id}/premises/{premise_id}:
+    patch:
+      summary: Xonadonni to‘liq almashtirish (version bilan); arxivlangan xonadon tahrirlanmaydi
+      operationId: patch_v1_projects__id_premises__premise_id
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: premise_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: projects.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a145
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a145
+        "402": *a145
+        "403": *a145
+        "404": *a145
+        "409": *a145
+        "410": *a145
+        "429": *a145
+        "503": *a145
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                version:
+                  type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+                number:
+                  type: string
+                  minLength: 1
+                  maxLength: 20
+                kind:
+                  type: string
+                  enum:
+                    - apartment
+                    - commercial
+                    - parking
+                    - storage
+                zone_id:
+                  anyOf:
+                    - type: string
+                      format: uuid
+                      pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                    - type: "null"
+                floor:
+                  anyOf:
+                    - type: integer
+                      minimum: -10
+                      maximum: 500
+                    - type: "null"
+                rooms:
+                  anyOf:
+                    - type: integer
+                      minimum: 0
+                      maximum: 50
+                    - type: "null"
+                area_m2:
+                  type: string
+                  pattern: ^(0|[1-9]\d{0,9})(\.\d{1,2})?$
+              required:
+                - version
+                - number
+                - kind
+                - zone_id
+                - floor
+                - rooms
+                - area_m2
+              additionalProperties: false
+  /v1/projects/{id}/premises/{premise_id}/archive:
+    post:
+      summary: Xonadonni arxivlash (o‘chirilmaydi); raqami bo‘shaydi
+      operationId: post_v1_projects__id_premises__premise_id_archive
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: premise_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: projects.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a146
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a146
+        "402": *a146
+        "403": *a146
+        "404": *a146
+        "409": *a146
+        "410": *a146
+        "429": *a146
+        "503": *a146
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                version:
+                  type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+              required:
+                - version
+              additionalProperties: false
+  /v1/projects/{id}/premises/{premise_id}/unarchive:
+    post:
+      summary: Arxivdan qaytarish; raqam band bo‘lsa PREMISE_NUMBER_CONFLICT
+      operationId: post_v1_projects__id_premises__premise_id_unarchive
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: premise_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: projects.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a147
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a147
+        "402": *a147
+        "403": *a147
+        "404": *a147
+        "409": *a147
+        "410": *a147
+        "429": *a147
+        "503": *a147
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                version:
+                  type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+              required:
+                - version
+              additionalProperties: false
+  /v1/projects/{id}/premises/template:
+    get:
+      summary: "Import shabloni (xlsx, base64): Blok, Kirish, Qavat, Raqam, Tur, Xonalar, Maydon; ikkinchi varaqda tur
+        qiymatlari"
+      operationId: get_v1_projects__id_premises_template
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: lang
+          in: query
+          required: true
+          schema:
+            default: uz
+            type: string
+            enum:
+              - uz
+              - ru
+      x-permission: projects.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a148
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a148
+        "402": *a148
+        "403": *a148
+        "404": *a148
+        "409": *a148
+        "410": *a148
+        "429": *a148
+        "503": *a148
+  /v1/projects/{id}/premises/import/preview:
+    post:
+      summary: "Shablon bo‘yicha import rejasi: har qator create/update/unchanged/error, xatolar varaqdagi qator raqami bilan;
+        xato bo‘lsa id=null (commit qilinmaydi)"
+      operationId: post_v1_projects__id_premises_import_preview
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: projects.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a149
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a149
+        "402": *a149
+        "403": *a149
+        "404": *a149
+        "409": *a149
+        "410": *a149
+        "429": *a149
+        "503": *a149
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                file_base64:
+                  type: string
+                  maxLength: 2800000
+              required:
+                - file_base64
+              additionalProperties: false
+  /v1/projects/{id}/premises/import/{preview_id}/commit:
+    post:
+      summary: Import rejasini yozish; reja preview’dan keyin o‘zgargan bo‘lsa PREVIEW_CHANGED; qayta commit avvalgi natijani
+        qaytaradi
+      operationId: post_v1_projects__id_premises_import__preview_id_commit
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: preview_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: projects.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a150
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a150
+        "402": *a150
+        "403": *a150
+        "404": *a150
+        "409": *a150
+        "410": *a150
+        "429": *a150
+        "503": *a150
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                digest:
+                  type: string
+                  minLength: 64
+                  maxLength: 64
+              required:
+                - digest
+              additionalProperties: false
 components:
   securitySchemes:
     bearerAuth:

@@ -2212,6 +2212,403 @@ try {
   assert.deepEqual(await idsOf('/v1/counterparties?q=begona', adminAgain), []);
   assert.deepEqual(await idsOf('/v1/employees?q=begona', adminAgain), []);
   passed.push('List search never crosses tenants: another company finds only its own materials, counterparties and employees');
+  // ---- Bosqich 3: xonadonlar. R2 — raqam blok ichida unikal, blok yo'q bo'lsa obyekt ichida.
+  const errCode = async (method: string, url: string, body: any, token: string, status: number) => {
+    const res = await app!.inject({
+      method: method as any,
+      url,
+      payload: body,
+      headers: { authorization: `Bearer ${token}`, 'idempotency-key': randomUUID() },
+    });
+    assert.equal(res.statusCode, status, `${method} ${url}: ${res.body}`);
+    return res.json().error.code as string;
+  };
+  const px = await call('POST', '/v1/projects', { name: 'Xonadonli obyekt' }, adminAgain);
+  const pxUrl = `/v1/projects/${px.id}`;
+  const zone = (body: any) => call('POST', `${pxUrl}/zones`, body, adminAgain);
+  const blockA = await zone({ name: 'A', kind: 'block', floors_count: 9 }),
+    blockB = await zone({ name: 'B', kind: 'block' }),
+    entA = await zone({ name: '1', kind: 'entrance', parent_id: blockA.id }),
+    entB = await zone({ name: '1', kind: 'entrance', parent_id: blockB.id }),
+    yard = await zone({ name: 'Hovli', kind: 'other' });
+  const premise = (body: any) =>
+    call(
+      'POST',
+      `${pxUrl}/premises`,
+      { zone_id: null, floor: null, rooms: null, kind: 'apartment', area_m2: '50', ...body },
+      adminAgain,
+    );
+  const a12 = await premise({
+    number: '12',
+    zone_id: entA.id,
+    floor: 3,
+    rooms: 2,
+    area_m2: '65.4',
+  });
+  assert.equal(a12.block_zone_id, blockA.id);
+  assert.equal(a12.area_m2, '65.40');
+  const b12 = await premise({ number: '12', zone_id: entB.id });
+  assert.equal(b12.block_zone_id, blockB.id);
+  const blockBody = {
+    zone_id: blockA.id,
+    floor: null,
+    rooms: null,
+    kind: 'apartment',
+    area_m2: '50',
+  };
+  assert.equal(
+    await errCode('POST', `${pxUrl}/premises`, { ...blockBody, number: ' 12 ' }, adminAgain, 409),
+    'PREMISE_NUMBER_CONFLICT',
+  );
+  await premise({ number: 'T-3', zone_id: blockA.id, kind: 'commercial' });
+  assert.equal(
+    await errCode('POST', `${pxUrl}/premises`, { ...blockBody, number: 't-3' }, adminAgain, 409),
+    'PREMISE_NUMBER_CONFLICT',
+  );
+  // Bloksiz: raqam obyekt ichida takrorlanmaydi (zonasiz va blokka kirmagan zona birga)
+  const parkP1 = await premise({ number: 'P-1', kind: 'parking', area_m2: '13.25' });
+  assert.equal(parkP1.block_zone_id, null);
+  assert.equal(
+    await errCode(
+      'POST',
+      `${pxUrl}/premises`,
+      { ...blockBody, zone_id: yard.id, number: 'p-1' },
+      adminAgain,
+      409,
+    ),
+    'PREMISE_NUMBER_CONFLICT',
+  );
+  assert.equal(
+    await errCode(
+      'POST',
+      `${pxUrl}/premises`,
+      { ...blockBody, zone_id: entA.id, number: '99', floor: 10 },
+      adminAgain,
+      400,
+    ),
+    'FLOOR_ABOVE_BLOCK',
+  );
+  assert.equal(
+    await errCode(
+      'POST',
+      `${pxUrl}/premises`,
+      { ...blockBody, zone_id: block.id, number: '98' },
+      adminAgain,
+      400,
+    ),
+    'ZONE_NOT_FOUND',
+  );
+  // Zona turi o'zgarsa blok qayta hisoblanadi; to'qnashuv zona tahririni bekor qiladi
+  await premise({ number: '40', zone_id: yard.id });
+  await premise({ number: '40', zone_id: entA.id });
+  assert.equal(
+    await errCode(
+      'PATCH',
+      `${pxUrl}/zones/${blockA.id}`,
+      { version: 1, name: 'A', kind: 'other' },
+      adminAgain,
+      409,
+    ),
+    'PREMISE_NUMBER_CONFLICT',
+  );
+  const blockAAfter = (await call('GET', `${pxUrl}/zones`, undefined, adminAgain)).items.find(
+    (z: any) => z.id === blockA.id,
+  );
+  assert.equal(blockAAfter.kind, 'block');
+  const yardBlock = await call(
+    'PATCH',
+    `${pxUrl}/zones/${yard.id}`,
+    { version: 1, name: 'Hovli', kind: 'block' },
+    adminAgain,
+  );
+  assert.equal(yardBlock.kind, 'block');
+  assert.deepEqual(
+    (
+      await admin.query('SELECT block_zone_id FROM premises WHERE project_id=$1 AND zone_id=$2', [
+        px.id,
+        yard.id,
+      ])
+    ).rows,
+    [{ block_zone_id: yard.id }],
+  );
+  await call(
+    'PATCH',
+    `${pxUrl}/zones/${yard.id}`,
+    { version: 2, name: 'Hovli', kind: 'other' },
+    adminAgain,
+  );
+  // Ro'yxat: filtrlar va jami serverda, sahifadan qat'i nazar
+  const list = (qs: string) => call('GET', `${pxUrl}/premises?${qs}`, undefined, adminAgain);
+  const inA = await list(`block_id=${blockA.id}&limit=1`);
+  assert.equal(inA.items.length, 1);
+  assert.equal(inA.total_count, 3);
+  assert.equal(inA.total_area_m2, '165.40');
+  assert.equal(inA.items[0].block_name, 'A');
+  assert.deepEqual((await list('block_id=none')).items.map((p: any) => p.number).sort(), [
+    '40',
+    'P-1',
+  ]);
+  assert.equal((await list('kind=parking')).total_count, 1);
+  assert.equal((await list('floor=3')).items[0].id, a12.id);
+  assert.equal((await list('q=t-')).items[0].number, 'T-3');
+  const none = await list('kind=storage');
+  assert.deepEqual([none.items, none.total_count, none.total_area_m2], [[], 0, '0.00']);
+  await call('GET', `${pxUrl}/premises?archived=yes`, undefined, adminAgain, undefined, 400);
+  // Tahrir versiya bilan; arxivlash raqamni bo'shatadi, band raqamni arxivdan qaytarib bo'lmaydi
+  assert.equal(
+    await errCode(
+      'PATCH',
+      `${pxUrl}/premises/${a12.id}`,
+      { ...blockBody, version: 9, number: '12' },
+      adminAgain,
+      409,
+    ),
+    'VERSION_CONFLICT',
+  );
+  const a12b = await call(
+    'PATCH',
+    `${pxUrl}/premises/${a12.id}`,
+    {
+      version: 1,
+      number: '12',
+      kind: 'apartment',
+      zone_id: entA.id,
+      floor: 4,
+      rooms: 3,
+      area_m2: '66',
+    },
+    adminAgain,
+  );
+  assert.deepEqual([a12b.version, a12b.floor, a12b.area_m2], [2, 4, '66.00']);
+  await call('POST', `${pxUrl}/premises/${a12.id}/archive`, { version: 2 }, adminAgain);
+  assert.equal(
+    await errCode(
+      'PATCH',
+      `${pxUrl}/premises/${a12.id}`,
+      { ...blockBody, version: 3, number: '12' },
+      adminAgain,
+      409,
+    ),
+    'PREMISE_ARCHIVED',
+  );
+  assert.equal((await list('archived=true')).items[0].id, a12.id);
+  const a12new = await premise({ number: '12', zone_id: blockA.id, floor: 2, area_m2: '70' });
+  assert.equal(
+    await errCode('POST', `${pxUrl}/premises/${a12.id}/unarchive`, { version: 3 }, adminAgain, 409),
+    'PREMISE_NUMBER_CONFLICT',
+  );
+  // Ruxsat va doira: prorabda yozish yo'q (403), begona kompaniya va biriktirilmagan obyekt — 404, RLS
+  const premForeman = await call(
+    'POST',
+    '/v1/employees',
+    { login: 'prem.foreman', display_name: 'Prem Foreman', password: pass, role: 'foreman' },
+    adminAgain,
+  );
+  const pf1 = await call('POST', '/v1/auth/login', { login: 'prem.foreman', password: pass });
+  await call(
+    'POST',
+    '/v1/auth/password',
+    { current_password: pass, new_password: pass + '2' },
+    pf1.access_token,
+  );
+  const pfToken = (
+    await call('POST', '/v1/auth/login', { login: 'prem.foreman', password: pass + '2' })
+  ).access_token;
+  await call('GET', `${pxUrl}/premises`, undefined, pfToken, undefined, 404);
+  await call('POST', `${pxUrl}/premises`, { ...blockBody, number: '77' }, pfToken, undefined, 403);
+  await call(
+    'POST',
+    `/v1/employees/${premForeman.id}/assignments`,
+    { project_id: px.id },
+    adminAgain,
+  );
+  assert.equal((await call('GET', `${pxUrl}/premises`, undefined, pfToken)).total_count, 6);
+  await call('GET', `${pxUrl}/premises`, undefined, adminBToken, undefined, 404);
+  await call(
+    'PATCH',
+    `${pxUrl}/premises/${b12.id}`,
+    { ...blockBody, version: 1, number: '12' },
+    adminBToken,
+    undefined,
+    404,
+  );
+  const foreignView = await transaction(appPool!, tenantB.tenant.id, (db) =>
+    db.query('SELECT id FROM premises'),
+  );
+  assert.equal(foreignView.rowCount, 0);
+  assert.equal((await appPool!.query('SELECT id FROM premises')).rowCount, 0);
+  passed.push(
+    'Premises: number unique within the nearest block (project-wide without a block), zone kind change re-checks it, floor limit, archive frees the number, list totals and filters on the server, scope, 403/404 and RLS',
+  );
+  // ---- Bosqich 3: Excel import — shablon, haqiqiy qator raqamlari, xato bo'lsa bloklanadi, qayta yuklash dublikat yaratmaydi
+  const template = await call('GET', `${pxUrl}/premises/template?lang=ru`, undefined, adminAgain);
+  const tplBook = new ExcelJS.Workbook();
+  await tplBook.xlsx.load(Buffer.from(template.base64, 'base64') as any);
+  assert.deepEqual((tplBook.worksheets[0]!.getRow(1).values as unknown[]).slice(1), [
+    'Блок',
+    'Подъезд',
+    'Этаж',
+    'Номер',
+    'Тип',
+    'Комнаты',
+    'Площадь, м²',
+  ]);
+  const premisesFile = async (rows: unknown[][]) => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(template.base64, 'base64') as any);
+    for (const r of rows) wb.worksheets[0]!.addRow(r);
+    return Buffer.from(await wb.xlsx.writeBuffer()).toString('base64');
+  };
+  const goodFile = await premisesFile([
+    ['A', '1', 3, '101', 'Квартира', 2, 65.4],
+    [],
+    ['B', '1', 4, '102', 'Кладовая', null, '4,5'],
+    [null, null, null, 'P-9', 'Паркинг', null, 13.25],
+    ['a', null, 5, '12', 'Kvartira', 3, 71],
+  ]);
+  const preview = await call(
+    'POST',
+    `${pxUrl}/premises/import/preview`,
+    { file_base64: goodFile },
+    adminAgain,
+  );
+  assert.deepEqual(preview.summary, { create: 3, update: 1, unchanged: 0, error: 0 });
+  assert.deepEqual(
+    preview.rows.map((r: any) => [r.row, r.action]),
+    [
+      [2, 'create'],
+      [4, 'create'],
+      [5, 'create'],
+      [6, 'update'],
+    ],
+  );
+  assert.equal(preview.rows[3].premise_id, a12new.id);
+  const committed = await call(
+    'POST',
+    `${pxUrl}/premises/import/${preview.id}/commit`,
+    { digest: preview.digest },
+    adminAgain,
+  );
+  assert.deepEqual(committed, { create: 3, update: 1, unchanged: 0, error: 0 });
+  assert.deepEqual(
+    await call(
+      'POST',
+      `${pxUrl}/premises/import/${preview.id}/commit`,
+      { digest: preview.digest },
+      adminAgain,
+    ),
+    committed,
+  );
+  const again = await call(
+    'POST',
+    `${pxUrl}/premises/import/preview`,
+    { file_base64: goodFile },
+    adminAgain,
+  );
+  assert.deepEqual(again.summary, { create: 0, update: 0, unchanged: 4, error: 0 });
+  await call(
+    'POST',
+    `${pxUrl}/premises/import/${again.id}/commit`,
+    { digest: again.digest },
+    adminAgain,
+  );
+  assert.equal((await list('limit=100')).total_count, 9);
+  const updated12 = (
+    await call('GET', `${pxUrl}/premises?q=12&block_id=${blockA.id}`, undefined, adminAgain)
+  ).items[0];
+  assert.deepEqual(
+    [updated12.id, updated12.floor, updated12.area_m2, updated12.version],
+    [a12new.id, 5, '71.00', 2],
+  );
+  // Xatolar varaqdagi qator raqami bilan; id yo'q — commit qilib bo'lmaydi
+  const badFile = await premisesFile([
+    ['C', null, 1, '201', 'Kvartira', 1, 40],
+    [],
+    ['A', '1', 10, '202', 'Kvartira', 1, 40],
+    ['A', '2', 1, '203', 'Kvartira', 1, 40],
+    ['B', null, 1, '204', 'Villa', 1, '40.555'],
+    ['B', null, 1, '205', 'Kvartira', 1, 40],
+    ['b', null, 2, '205', 'Kvartira', 1, 40],
+  ]);
+  const badPreview = await call(
+    'POST',
+    `${pxUrl}/premises/import/preview`,
+    { file_base64: badFile },
+    adminAgain,
+  );
+  assert.equal(badPreview.id, null);
+  assert.equal(badPreview.digest, null);
+  assert.deepEqual(
+    badPreview.rows
+      .filter((r: any) => r.errors.length)
+      .map((r: any) => [r.row, r.errors.map((e: any) => `${e.field}:${e.code}`)]),
+    [
+      [2, ['block:BLOCK_NOT_FOUND']],
+      [4, ['floor:FLOOR_ABOVE_BLOCK']],
+      [5, ['entrance:ENTRANCE_NOT_FOUND']],
+      [6, ['kind:INVALID_KIND', 'area:INVALID_AREA']],
+      [8, ['number:DUPLICATE_IN_FILE']],
+    ],
+  );
+  assert.equal(badPreview.summary.create, 1);
+  assert.equal(
+    await errCode(
+      'POST',
+      `${pxUrl}/premises/import/preview`,
+      { file_base64: await premisesFile([]) },
+      adminAgain,
+      400,
+    ),
+    'IMPORT_EMPTY',
+  );
+  // Preview'dan keyin baza o'zgarsa commit rad etiladi
+  const lateFile = await premisesFile([['A', null, 1, '301', 'Kvartira', 1, 40]]);
+  const late = await call(
+    'POST',
+    `${pxUrl}/premises/import/preview`,
+    { file_base64: lateFile },
+    adminAgain,
+  );
+  await premise({ number: '301', zone_id: blockA.id });
+  assert.equal(
+    await errCode(
+      'POST',
+      `${pxUrl}/premises/import/${late.id}/commit`,
+      { digest: late.digest },
+      adminAgain,
+      409,
+    ),
+    'PREVIEW_CHANGED',
+  );
+  // Xonadon preview'i smeta commit'iga o'tmaydi; prorab import qila olmaydi
+  await call(
+    'POST',
+    `/v1/estimate-imports/${again.id}/commit`,
+    { digest: again.digest },
+    adminAgain,
+    undefined,
+    404,
+  );
+  await call(
+    'POST',
+    `${pxUrl}/premises/import/preview`,
+    { file_base64: lateFile },
+    pfToken,
+    undefined,
+    403,
+  );
+  assert.deepEqual(
+    (
+      await admin.query(
+        "SELECT details->>'create' AS c FROM audit_events WHERE action='premises.import' AND resource_id=$1",
+        [preview.id],
+      )
+    ).rows,
+    [{ c: '3' }],
+  );
+  passed.push(
+    'Premises Excel import: server template, real sheet row numbers, errors block the commit, re-upload updates or skips instead of duplicating, stale preview rejected, audit',
+  );
   // ---- G3: platforma ro'yxatidagi state filtri har bir kartadagi access_state bilan mos
   const pendingTenant = await call(
     'POST',

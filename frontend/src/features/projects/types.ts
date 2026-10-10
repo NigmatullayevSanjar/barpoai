@@ -77,3 +77,49 @@ export const statusTone = {
   paused: 'warning',
   completed: 'neutral',
 } as const;
+
+export type PremiseKind = 'apartment' | 'commercial' | 'parking' | 'storage';
+export const premiseKinds: PremiseKind[] = ['apartment', 'commercial', 'parking', 'storage'];
+export type Premise = {
+  id: string;
+  project_id: string;
+  zone_id: string | null;
+  block_zone_id: string | null;
+  number: string;
+  kind: PremiseKind;
+  rooms: number | null;
+  floor: number | null;
+  area_m2: string;
+  archived_at: string | null;
+  version: number;
+  zone_name: string | null;
+  zone_kind: ZoneKind | null;
+  block_name: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type PremiseList = { items: Premise[]; total_count: number; total_area_m2: string };
+export type PremiseImportAction = 'create' | 'update' | 'unchanged' | 'error';
+export type PremiseImportSummary = Record<PremiseImportAction, number>;
+export type PremiseImportRow = {
+  row: number;
+  block: string | null;
+  entrance: string | null;
+  floor: number | string | null;
+  number: string | null;
+  kind: string | null;
+  rooms: number | string | null;
+  area_m2: string | null;
+  zone_id: string | null;
+  action: PremiseImportAction;
+  premise_id: string | null;
+  version: number | null;
+  errors: { field: string; code: string }[];
+};
+export type PremiseImportPreview = {
+  id: string | null;
+  digest: string | null;
+  expires_at: string | null;
+  summary: PremiseImportSummary;
+  rows: PremiseImportRow[];
+};

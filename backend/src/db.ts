@@ -99,6 +99,9 @@ export async function idempotent(
 }
 export function mapDatabaseError(error: any) {
   if (error instanceof DomainError) return error;
+  // R2: xonadon raqami blok (yoki bloksiz obyekt) ichida takrorlandi — zona turi o'zgarganda ham shu kod.
+  if (error.code === '23505' && String(error.constraint ?? '').startsWith('premises_number_'))
+    return new DomainError('PREMISE_NUMBER_CONFLICT', 409);
   const codes: Record<string, string> = {
     '23505': 'ALREADY_EXISTS',
     '23503': 'INVALID_REFERENCE',

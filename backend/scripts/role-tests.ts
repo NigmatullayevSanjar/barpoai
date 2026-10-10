@@ -203,6 +203,12 @@ try {
     { name: '1-qavat' },
     A.adminToken,
   );
+  const premise = await call(
+    'POST',
+    `/v1/projects/${projectA1.id}/premises`,
+    { number: '1', kind: 'apartment', zone_id: zone.id, floor: 1, rooms: 1, area_m2: '40' },
+    A.adminToken,
+  );
   const warehouse = await call(
     'POST',
     '/v1/warehouses',
@@ -576,6 +582,29 @@ try {
       'PATCH',
       `/v1/projects/${projectA1.id}/zones/${zone.id}`,
       { version: zone.version, name: 'Hijack', kind: 'block' },
+    ],
+    [
+      'PATCH',
+      `/v1/projects/${projectA1.id}/premises/${premise.id}`,
+      {
+        version: premise.version,
+        number: '9',
+        kind: 'apartment',
+        zone_id: null,
+        floor: null,
+        rooms: null,
+        area_m2: '1',
+      },
+    ],
+    [
+      'POST',
+      `/v1/projects/${projectA1.id}/premises/${premise.id}/archive`,
+      { version: premise.version },
+    ],
+    [
+      'POST',
+      `/v1/projects/${projectA1.id}/premises`,
+      { number: '9', kind: 'apartment', zone_id: null, floor: null, rooms: null, area_m2: '1' },
     ],
     ['POST', `/v1/tasks/${task.id}/transition`, { version: task.version, status: 'in_progress' }],
     ['POST', `/v1/employees/${staff.foreman!.id}/assignments`, { project_id: projectB1.id }],
