@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T12:57:58.692Z",
+  "executed_at": "2026-10-10T19:04:36.052Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
