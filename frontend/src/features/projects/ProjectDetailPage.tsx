@@ -32,9 +32,10 @@ import {
   toProjectBody,
   type ProjectForm,
 } from './ProjectsPage';
+import { PremisesTab } from './PremisesTab';
 import { zoneKinds, type Employee, type Member, type ProjectDetail, type Zone, type ZoneKind } from './types';
 
-type Tab = 'overview' | 'zones' | 'members' | 'warehouses';
+type Tab = 'overview' | 'zones' | 'premises' | 'members' | 'warehouses';
 export function ProjectDetailPage() {
   const { id = '' } = useParams();
   const { t, lang } = useT();
@@ -145,12 +146,14 @@ export function ProjectDetailPage() {
         items={[
           { key: 'overview', label: t('projects.tab.overview') },
           { key: 'zones', label: t('projects.tab.zones'), count: d.zones.length },
+          { key: 'premises', label: t('premises.tab') },
           { key: 'members', label: t('projects.tab.members'), count: d.members.length },
           { key: 'warehouses', label: t('projects.tab.warehouses'), count: d.warehouses.length },
         ]}
       />
       {tab === 'overview' && <Overview d={d} />}
       {tab === 'zones' && <ZonesTab d={d} canEdit={canEdit} onChange={refresh} />}
+      {tab === 'premises' && <PremisesTab d={d} />}
       {tab === 'members' && <MembersTab d={d} canEdit={canManageMembers} onChange={refresh} />}
       {tab === 'warehouses' && <WarehousesTab d={d} canEdit={canEdit} onChange={refresh} />}
       {edit && <EditProjectModal d={d} onClose={() => setEdit(false)} onDone={refresh} />}

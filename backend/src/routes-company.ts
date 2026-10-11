@@ -30,6 +30,7 @@ import { invariant } from './errors.js';
 import { creditBalance } from './billing.js';
 import { money } from './money.js';
 import { accessState } from './auth.js';
+import { lockProjectPremises } from './premises.js';
 export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
@@ -206,6 +207,8 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
+      // Turi o'zgarsa xonadonlar bloki qayta hisoblanadi: qulf tartibi xonadon yozuvlari bilan bir xil.
+      await lockProjectPremises(db, params.id);
       const zone = await one(
         db,
         'SELECT * FROM zones WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',

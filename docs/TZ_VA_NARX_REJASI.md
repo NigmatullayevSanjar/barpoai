@@ -65,6 +65,8 @@ TZ’ning qolgan talablari 7-bo‘limda. D9 tufayli bajarilmaydiganlari 8-bo‘l
 - 1.5 — bajarildi (`ec91638`). `NotFound` (ikonka, orqaga, bosh sahifa, ro‘yxatga qaytish) va `DetailError` (`frontend/src/app/guards.tsx`); obyekt, smeta, smeta muharriri va kompaniya kartalari 404/403/5xx holatlarini ajratadi.
 - 1.3 — bajarildi (2026-10-10, commit yo‘q). Migratsiya `014_project_zone_profile.sql`: `projects.area_m2`, `projects.image_file_id` (kompozit FK — faqat shu obyektga yuklangan fayl), `zones.kind` (block/entrance/floor/other, default other), `zones.floors_count` (faqat block), `zones.version`. API: `POST/PATCH /v1/projects` `area_m2`; PATCH `image_file_id` (null — olib tashlash; faqat shu obyektga yuklangan, hisobot/vazifaga bog‘lanmagan fayl; fayl arxivlansa havola avtomatik tozalanadi; PATCH to‘liq almashtirish rejimida, frontend barcha maydonlarni yuboradi); reja va fakt sanalari tartibi `DATE_RANGE_INVALID` (400); `POST .../zones` `kind`, `floors_count` + audit `zone.create`; yangi `PATCH /v1/projects/:id/zones/:zone_id` (version, nom, tur, qavatlar; parent o‘zgarmas; audit `zone.update`). Frontend: obyekt formasida maydon va sana tartibi tekshiruvi, tahrirda rasm (JPEG/PNG ≤5 MB, `POST /v1/files` orqali), kartada rasm va maydon, zona daraxtida tur belgisi, qavatlar soni va tahrir modali. Rasm almashtirilganda eski fayl `files`da qoladi (08-bosqich ochiq masalasi).
 
+- 3 — bajarildi (2026-10-10, commit yo‘q). Migratsiya `015_premises.sql`: `premises` (zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar, maydon, arxiv, version; RLS, kompozit FK). R2 bazada: `block_zone_id` trigger bilan hisoblanadi (eng yaqin `kind='block'` ota zona), ikkita qisman unikal indeks (blok ichida / bloksiz obyekt ichida, faqat arxivlanmaganlar, `lower(number)`); zona turi o‘zgarsa bloklar qayta hisoblanadi, to‘qnashuv — `PREMISE_NUMBER_CONFLICT`. `import_previews` ga `kind` va `result`. API (`routes-premises.ts`): ro‘yxat (q, blok/`none`, qavat, tur, arxiv; `total_count`, `total_area_m2` serverdan), yaratish, PATCH (version), archive/unarchive, shablon (uz/ru), import preview → commit. Import: qat’iy shablon, haqiqiy qator raqamlari, xato bo‘lsa bloklanadi, (blok, raqam) bo‘yicha yangilash yoki o‘zgarishsiz, eskirgan preview rad etiladi. Frontend: obyekt kartasida “Xonadonlar” tabi (`PremisesTab.tsx`), uz/ru lokallar. Smeta import commit’i endi faqat `kind='estimate'` preview’ni oladi.
+
 Tartib: avval 1.1, 1.2 va 1.5 (xatolar va kichik ishlar), keyin 1.3 → 3 → 2 → 4. 1.4 ni istalgan payt qilish mumkin.
 
 Hajm: S — bir necha kun, M — 1–2 hafta, L — 2+ hafta (taxminiy).
@@ -465,7 +467,8 @@ D9 tufayli TZ’ning quyidagi bandlari kodda bo‘lmaydi. Dizayner ularni chizma
 
 - **Bajarilgan va commit qilingan:** 1.1, 1.2, 1.5 (`ec91638`), 1.3 (`af70f57`).
 - **Bosqich 1 test natijalari:** `docs/tests/BOSQICH_1_NATIJA.md` — 57 o‘tdi; UI-11 ma’lum cheklov; ERR-03 qisman tekshirilgan.
-- **Keyingi qadam:** Bosqich 3 (xonadonlar) — prompt 6.7, `/model claude-opus-5-5`. Undan keyin Bosqich 2, so‘ng 4. R1 va R2 hal qilingan, to‘siq yo‘q.
+- **Bosqich 3 (xonadonlar):** bajarildi, 3-bo‘limdagi holat yozuvi.
+- **Keyingi qadam:** Bosqich 2 (UZS/USD almashtirgich) — prompt 6.6, so‘ng Bosqich 4. R1 va R2 hal qilingan, to‘siq yo‘q.
 - **Istalgan payt:** 1.4 (dashboard grafiklari).
 
 ### 9.2. Yangi kompyuterni tayyorlash

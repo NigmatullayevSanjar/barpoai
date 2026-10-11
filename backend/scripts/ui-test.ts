@@ -283,6 +283,35 @@ try {
   checks.push(
     'Admin creates a project with area and photo, adds a block zone with floors and edits it from the UI',
   );
+  // Bosqich 3: xonadon formadan qo'shiladi, keyin Excel shablon bo'yicha import; jami serverdan
+  await adminPage.getByRole('tab', { name: /Xonadonlar/ }).click();
+  await adminPage.getByRole('button', { name: 'Xonadon qo‘shish' }).click();
+  const premiseDlg = adminPage.getByRole('dialog');
+  await premiseDlg.getByLabel(/^Raqam/).fill('12');
+  await premiseDlg.getByLabel('Zona (blok, kirish, qavat)').selectOption({ index: 1 });
+  await premiseDlg.getByLabel('Qavat', { exact: true }).fill('3');
+  await premiseDlg.getByLabel('Xonalar', { exact: true }).fill('2');
+  await premiseDlg.getByLabel('Maydon, m²').fill('65,4');
+  await premiseDlg.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await adminPage.getByText(/Jami: 1 ta, 65[.,]4 m²/).waitFor();
+  const premisesBook = new ExcelJS.Workbook();
+  const premisesSheet = premisesBook.addWorksheet('Xonadonlar');
+  premisesSheet.addRow(['Blok', 'Kirish', 'Qavat', 'Raqam', 'Tur', 'Xonalar', 'Maydon, m²']);
+  premisesSheet.addRow(['A blok', null, 4, '13', 'Kvartira', 3, 70.5]);
+  await adminPage.getByRole('button', { name: 'Excel’dan import' }).click();
+  await adminPage
+    .getByRole('dialog')
+    .locator('input[type=file]')
+    .setInputFiles({
+      name: 'xonadonlar.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: Buffer.from(await premisesBook.xlsx.writeBuffer()),
+    });
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Import qilish' }).click();
+  await adminPage.getByRole('dialog').getByText('Import yakunlandi').first().waitFor();
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Yopish' }).click();
+  await adminPage.getByText(/Jami: 2 ta, 135[.,]9 m²/).waitFor();
+  checks.push('Premises tab: add a premise from the form and import another from Excel; total count and area come from the server');
   await adminPage.goto(webURL + '/app/employees');
   await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).first().click();
   const dlg = adminPage.getByRole('dialog');

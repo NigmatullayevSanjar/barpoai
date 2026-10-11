@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T12:57:58.692Z",
+  "executed_at": "2026-10-10T19:12:22.105Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -10,6 +10,7 @@
     "Employee forced password change; disabled page hidden from menu and denied by direct URL",
     "Existing employee session picks up permission changes on focus",
     "Admin creates a project with area and photo, adds a block zone with floors and edits it from the UI",
+    "Premises tab: add a premise from the form and import another from Excel; total count and area come from the server",
     "Employee created from the UI with project assignment; project members tab and employee card agree",
     "Company dashboard lists real projects and counters",
     "Estimate created in the grid editor with labor and material lines; totals match decimal arithmetic",

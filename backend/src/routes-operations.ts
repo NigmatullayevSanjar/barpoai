@@ -480,7 +480,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, params, body }) => {
       const preview = await one(
         db,
-        'SELECT * FROM import_previews WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
+        "SELECT * FROM import_previews WHERE tenant_id=$1 AND id=$2 AND kind='estimate' FOR UPDATE",
         [actor.tenant_id, params.id],
       );
       await projectScope(db, actor, preview.project_id);

@@ -118,7 +118,8 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
   await audit(db, actor, existing ? 'estimates.revise' : 'estimates.create', estimate.id);
   return result;
 }
-export async function parseWorkbook(base64: string, mapping: Record<string, string>) {
+/** Xavfsiz o'qish: hajm, ZIP kengayishi, makros va qator/ustun cheklovlari; birinchi varaqni qaytaradi. */
+export async function loadWorkbook(base64: string) {
   const buffer = Buffer.from(base64, 'base64');
   invariant(
     buffer.length <= 2 * 1024 * 1024 && buffer.subarray(0, 2).toString() === 'PK',
@@ -144,6 +145,10 @@ export async function parseWorkbook(base64: string, mapping: Record<string, stri
   await workbook.xlsx.load(buffer as any);
   const sheet = workbook.worksheets[0];
   invariant(sheet && sheet.rowCount <= 2001 && sheet.columnCount <= 50, 'WORKBOOK_LIMIT', 400);
+  return sheet;
+}
+export async function parseWorkbook(base64: string, mapping: Record<string, string>) {
+  const sheet = await loadWorkbook(base64);
   const headers = new Map<string, number>();
   sheet.getRow(1).eachCell((cell, n) => headers.set(String(cell.value ?? '').trim(), n));
   const lines: Row[] = [];

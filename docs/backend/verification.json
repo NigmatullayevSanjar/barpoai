@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T12:55:37.790Z",
+  "executed_at": "2026-10-10T19:08:35.684Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -58,6 +58,8 @@
     "Owner issues a manual invoice from the platform (default 30-day period)",
     "Counterparty debt sums payables over all projects for the admin but only over assigned projects for the financier",
     "List search never crosses tenants: another company finds only its own materials, counterparties and employees",
+    "Premises: number unique within the nearest block (project-wide without a block), zone kind change re-checks it, floor limit, archive frees the number, list totals and filters on the server, scope, 403/404 and RLS",
+    "Premises Excel import: server template, real sheet row numbers, errors block the commit, re-upload updates or skips instead of duplicating, stale preview rejected, audit",
     "Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)",
     "OpenAPI generated from registered API routes"
   ],
