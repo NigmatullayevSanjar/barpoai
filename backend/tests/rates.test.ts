@@ -30,6 +30,8 @@ test('CBU response: zero, negative, non-numeric, missing or malformed data is re
 test('display conversion: UZS ÷ rate, 2 decimals, half-up, no binary floats', () => {
   setActiveCurrency('USD', '12800');
   assert.deepEqual(toDisplay('268125000.00'), { amount: '20947.27', currency: 'USD' });
+  // pin='USD': server bergan USD qiymat konvertatsiyasiz (narx varaqasi)
+  assert.deepEqual(toDisplay('322', 'USD'), { amount: '322.00', currency: 'USD' });
   assert.deepEqual(toDisplay('64'), { amount: '0.01', currency: 'USD' }); // 0.005 → 0.01
   assert.deepEqual(toDisplay('63.99'), { amount: '0.00', currency: 'USD' });
   assert.deepEqual(toDisplay('99999999999999999.99'), {

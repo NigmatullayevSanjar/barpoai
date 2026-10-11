@@ -924,6 +924,27 @@ try {
   ]);
   assert.match(download.suggestedFilename(), /reja-fakt\.xlsx$/);
   checks.push('Plan–actual page renders the zone rollup and downloads the Excel export');
+  // Bosqich 4: narx varaqasi — versiya UI'dan yaratiladi, xonadon narxlari serverdan, USD ustuni versiya kursi bilan
+  await adminPage.goto(webURL + '/app/finance/pricing?project=' + projectId);
+  await adminPage.getByRole('button', { name: 'Yangi versiya' }).first().click();
+  await dialog().getByLabel('Ustama, %').fill('25');
+  await dialog().getByRole('button', { name: 'Yaratish', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByText(/^v1 · .*ustama 25/).waitFor();
+  await adminPage.getByRole('columnheader', { name: /^Narx \(UZS\)/ }).waitFor();
+  const row12 = adminPage
+    .getByRole('row')
+    .filter({ has: adminPage.getByRole('cell', { name: '12', exact: true }) })
+    .first();
+  await row12.getByText(/so‘m$/).first().waitFor();
+  await adminPage.getByRole('button', { name: 'USD', exact: true }).click();
+  await adminPage.getByRole('columnheader', { name: /^Narx \(USD\)/ }).waitFor();
+  await row12.getByText(/\$$/).first().waitFor();
+  await adminPage.getByRole('button', { name: 'UZS', exact: true }).click();
+  await adminPage.getByRole('columnheader', { name: /^Narx \(UZS\)/ }).waitFor();
+  checks.push(
+    'Price list: a version is created from the UI with a 25% markup, premise prices come from the server and the USD column follows the version rate',
+  );
   await owner.query(
     "INSERT INTO users(login,display_name,password_hash,role) VALUES('ui_tech','Texnik xodim',$1,'super_admin')",
     [await hashPassword(password)],

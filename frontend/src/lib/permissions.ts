@@ -71,6 +71,7 @@ export const pages = [
   'forecast',
   'payment_requests',
   'payment_calendar',
+  'pricing',
 ] as const;
 export type Page = (typeof pages)[number];
 
@@ -104,6 +105,7 @@ export const pageRoutes: Record<Page, string> = {
   forecast: '/app/finance/forecast',
   payment_requests: '/app/finance/payment-requests',
   payment_calendar: '/app/finance/payment-calendar',
+  pricing: '/app/finance/pricing',
 };
 
 /** Kompaniya menyusi guruhlari; har band read ruxsati bo'lsa ko'rinadi. */
@@ -131,6 +133,7 @@ export const tenantNav: {
       { page: 'payment_requests', icon: 'FileInput' },
       { page: 'payment_calendar', icon: 'CalendarDays' },
       { page: 'plan_actual', icon: 'GitCompare' },
+      { page: 'pricing', icon: 'Tags' },
       { page: 'forecast', icon: 'TrendingUp' },
       { page: 'accounting_documents', icon: 'FileText' },
       { page: 'invoices', icon: 'Receipt' },

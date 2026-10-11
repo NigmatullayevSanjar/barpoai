@@ -4,12 +4,13 @@ import { toDisplay } from './currency-store';
 /**
  * Pul summasi tanlangan ko'rsatish valyutasida (D7). Konvertatsiya faqat shu yerda: decimal bilan, Number emas.
  * `pin='UZS'` — formalar ichida (kiritilgan summa UZS'da ko'rinsin).
+ * `pin='USD'` — qiymat serverdan allaqachon USD: konvertatsiyasiz USD sifatida ko'rsatiladi.
  */
 export function formatMoney(
   value: string | number | null | undefined,
   lang: 'uz' | 'ru' = 'uz',
   withCurrency = true,
-  pin?: 'UZS',
+  pin?: 'UZS' | 'USD',
 ) {
   if (value === null || value === undefined || value === '') return '—';
   const shown = toDisplay(String(value), pin);

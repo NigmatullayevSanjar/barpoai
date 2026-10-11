@@ -40,7 +40,7 @@ Qurilish ERP       → obyektlar, zonalar, smeta, ombor, moliya, vazifa, hisobot
 ```
 
 - Desktop-first veb ilova. **Mobil ilova scope’da yo‘q.**
-- Til: o‘zbek (lotin) asosiy, rus ikkinchi. Saqlash va kiritish faqat UZS (`currency='UZS'`), QQS yo‘q. USD faqat ko‘rsatish uchun: headerda UZS/USD almashtirgich, CBU kursi (D7); Excel eksportlar UZS’da (narx varaqasidan tashqari). Vaqt zonasi `Asia/Tashkent`.
+- Til: o‘zbek (lotin) asosiy, rus ikkinchi. Saqlash va kiritish faqat UZS (`currency='UZS'`), QQS yo‘q. USD faqat ko‘rsatish uchun: headerda UZS/USD almashtirgich, CBU kursi (D7); Excel eksportlar UZS’da (narx varaqasidan tashqari). Narx varaqasi (D2, D8, 2026-10-11): obyekt xonadonlari tannarxi va sotuv narxi o‘zgarmas versiyalarda, USD versiya kursi bilan saqlanadi; qoidalar `docs/backend/BARPO_BUSINESS_RULES.md`, hisob `backend/src/pricing.ts`. Vaqt zonasi `Asia/Tashkent`.
 - Nomida “AI” bo‘lsa ham, **AI yordamchi 2026-10-04 da egasi qarori bilan rejadan chiqarilgan**. AI funksiya qo‘shmang.
 - Platforma roli kompaniya operatsion ma’lumotiga **avtomatik kirmaydi** (break-glass o‘chirilgan).
 
@@ -121,7 +121,7 @@ d:\Ismoil\VScode\Frontend\Frontend\
 | `db.ts` | 115 | pool, `transaction()` (RLS konteksti, timeout, retry), `audit()`, `idempotent()`, DB xatolarini mapping |
 | `auth.ts` | 135 | sessiya (12 soat, `barpo_session`), login (login yoki telefon), invite signup, `accessState`, `tenantAccess` |
 | `security.ts` | 50 | scrypt hash, token, SHA-256 digest, Telegram Login Widget imzosi |
-| `permissions.ts` | 378 | rollar, 27 domen ruxsati, 28 sahifa, bazaviy siyosat, `allowed`, `pageAllowed`, scope, `redactPrices` |
+| `permissions.ts` | 398 | rollar, 29 domen ruxsati, 29 sahifa, bazaviy siyosat, `allowed`, `pageAllowed`, scope, `redactPrices` |
 | `schemas.ts` | 91 | umumiy zod: `amount`, `qty`, `password` (12–128), `phone`, smeta/ombor/moliya DTO |
 | `money.ts` | 25 | `dec`, `money` (2 xona), `quantity` (6 xona), `plannedQuantity`, `variance` (ROUND_HALF_UP, precision 40) |
 | `errors.ts` | 18 | `DomainError`, `invariant(cond, CODE, status=409)` |
@@ -159,7 +159,7 @@ d:\Ismoil\VScode\Frontend\Frontend\
 | `app/layouts/AuthLayout.tsx` | auth sahifalari ramkasi |
 | `lib/api.ts` | `api()`: `credentials: include`, avtomatik `Idempotency-Key`, `ApiError(code, status, fields, requestId)`, 401 tinglovchisi, `qs()` |
 | `lib/auth.tsx` | `AuthProvider`/`useAuth`: `me`, `permissions`, `issue` (TENANT_BLOCKED/ARCHIVED), `login`, `logout`, `refresh`, `can(page, action)`, `isPlatform` |
-| `lib/permissions.ts` | rollar, 28 sahifa, `pageRoutes`, `tenantNav` (3 guruh), `platformNav`, `homeFor` |
+| `lib/permissions.ts` | rollar, 29 sahifa, `pageRoutes`, `tenantNav` (3 guruh), `platformNav`, `homeFor` |
 | `lib/i18n.tsx` | `I18nProvider`/`useT`, `t(key, vars)`, `errorMessage(t, code, status)`; til `localStorage['barpo.lang']` |
 | `lib/format.ts` | `formatMoney`, `formatQuantity`, `formatDate`, `formatDateTime`, `formatRelative` (Asia/Tashkent), `todayIso`, `monthStart` |
 | `lib/download.ts` | `saveBase64File` — server qaytargan base64 Excel’ni yuklab olish |
@@ -319,10 +319,10 @@ Boshqa: Helmet; CORS faqat `APP_ORIGIN`; body limit 8 MiB; loglarda `authorizati
 
 ### 7.1. Ikki qatlam
 
-1. **Sahifa × CRUD** (28 sahifa × create/read/update/delete). Kompaniya admini har rol uchun `/app/permissions` sahifasida sozlaydi (`role_page_permissions`, optimistic `version`). `GET /v1/me/permissions` → `{role, version, pages, permissions}` — frontend menyusi va tugmalari shundan.
-2. **Domen ruxsatlari** (27 ta, `module.action`). Har biri sahifa+amalga bog‘langan (`permissionPage`).
+1. **Sahifa × CRUD** (29 sahifa × create/read/update/delete). Kompaniya admini har rol uchun `/app/permissions` sahifasida sozlaydi (`role_page_permissions`, optimistic `version`). `GET /v1/me/permissions` → `{role, version, pages, permissions}` — frontend menyusi va tugmalari shundan.
+2. **Domen ruxsatlari** (29 ta, `module.action`). Har biri sahifa+amalga bog‘langan (`permissionPage`).
 
-Sahifalar: `dashboard, projects, employees, estimates, stock, finance, tasks, reports, files, integrations, camera, billing, settings, permissions, audit` va 13 moliya ichki sahifasi `accounting_documents, invoices, bank_cash, counterparties, payroll, reconciliation, financial_reports, allocations, budgets, plan_actual, forecast, payment_requests, payment_calendar`.
+Sahifalar: `dashboard, projects, employees, estimates, stock, finance, tasks, reports, files, integrations, camera, billing, settings, permissions, audit` va 13 moliya ichki sahifasi `accounting_documents, invoices, bank_cash, counterparties, payroll, reconciliation, financial_reports, allocations, budgets, plan_actual, forecast, payment_requests, payment_calendar`, hamda `pricing` (narx varaqasi, Bosqich 4).
 
 | Domen ruxsati | Sahifa / amal |
 |---|---|
@@ -339,6 +339,7 @@ Sahifalar: `dashboard, projects, employees, estimates, stock, finance, tasks, re
 | reports.read / submit / review | reports / read, create, update |
 | files.read / files.write | files / read, create |
 | integrations.read, audit.read | o‘z sahifasi / read |
+| pricing.read / pricing.write | pricing / read, create |
 
 ### 7.2. Bazaviy rol siyosati (`basePermissions`, muhandislik defaulti)
 
@@ -346,11 +347,11 @@ Hammaga umumiy: `projects.read, tasks.read, reports.read, files.read, files.writ
 
 | Rol | Qo‘shimcha |
 |---|---|
-| tenant_admin | barcha 27 ruxsat |
+| tenant_admin | barcha 29 ruxsat |
 | foreman | stock.read, stock.review, tasks.manage, reports.submit, reports.review, estimates.read |
 | brigadier | stock.read, stock.accept, stock.consume, reports.submit |
 | warehouse_manager | stock.read, stock.receive, stock.send |
-| financier | estimates.read, estimates.import, prices.read, finance.read, finance.allocate |
+| financier | estimates.read, estimates.import, prices.read, finance.read, finance.allocate, pricing.read, pricing.write |
 | accountant | estimates.read, prices.read, finance.read, finance.post, finance.reverse |
 | manager | tasks.manage |
 | platforma rollari | tenant ruxsati yo‘q |
@@ -396,8 +397,11 @@ To‘liq DDL: `docs/backend/BARPO_DATABASE_SPEC.md` (`npm run docs` migratsiyala
 | 012_settings_support_diagnostics | `tenants`: address, phone, settings (jsonb); `support_requests`: response, responded_by, responded_at; error_events |
 | 013_billing_credit_auto_invoice | billing_credits; `billing_invoices.source` (manual/auto); `billing_entries.created_by` nullable (worker yozuvlari uchun) |
 | 014_project_zone_profile | `projects`: area_m2, image_file_id (kompozit FK → shu obyekt fayli); `zones`: kind (block/entrance/floor/other), floors_count (faqat block), version |
+| 015_premises | premises (xonadonlar: zona, blok trigger bilan, tur, qavat, xonalar, maydon, arxiv, version; R2 unikal indekslari; RLS), `import_previews.kind`/`result` |
+| 016_exchange_rates | exchange_rates (umumiy jadval, CBU USD kursi, RLS yo‘q) |
+| 017_price_lists | price_lists (versiya, ustama, R1 qadamlari, USD kursi va sanasi, jamlar, `groups` jsonb), price_list_lines (xonadon snapshot‘i, tannarx, sotuv m², narx, USD); ikkalasi immutable + RLS; sahifa CHECK ro‘yxatiga `pricing` |
 
-**Qoida:** qo‘llangan migratsiyani hech qachon tahrirlamang, faqat keyingi raqam (`015_*.sql`). Runner advisory lock bilan ishlaydi va `schema_migrations` ga yozadi. Qayta ishga tushirish no-op.
+**Qoida:** qo‘llangan migratsiyani hech qachon tahrirlamang, faqat keyingi raqam (`018_*.sql`). Runner advisory lock bilan ishlaydi va `schema_migrations` ga yozadi. Qayta ishga tushirish no-op.
 
 ### 8.1. Holat va tur qiymatlari (CHECK)
 
@@ -589,6 +593,10 @@ PATCH /v1/projects/{id}/zones/{zone_id} (nom, tur, qavatlar; version)
 GET  /v1/projects/{id}/work-lines (reports.read, narxsiz)
 GET  /v1/catalog                        GET|POST /v1/materials
 
+# Narx varaqasi (pricing sahifasi, sensitive; eksport prices.read talab qiladi; tenant_admin va financier)
+GET|POST /v1/pricing/price-lists        GET /v1/pricing/price-lists/{id} (sahifalash, q, kind)
+GET  /v1/pricing/price-lists/{id}/export?currency=UZS|USD (audit export.price_list)
+
 # Ombor
 GET|POST /v1/warehouses                 POST /v1/stock/custody
 GET  /v1/stock/accounts                 GET  /v1/stock/accounts/{id}/balances
@@ -638,7 +646,7 @@ GET  /v1/dashboard   GET /v1/integrations   GET /v1/audit   GET /v1/audit/export
 | 401 | UNAUTHORIZED, INVALID_CREDENTIALS, INVALID_TELEGRAM_SIGNATURE |
 | 403 | FORBIDDEN, PAGE_ACTION_FORBIDDEN, TENANT_BLOCKED, TENANT_ARCHIVED, PASSWORD_CHANGE_REQUIRED, CSRF_ORIGIN_REJECTED, SELF_REVIEW_FORBIDDEN, DELEGATION_EXCEEDS_OWN_PERMISSIONS |
 | 404 | NOT_FOUND (biriktirilmagan obyekt yoki ombor va chet kompaniya ID’si ham) |
-| 409 | VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_TRANSITION, INSUFFICIENT_AVAILABLE_STOCK, INVARIANT_VIOLATION, PRICE_ADJUSTMENT_REQUIRED, HANDOVER_REQUIRED, OPEN_TASKS_EXIST, REVERSAL_STOCK_ALREADY_USED (`invariant` ning default statusi 409) |
+| 409 | VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, INVALID_TRANSITION, PRICE_LIST_NO_PREMISES, PRICE_LIST_NO_COSTS, PRICE_LIST_NO_RATE, PREMISE_NUMBER_CONFLICT, INSUFFICIENT_AVAILABLE_STOCK, INVARIANT_VIOLATION, PRICE_ADJUSTMENT_REQUIRED, HANDOVER_REQUIRED, OPEN_TASKS_EXIST, REVERSAL_STOCK_ALREADY_USED (`invariant` ning default statusi 409) |
 | 410 | INVITE_UNAVAILABLE, PREVIEW_EXPIRED |
 | 429 | RATE_LIMITED |
 | 503 | PROVIDER_NOT_CONFIGURED, PAYMENT_PROVIDER_NOT_CONFIGURED, TELEGRAM_NOT_CONFIGURED |
@@ -724,7 +732,7 @@ Sidebar (`tenantNav`) uch guruh: Asosiy (dashboard, obyektlar, smetalar, vazifal
 
 **Yangi endpoint.** Tegishli `routes-*.ts` da `add({ method, path, summary, body/params/query (zod strictObject), permission yoki page+action, idempotent (yozuv uchun true), sensitive (narx bo‘lsa), handler })`. Handler `ctx.db` (tranzaksiya ichida) va `ctx.actor` bilan ishlaydi. Obyektga oid bo‘lsa `projectScope`, ombor hisobi bo‘lsa `accountScope`. Holat o‘zgarsa `version` tekshiruvi va `audit()`. Keyin `npm run docs`, `npm run test:roles` va kerak bo‘lsa integration testga qadam qo‘shing.
 
-**Yangi migratsiya.** `backend/migrations/015_<nom>.sql`. Kompaniya jadvali bo‘lsa `tenant_id`, FORCE RLS va `tenant_isolation` siyosati (001 dagi `format(...)` naqshi). Pul `numeric(20,2)`, miqdor 6 xonali. Keyin `npm run docs` (DATABASE_SPEC qayta yaratiladi) va integration test.
+**Yangi migratsiya.** `backend/migrations/018_<nom>.sql`. Kompaniya jadvali bo‘lsa `tenant_id`, FORCE RLS va `tenant_isolation` siyosati (001 dagi `format(...)` naqshi). Pul `numeric(20,2)`, miqdor 6 xonali. Keyin `npm run docs` (DATABASE_SPEC qayta yaratiladi) va integration test.
 
 **Yangi kompaniya sahifasi.** Backend `pages` + yangi migratsiyada `role_page_permissions` sahifa CHECK ro‘yxatini kengaytirish → frontend `pages`, `pageRoutes`, `tenantNav`, `App.tsx` dagi `tenantPages` → ikkala lokalda `page.<kalit>`. `pages` backend va frontendda bir xil bo‘lishi shart, `test:ui` buni tekshiradi.
 

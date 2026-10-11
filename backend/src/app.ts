@@ -15,6 +15,7 @@ import { workRoutes } from './routes-work.js';
 import { lifecycleRoutes } from './routes-lifecycle.js';
 import { dashboardRoutes } from './routes-dashboard.js';
 import { premiseRoutes } from './routes-premises.js';
+import { pricingRoutes } from './routes-pricing.js';
 export async function buildApp(pool: pg.Pool, logging = false) {
   // 5xx javoblar texnik panel (error_events) uchun yoziladi; yozuv xatosi javobni buzmaydi.
   const app = await baseApp(logging, async (e) => {
@@ -49,6 +50,7 @@ export async function buildApp(pool: pg.Pool, logging = false) {
   lifecycleRoutes(add);
   dashboardRoutes(add);
   premiseRoutes(add);
+  pricingRoutes(add);
   app.get('/openapi.json', async () => openapi(definitions));
   return { app, definitions };
 }

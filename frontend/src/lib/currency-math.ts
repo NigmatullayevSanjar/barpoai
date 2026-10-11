@@ -20,7 +20,7 @@ export const displayCurrency = () => active.display;
  * UZS decimal satrni ko'rsatish valyutasiga aylantiradi: USD = UZS ÷ kurs, 2 xona, ROUND_HALF_UP.
  * Faqat ko'rsatish uchun; natija yig'ilmaydi. Noto'g'ri satr bo'lsa null.
  */
-export function toDisplay(value: string, pin?: 'UZS'): { amount: string; currency: Currency } | null {
+export function toDisplay(value: string, pin?: 'UZS' | 'USD'): { amount: string; currency: Currency } | null {
   let d: Decimal;
   try {
     d = new Decimal(value);
@@ -28,6 +28,7 @@ export function toDisplay(value: string, pin?: 'UZS'): { amount: string; currenc
     return null;
   }
   if (!d.isFinite()) return null;
+  if (pin === 'USD') return { amount: d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), currency: 'USD' };
   if (pin === 'UZS' || active.display === 'UZS' || !active.rate)
     return { amount: d.toFixed(), currency: 'UZS' };
   return {

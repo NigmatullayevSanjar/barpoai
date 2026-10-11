@@ -45,6 +45,8 @@ POST /v1/company/role-permissions optimistic version + idempotency bilan saqlayd
 | files.write | files / create | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | integrations.read | integrations / read | — | — | — | ✓ | — | — | — | — | — | — |
 | audit.read | audit / read | — | — | — | ✓ | — | — | — | — | — | — |
+| pricing.read | pricing / read | — | — | — | ✓ | — | — | — | ✓ | — | — |
+| pricing.write | pricing / create | — | — | — | ✓ | — | — | — | ✓ | — | — |
 
 ## Sahifalar
 
@@ -76,6 +78,7 @@ POST /v1/company/role-permissions optimistic version + idempotency bilan saqlayd
 - `forecast`: create, read, update, delete
 - `payment_requests`: create, read, update, delete
 - `payment_calendar`: create, read, update, delete
+- `pricing`: create, read, update, delete
 
 Forma va tafsilotlar o‘z biznes sahifasining huquqini oladi: masalan smeta yaratish va tahrirlash sahifalari estimates.create va estimates.update bilan alohida filtrlanadi. Moliya dizayn ekranlari alohida bank_cash, invoices, payroll, budgets va boshqa sahifa keylariga moslangan; profil self-service hisoblanadi.
 

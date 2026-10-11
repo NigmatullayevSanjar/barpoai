@@ -71,6 +71,7 @@ const Fin = {
   Payroll: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PayrollPage }))),
   PlanActual: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PlanActualPage }))),
   Forecast: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.ForecastPage }))),
+  Pricing: lazy(() => import('@/features/pricing/PricingPage').then((m) => ({ default: m.PricingPage }))),
   Reports: lazy(() =>
     import('@/features/finance/workflow').then((m) => ({ default: m.FinancialReportsPage })),
   ),
@@ -172,6 +173,7 @@ const tenantPages: Record<Page, React.ReactNode> = {
   payment_calendar: <Fin.Calendar />,
   payroll: <Fin.Payroll />,
   plan_actual: <Fin.PlanActual />,
+  pricing: <Fin.Pricing />,
   forecast: <Fin.Forecast />,
   financial_reports: <Fin.Reports />,
   permissions: <RolePermissionsPage />,

@@ -67,7 +67,8 @@ TZ’ning qolgan talablari 7-bo‘limda. D9 tufayli bajarilmaydiganlari 8-bo‘l
 
 - 3 — bajarildi (2026-10-10, commit yo‘q). Migratsiya `015_premises.sql`: `premises` (zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar, maydon, arxiv, version; RLS, kompozit FK). R2 bazada: `block_zone_id` trigger bilan hisoblanadi (eng yaqin `kind='block'` ota zona), ikkita qisman unikal indeks (blok ichida / bloksiz obyekt ichida, faqat arxivlanmaganlar, `lower(number)`); zona turi o‘zgarsa bloklar qayta hisoblanadi, to‘qnashuv — `PREMISE_NUMBER_CONFLICT`. `import_previews` ga `kind` va `result`. API (`routes-premises.ts`): ro‘yxat (q, blok/`none`, qavat, tur, arxiv; `total_count`, `total_area_m2` serverdan), yaratish, PATCH (version), archive/unarchive, shablon (uz/ru), import preview → commit. Import: qat’iy shablon, haqiqiy qator raqamlari, xato bo‘lsa bloklanadi, (blok, raqam) bo‘yicha yangilash yoki o‘zgarishsiz, eskirgan preview rad etiladi. Frontend: obyekt kartasida “Xonadonlar” tabi (`PremisesTab.tsx`), uz/ru lokallar. Smeta import commit’i endi faqat `kind='estimate'` preview’ni oladi.
 
-- 2 — bajarildi (2026-10-11). Migratsiya `016_exchange_rates.sql` (umumiy jadval, kurs > 0). Worker `refreshRates` (`rates.ts`): CBU USD kursi, 12 soat yangi bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi. `GET /v1/exchange-rates/latest` (har bir kirgan foydalanuvchi, platforma ham). Frontend: `CurrencyProvider` (`lib/currency.tsx`, `barpo.currency`), `useT()` valyutaga obuna, konvertatsiya `formatMoney` → `toDisplay` (`lib/currency-store.ts`, `decimal.js`), UZ/RU yonida UZS/USD almashtirgich va kurs izohi, kurs yo‘q — USD o‘chiq. Jadval sarlavhalari `displayCurrency()`, formalardagi summalar UZS’ga qotirilgan, kiritish yorliqlarida UZS. CBU javob formati bulut muhitida jonli tekshirilmagan (tarmoq ruxsati yo‘q) — lokal tekshirish kerak.
+- 2 — bajarildi (2026-10-11). Migratsiya `016_exchange_rates.sql` (umumiy jadval, kurs > 0). Worker `refreshRates` (`rates.ts`): CBU USD kursi, 12 soat yangi bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi. `GET /v1/exchange-rates/latest` (har bir kirgan foydalanuvchi, platforma ham). Frontend: `CurrencyProvider` (`lib/currency.tsx`, `barpo.currency`), `useT()` valyutaga obuna, konvertatsiya `formatMoney` → `toDisplay` (`lib/currency-store.ts`, `decimal.js`), UZ/RU yonida UZS/USD almashtirgich va kurs izohi, kurs yo‘q — USD o‘chiq. Jadval sarlavhalari `displayCurrency()`, formalardagi summalar UZS’ga qotirilgan, kiritish yorliqlarida UZS. CBU javob formati bulut muhitida jonli tekshirilmagan (tarmoq ruxsati yo‘q) — lokal tekshirish kerak. 2026-10-11 lokalda tekshirildi: CBU JSON `parseCbuRate` bilan mos, worker kursni yozdi.
+- 4 — bajarildi (2026-10-11, branch `stage-4-pricing`, commit yo‘q). Migratsiya `017_price_lists.sql`: `price_lists` (versiya, ustama, R1 qadamlari, USD kursi va sanasi, jamlar, `groups` jsonb), `price_list_lines` (xonadon snapshot‘i, tannarx, sotuv m², narx, USD); ikkalasi `immutable` + RLS; `pricing` sahifasi. Hisob `backend/src/pricing.ts` (sof, decimal.js), unit test 4.4 misolini aynan beradi. API `routes-pricing.ts`: versiyalar, yaratish (`pricing.write`, advisory qulf), detal (sahifalash, q, kind), Excel eksport (`currency`, audit). Fakt zonasi: hujjat/sarf zonasi → sarfda zona bo‘lmasa smeta qatori zonasi → reversal uchun asl hujjat; xonadonsiz zona xarajati eng yaqin xonadonli ota zonaga (egasi, 2026-10-11). `GET /v1/pricing/readiness` bo‘sh holatlar uchun. Frontend: Moliya → “Narx varaqasi” (`/app/finance/pricing`), bo‘sh holatlar (xonadon yo‘q, xarajat yo‘q) sababi bilan, `formatMoney` `pin='USD'`. Qoidalar `docs/backend/BARPO_BUSINESS_RULES.md`.
 Tartib: avval 1.1, 1.2 va 1.5 (xatolar va kichik ishlar), keyin 1.3 → 3 → 2 → 4. 1.4 ni istalgan payt qilish mumkin.
 
 Hajm: S — bir necha kun, M — 1–2 hafta, L — 2+ hafta (taxminiy).
@@ -82,9 +83,10 @@ Hamma hisob serverda `decimal.js` bilan bajariladi. Frontend faqat ko‘rsatadi.
 
 - **Zona guruhi Z:** smeta qatorlari va xarajatlar, `zone_id = Z` bilan to‘g‘ridan-to‘g‘ri bog‘langanlari.
   - `reja(Z)` — obyektning arxivlanmagan smetalaridagi joriy reviziya qatorlari `total` yig‘indisi, `zone_id = Z`.
-  - `fakt(Z)` — `account='expense'` jurnal yozuvlari yig‘indisi. Zona manba hujjatdan olinadi (`finance_documents.zone_id` yoki `stock_commands.zone_id`).
+  - `fakt(Z)` — `account='expense'` jurnal yozuvlari yig‘indisi. Zona manba hujjatdan olinadi (`finance_documents.zone_id` yoki `stock_commands.zone_id`); sarfda zona bo‘lmasa bog‘langan smeta qatori zonasi; reversal uchun asl hujjat zonasi (egasi, 2026-10-11).
   - `prognoz(Z) = max(reja(Z), fakt(Z))`.
-- **Umumiy guruh C:** `zone_id` bo‘sh bo‘lgan reja va fakt, hamda daraxtida birorta ham xonadon yo‘q zonalarning xarajati. `prognoz(C) = max(reja(C), fakt(C))`.
+- **Xonadonsiz zona:** daraxtida birorta ham xonadon yo‘q zonaning rejasi va fakti eng yaqin xonadonli ota zona guruhiga qo‘shiladi (egasi, 2026-10-11); bunday ota zona bo‘lmasa umumiy guruhga.
+- **Umumiy guruh C:** `zone_id` bo‘sh bo‘lgan reja va fakt, hamda xonadonli ota zonasi yo‘q xonadonsiz zonalarning xarajati. `prognoz(C) = max(reja(C), fakt(C))`.
 
 Moliya hujjatlari smeta qatoriga bog‘lanmagan. Shuning uchun max qator darajasida emas, guruh darajasida olinadi.
 
@@ -470,7 +472,8 @@ D9 tufayli TZ’ning quyidagi bandlari kodda bo‘lmaydi. Dizayner ularni chizma
 - **Bosqich 1 test natijalari:** `docs/tests/BOSQICH_1_NATIJA.md` — 57 o‘tdi; UI-11 ma’lum cheklov; ERR-03 qisman tekshirilgan.
 - **Bosqich 3 (xonadonlar):** bajarildi, 3-bo‘limdagi holat yozuvi.
 - **Bosqich 2 (UZS/USD):** bajarildi, 3-bo‘limdagi holat yozuvi.
-- **Keyingi qadam:** Bosqich 4 (narx varaqasi) — prompt 6.8. R1 va R2 hal qilingan, to‘siq yo‘q.
+- **Bosqich 4 (narx varaqasi):** bajarildi 2026-10-11, branch `stage-4-pricing` (commit yo‘q, egasi ko‘rib chiqadi), 3-bo‘limdagi holat yozuvi.
+- **Keyingi qadam:** Bosqich 4 ni ko‘rib chiqib `main` ga qo‘shish; keyin 1.4 (dashboard grafiklari) va 9.4 dagi ochiq ishlar.
 - **Istalgan payt:** 1.4 (dashboard grafiklari).
 
 ### 9.2. Yangi kompyuterni tayyorlash

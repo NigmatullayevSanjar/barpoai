@@ -2728,6 +2728,8 @@ paths:
                     - files.write
                     - integrations.read
                     - audit.read
+                    - pricing.read
+                    - pricing.write
                 effect:
                   type: string
                   enum:
@@ -5562,7 +5564,7 @@ paths:
                     - manager
                 rules:
                   minItems: 1
-                  maxItems: 28
+                  maxItems: 29
                   type: array
                   items:
                     type: object
@@ -5598,6 +5600,7 @@ paths:
                           - forecast
                           - payment_requests
                           - payment_calendar
+                          - pricing
                       create:
                         type: boolean
                       read:
@@ -9279,6 +9282,281 @@ paths:
               required:
                 - digest
               additionalProperties: false
+  /v1/pricing/readiness:
+    get:
+      summary: "Narx varaqasi uchun tayyorlik: faol xonadonlar soni va reja/fakt xarajat bormi (bo‘sh holatlar uchun)"
+      operationId: get_v1_pricing_readiness
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+      x-permission: pricing.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a152
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a152
+        "402": *a152
+        "403": *a152
+        "404": *a152
+        "409": *a152
+        "410": *a152
+        "429": *a152
+        "503": *a152
+  /v1/pricing/price-lists:
+    get:
+      summary: Obyektning narx varaqasi versiyalari (yangisi birinchi)
+      operationId: get_v1_pricing_price_lists
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema:
+            default: 30
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: true
+          schema:
+            default: 0
+            type: integer
+            minimum: 0
+            maximum: 100000
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+      x-permission: pricing.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a153
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a153
+        "402": *a153
+        "403": *a153
+        "404": *a153
+        "409": *a153
+        "410": *a153
+        "429": *a153
+        "503": *a153
+    post:
+      summary: "Yangi o‘zgarmas versiya: ustama foizi, R1 qadamlari va joriy CBU kursi bilan hisob (4-bo‘lim); xonadon yoki
+        xarajat bo‘lmasa 409"
+      operationId: post_v1_pricing_price_lists
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: pricing.write
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a154
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a154
+        "402": *a154
+        "403": *a154
+        "404": *a154
+        "409": *a154
+        "410": *a154
+        "429": *a154
+        "503": *a154
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                markup_percent:
+                  type: string
+                  pattern: ^(0|[1-9]\d{0,3})(\.\d{1,2})?$
+                note:
+                  type: string
+                  maxLength: 1000
+              required:
+                - project_id
+                - markup_percent
+              additionalProperties: false
+  /v1/pricing/price-lists/{id}:
+    get:
+      summary: "Versiya detali: sarlavha, guruhlar yig‘masi va xonadon qatorlari (sahifalash; q — raqam, kind filtri)"
+      operationId: get_v1_pricing_price_lists__id
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: limit
+          in: query
+          required: true
+          schema:
+            default: 30
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: true
+          schema:
+            default: 0
+            type: integer
+            minimum: 0
+            maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 20
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - apartment
+              - commercial
+              - parking
+              - storage
+      x-permission: pricing.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a155
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a155
+        "402": *a155
+        "403": *a155
+        "404": *a155
+        "409": *a155
+        "410": *a155
+        "429": *a155
+        "503": *a155
+  /v1/pricing/price-lists/{id}/export:
+    get:
+      summary: Narx varaqasi Excel tanlangan valyutada (USD — versiya kursi bilan; kurs bo‘lmasa 409); prices.read shart;
+        auditga yoziladi
+      operationId: get_v1_pricing_price_lists__id_export
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: currency
+          in: query
+          required: true
+          schema:
+            default: UZS
+            type: string
+            enum:
+              - UZS
+              - USD
+      x-permission: pricing.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a156
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a156
+        "402": *a156
+        "403": *a156
+        "404": *a156
+        "409": *a156
+        "410": *a156
+        "429": *a156
+        "503": *a156
 components:
   securitySchemes:
     bearerAuth:
