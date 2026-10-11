@@ -13,7 +13,7 @@ export const uz: Record<string, string> = {
   'common.add': 'Qo‘shish',
   'currency.label': 'Valyuta',
   'currency.no_rate': 'Valyuta kursi hali olinmagan',
-  'currency.note': '1 USD = {rate} UZS · {date} · CBU, joriy kurs bo‘yicha',
+  'currency.note': '1 USD = {rate} so‘m · {date} · CBU, joriy kurs bo‘yicha',
   'common.back': 'Orqaga',
   'common.next': 'Keyingi',
   'common.prev': 'Oldingi',

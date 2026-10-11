@@ -861,7 +861,7 @@ function SetPlanModal({
           <option value="">—</option>
           {plans.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.code} v{p.version} — {formatMoney(p.monthly_price, lang)}
+              {p.code} v{p.version} — {formatMoney(p.monthly_price, lang, true, 'UZS')}
             </option>
           ))}
         </Select>

@@ -683,7 +683,7 @@ try {
   await adminPage.getByText(/1 USD = 12.500 UZS/).waitFor();
   await usd.click();
   await adminPage.getByRole('columnheader', { name: /Summa \(USD\)/ }).waitFor();
-  await adminPage.getByRole('cell', { name: /^40( \$)?$/ }).first().waitFor();
+  await adminPage.getByRole('cell', { name: /^40[.,]00( \$)?$/ }).first().waitFor();
   await adminPage.getByRole('button', { name: 'UZS', exact: true }).click();
   await adminPage.getByRole('columnheader', { name: /Summa \(UZS\)/ }).waitFor();
   checks.push(

@@ -93,7 +93,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.on(sig, () => {
       stopping = true;
     });
-  let lastReminder = 0;
+  let lastReminder = 0,
+    lastRateAttempt = 0;
   // Bot long polling alohida sikl: getUpdates 20 soniyagacha kutadi.
   const botLoop = (async () => {
     while (!stopping) {
@@ -113,11 +114,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         await remindDeadlines(pool);
         await issueDueInvoices(pool);
         lastReminder = Date.now();
-        // CBU kursi: xato bo'lsa oxirgi kurs qoladi, keyingi siklda qayta uriniladi.
-        if ((await refreshRates(pool)) === 'failed') console.error('CBU rate fetch failed');
       }
     } catch (error: any) {
       console.error('Worker cycle failed', error?.code ?? error?.message);
+    }
+    // CBU kursi boshqa ishlardan alohida: xato bo'lsa oxirgi kurs qoladi, keyingi urinish 1 soatdan keyin.
+    if (Date.now() - lastRateAttempt > 10 * 60 * 1000) {
+      lastRateAttempt = Date.now();
+      try {
+        if ((await refreshRates(pool)) === 'failed') {
+          console.error('CBU rate fetch failed');
+          lastRateAttempt = Date.now() + 50 * 60 * 1000;
+        }
+      } catch (error: any) {
+        console.error('CBU rate refresh failed', error?.code ?? error?.message);
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }

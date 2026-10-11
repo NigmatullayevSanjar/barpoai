@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCbuRate } from '../src/rates.js';
-import { setActiveCurrency, toDisplay } from '../../frontend/src/lib/currency-store.ts';
+import { setActiveCurrency, toDisplay } from '../../frontend/src/lib/currency-math.ts';
 
 test('CBU response: USD rate and dd.mm.yyyy date are parsed as decimal text', () => {
   assert.deepEqual(

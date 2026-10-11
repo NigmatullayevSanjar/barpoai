@@ -183,7 +183,7 @@ function ReverseModal({ doc, onClose }: { doc: FinanceDocument; onClose: () => v
       open
       onClose={onClose}
       title={t('fin.reverse')}
-      description={`${t(`fin.kind.${doc.kind}`)} · ${formatMoney(doc.amount, lang)} · ${doc.description}`}
+      description={`${t(`fin.kind.${doc.kind}`)} · ${formatMoney(doc.amount, lang, true, 'UZS')} · ${doc.description}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

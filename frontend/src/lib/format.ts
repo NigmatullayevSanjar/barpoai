@@ -16,7 +16,8 @@ export function formatMoney(
   if (!shown) return String(value);
   // Intl decimal satrni aniq formatlaydi (Number ga o'tkazilmaydi).
   const formatted = new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'uz-UZ', {
-    minimumFractionDigits: 0,
+    // USD sentlari doim 2 xona (20 947,30 $); so'm odatdagidek.
+    minimumFractionDigits: shown.currency === 'USD' ? 2 : 0,
     maximumFractionDigits: 2,
   }).format(shown.amount as unknown as number);
   if (!withCurrency) return formatted;
