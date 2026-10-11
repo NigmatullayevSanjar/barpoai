@@ -4,6 +4,7 @@ import { invariant } from './errors.js';
 import { sendMessage, telegramConfigured, pollOnce } from './telegram.js';
 import { notify } from './notify.js';
 import { issueDueInvoices } from './billing.js';
+import { refreshRates } from './rates.js';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 /** Outbox: har tenant uchun bittadan, platforma (tenant_id NULL) uchun ham bitta vazifa. */
@@ -112,6 +113,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         await remindDeadlines(pool);
         await issueDueInvoices(pool);
         lastReminder = Date.now();
+        // CBU kursi: xato bo'lsa oxirgi kurs qoladi, keyingi siklda qayta uriniladi.
+        if ((await refreshRates(pool)) === 'failed') console.error('CBU rate fetch failed');
       }
     } catch (error: any) {
       console.error('Worker cycle failed', error?.code ?? error?.message);

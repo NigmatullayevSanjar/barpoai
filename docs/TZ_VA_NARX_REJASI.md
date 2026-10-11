@@ -67,6 +67,7 @@ TZ’ning qolgan talablari 7-bo‘limda. D9 tufayli bajarilmaydiganlari 8-bo‘l
 
 - 3 — bajarildi (2026-10-10, commit yo‘q). Migratsiya `015_premises.sql`: `premises` (zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar, maydon, arxiv, version; RLS, kompozit FK). R2 bazada: `block_zone_id` trigger bilan hisoblanadi (eng yaqin `kind='block'` ota zona), ikkita qisman unikal indeks (blok ichida / bloksiz obyekt ichida, faqat arxivlanmaganlar, `lower(number)`); zona turi o‘zgarsa bloklar qayta hisoblanadi, to‘qnashuv — `PREMISE_NUMBER_CONFLICT`. `import_previews` ga `kind` va `result`. API (`routes-premises.ts`): ro‘yxat (q, blok/`none`, qavat, tur, arxiv; `total_count`, `total_area_m2` serverdan), yaratish, PATCH (version), archive/unarchive, shablon (uz/ru), import preview → commit. Import: qat’iy shablon, haqiqiy qator raqamlari, xato bo‘lsa bloklanadi, (blok, raqam) bo‘yicha yangilash yoki o‘zgarishsiz, eskirgan preview rad etiladi. Frontend: obyekt kartasida “Xonadonlar” tabi (`PremisesTab.tsx`), uz/ru lokallar. Smeta import commit’i endi faqat `kind='estimate'` preview’ni oladi.
 
+- 2 — bajarildi (2026-10-11). Migratsiya `016_exchange_rates.sql` (umumiy jadval, kurs > 0). Worker `refreshRates` (`rates.ts`): CBU USD kursi, 12 soat yangi bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi. `GET /v1/exchange-rates/latest` (har bir kirgan foydalanuvchi, platforma ham). Frontend: `CurrencyProvider` (`lib/currency.tsx`, `barpo.currency`), `useT()` valyutaga obuna, konvertatsiya `formatMoney` → `toDisplay` (`lib/currency-store.ts`, `decimal.js`), UZ/RU yonida UZS/USD almashtirgich va kurs izohi, kurs yo‘q — USD o‘chiq. Jadval sarlavhalari `displayCurrency()`, formalardagi summalar UZS’ga qotirilgan, kiritish yorliqlarida UZS. CBU javob formati bulut muhitida jonli tekshirilmagan (tarmoq ruxsati yo‘q) — lokal tekshirish kerak.
 Tartib: avval 1.1, 1.2 va 1.5 (xatolar va kichik ishlar), keyin 1.3 → 3 → 2 → 4. 1.4 ni istalgan payt qilish mumkin.
 
 Hajm: S — bir necha kun, M — 1–2 hafta, L — 2+ hafta (taxminiy).
@@ -468,7 +469,8 @@ D9 tufayli TZ’ning quyidagi bandlari kodda bo‘lmaydi. Dizayner ularni chizma
 - **Bajarilgan va commit qilingan:** 1.1, 1.2, 1.5 (`ec91638`), 1.3 (`af70f57`).
 - **Bosqich 1 test natijalari:** `docs/tests/BOSQICH_1_NATIJA.md` — 57 o‘tdi; UI-11 ma’lum cheklov; ERR-03 qisman tekshirilgan.
 - **Bosqich 3 (xonadonlar):** bajarildi, 3-bo‘limdagi holat yozuvi.
-- **Keyingi qadam:** Bosqich 2 (UZS/USD almashtirgich) — prompt 6.6, so‘ng Bosqich 4. R1 va R2 hal qilingan, to‘siq yo‘q.
+- **Bosqich 2 (UZS/USD):** bajarildi, 3-bo‘limdagi holat yozuvi.
+- **Keyingi qadam:** Bosqich 4 (narx varaqasi) — prompt 6.8. R1 va R2 hal qilingan, to‘siq yo‘q.
 - **Istalgan payt:** 1.4 (dashboard grafiklari).
 
 ### 9.2. Yangi kompyuterni tayyorlash

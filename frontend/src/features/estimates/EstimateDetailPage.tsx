@@ -8,6 +8,7 @@ import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/lib/format';
+import { displayCurrency } from '@/lib/currency-store';
 import {
   Alert,
   Badge,
@@ -142,9 +143,9 @@ export function EstimateDetailPage() {
       />
       {pricesVisible ? (
         <div className="grid-4">
-          <Stat accent label={t('est.total')} value={formatMoney(d.totals.total, lang, false)} sub="UZS" />
-          <Stat label={t('est.material_total')} value={formatMoney(d.totals.material_total, lang, false)} sub="UZS" />
-          <Stat label={t('est.work_total')} value={formatMoney(d.totals.work_total, lang, false)} sub="UZS" />
+          <Stat accent label={t('est.total')} value={formatMoney(d.totals.total, lang, false)} sub={displayCurrency()} />
+          <Stat label={t('est.material_total')} value={formatMoney(d.totals.material_total, lang, false)} sub={displayCurrency()} />
+          <Stat label={t('est.work_total')} value={formatMoney(d.totals.work_total, lang, false)} sub={displayCurrency()} />
           <Stat
             label={t('est.lines')}
             value={d.lines.length}

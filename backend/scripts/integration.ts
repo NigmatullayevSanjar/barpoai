@@ -18,6 +18,7 @@ import { buildApp } from '../src/app.js';
 import { issueDueInvoices, periodEnd } from '../src/billing.js';
 import { hashPassword, digest } from '../src/security.js';
 import { dec } from '../src/money.js';
+import { refreshRates } from '../src/rates.js';
 import {
   createLinkToken,
   consumeLinkToken,
@@ -2682,6 +2683,35 @@ try {
   );
   passed.push(
     'Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)',
+  );
+  // ---- Bosqich 2: CBU kursi. Xatoda oxirgi kurs qoladi, 0 yozilmaydi; endpoint har bir foydalanuvchiga ochiq
+  const noRate = await call('GET', '/v1/exchange-rates/latest', undefined, adminAgain);
+  assert.equal(noRate.rate, null);
+  const cbu = (status: number, body: unknown) =>
+    (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '0', Date: '09.10.2026' }])), 'failed');
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12800.00', Date: '09.10.2026' }])), 'saved');
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '13000', Date: '10.10.2026' }])), 'skipped');
+  await admin.query("UPDATE exchange_rates SET fetched_at=now()-interval '13 hours'");
+  assert.equal(await refreshRates(appPool!, cbu(503, {})), 'failed');
+  assert.equal(
+    await refreshRates(appPool!, (async () => {
+      throw new Error('timeout');
+    }) as unknown as typeof fetch),
+    'failed',
+  );
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: 'abc', Date: '10.10.2026' }])), 'failed');
+  const kept = await call('GET', '/v1/exchange-rates/latest', undefined, pfToken);
+  assert.deepEqual([kept.rate, kept.rate_date, kept.source], ['12800.0000', '2026-10-09', 'CBU']);
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12850.27', Date: '10.10.2026' }])), 'saved');
+  const latestRate = await call('GET', '/v1/exchange-rates/latest', undefined, ownerToken);
+  assert.deepEqual([latestRate.rate, latestRate.rate_date], ['12850.2700', '2026-10-10']);
+  assert.equal((await admin.query('SELECT count(*)::int n FROM exchange_rates')).rows[0].n, 2);
+  await assert.rejects(admin.query("INSERT INTO exchange_rates(currency,rate_date,rate,source) VALUES('USD','2026-10-11',0,'CBU')"), /exchange_rates_rate_check/);
+  const anon = await app!.inject({ method: 'GET', url: '/v1/exchange-rates/latest' });
+  assert.equal(anon.statusCode, 401);
+  passed.push(
+    'CBU USD rate: worker saves a valid rate, skips while fresh, keeps the last rate on HTTP/parse/timeout errors and never stores 0; latest rate is readable by any signed-in user, not anonymously',
   );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');

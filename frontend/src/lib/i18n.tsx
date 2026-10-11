@@ -13,6 +13,7 @@ import { workUz } from '@/locales/work.uz';
 import { workRu } from '@/locales/work.ru';
 import { opsUz } from '@/locales/ops.uz';
 import { opsRu } from '@/locales/ops.ru';
+import { CurrencyCtx } from './currency-store';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
@@ -61,6 +62,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 }
 export function useT() {
   const ctx = useContext(Ctx);
+  // Valyuta almashsa useT() chaqiruvchilari (formatMoney ishlatadiganlar) qayta chiziladi.
+  useContext(CurrencyCtx);
   if (!ctx) throw new Error('I18nProvider missing');
   return ctx;
 }

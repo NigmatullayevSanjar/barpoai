@@ -1,8 +1,8 @@
 {
-  "executed_at": "2026-10-10T19:09:13.283Z",
+  "executed_at": "2026-10-11T10:51:08.879Z",
   "passed": [
     "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan",
-    "Role × GET endpoint matrix: 65 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
+    "Role × GET endpoint matrix: 66 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
     "Cross-tenant isolation: 16 id-routes and 9 writes with foreign ids are rejected; lists stay tenant-scoped",
     "Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; brigadier responses carry no price fields",
     "Replays with the same idempotency key, parallel version races, double accept and double reversal never write money/material/progress twice"
@@ -10,52 +10,52 @@
   "findings": [],
   "matrix": {
     "foreman": {
-      "allowed": 33,
+      "allowed": 34,
       "denied": 32,
       "mismatches": []
     },
     "brigadier": {
-      "allowed": 28,
+      "allowed": 29,
       "denied": 37,
       "mismatches": []
     },
     "warehouse_manager": {
-      "allowed": 28,
+      "allowed": 29,
       "denied": 37,
       "mismatches": []
     },
     "financier": {
-      "allowed": 41,
+      "allowed": 42,
       "denied": 24,
       "mismatches": []
     },
     "accountant": {
-      "allowed": 41,
+      "allowed": 42,
       "denied": 24,
       "mismatches": []
     },
     "manager": {
-      "allowed": 20,
+      "allowed": 21,
       "denied": 45,
       "mismatches": []
     },
     "tenant_admin": {
-      "allowed": 57,
+      "allowed": 58,
       "denied": 8,
       "mismatches": []
     },
     "platform_owner": {
-      "allowed": 9,
+      "allowed": 10,
       "denied": 56,
       "mismatches": []
     },
     "super_admin": {
-      "allowed": 6,
+      "allowed": 7,
       "denied": 59,
       "mismatches": []
     },
     "support": {
-      "allowed": 5,
+      "allowed": 6,
       "denied": 60,
       "mismatches": []
     }

@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T19:08:35.684Z",
+  "executed_at": "2026-10-11T10:49:37.738Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -61,6 +61,7 @@
     "Premises: number unique within the nearest block (project-wide without a block), zone kind change re-checks it, floor limit, archive frees the number, list totals and filters on the server, scope, 403/404 and RLS",
     "Premises Excel import: server template, real sheet row numbers, errors block the commit, re-upload updates or skips instead of duplicating, stale preview rejected, audit",
     "Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)",
+    "CBU USD rate: worker saves a valid rate, skips while fresh, keeps the last rate on HTTP/parse/timeout errors and never stores 0; latest rate is readable by any signed-in user, not anonymously",
     "OpenAPI generated from registered API routes"
   ],
   "failed": []

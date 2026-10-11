@@ -1,17 +1,26 @@
+import { toDisplay } from './currency-store';
+
 /** UZS, miqdor va sana formatlari. Pul qiymatlari API'dan string keladi; hisob-kitob qilinmaydi. */
+/**
+ * Pul summasi tanlangan ko'rsatish valyutasida (D7). Konvertatsiya faqat shu yerda: decimal bilan, Number emas.
+ * `pin='UZS'` — formalar ichida (kiritilgan summa UZS'da ko'rinsin).
+ */
 export function formatMoney(
   value: string | number | null | undefined,
   lang: 'uz' | 'ru' = 'uz',
   withCurrency = true,
+  pin?: 'UZS',
 ) {
   if (value === null || value === undefined || value === '') return '—';
-  const n = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(n)) return String(value);
+  const shown = toDisplay(String(value), pin);
+  if (!shown) return String(value);
+  // Intl decimal satrni aniq formatlaydi (Number ga o'tkazilmaydi).
   const formatted = new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'uz-UZ', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(n);
-  return withCurrency ? `${formatted} ${lang === 'ru' ? 'сум' : 'so‘m'}` : formatted;
+  }).format(shown.amount as unknown as number);
+  if (!withCurrency) return formatted;
+  return shown.currency === 'USD' ? `${formatted} $` : `${formatted} ${lang === 'ru' ? 'сум' : 'so‘m'}`;
 }
 export function formatQuantity(value: string | number | null | undefined, unit?: string | null) {
   if (value === null || value === undefined || value === '') return '—';

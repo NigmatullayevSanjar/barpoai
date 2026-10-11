@@ -13,7 +13,7 @@
 1. **Faol loyiha** — `barpo-ai/`. Workspace ildizi (`d:\Ismoil\VScode\Frontend\Frontend`) faqat `CLAUDE.md` saqlaydi, u `barpo-ai/CLAUDE.md` ga yo‘naltiradi.
 2. **Ish uslubi** (`barpo-ai/CLAUDE.md`): kod yozishdan oldin o‘yla va noaniqlikni so‘ra; eng kam kod; faqat so‘ralgan joyni o‘zgartir; har vazifani tekshiriladigan maqsadga aylantir. Har o‘zgargan qator foydalanuvchi so‘roviga bog‘lanishi kerak. Begona eskirgan kodni ko‘rsang ayt, o‘chirma.
 3. **Loyiha konvensiyalari** (buzilmasin):
-   - Pul va miqdor **butun yo‘l davomida decimal string** (`"100.50"`, `"25.000000"`). Backend `decimal.js` bilan hisoblaydi. Frontend **arifmetika qilmaydi**, faqat formatlaydi.
+   - Pul va miqdor **butun yo‘l davomida decimal string** (`"100.50"`, `"25.000000"`). Backend `decimal.js` bilan hisoblaydi. Frontend **arifmetika qilmaydi**, faqat formatlaydi. Yagona istisno (D7, 2026-10-11): USD faqat ko‘rsatish uchun — konvertatsiya faqat `formatMoney` ichida, server bergan CBU kursi bilan, decimal arifmetika bilan (Number emas); yig‘indi hisoblanmaydi, jamlar serverdan UZS’da keladi.
    - Ruxsat **serverda** tekshiriladi. UI faqat yashiradi.
    - Har yangi UI matni **ikkala** lokalga: `frontend/src/locales/*.uz.ts` va `*.ru.ts`.
    - **Statik demo raqam yo‘q.** Ma’lumot yo‘q bo‘lsa bo‘sh holat, xato bo‘lsa xato holati.
@@ -40,7 +40,7 @@ Qurilish ERP       → obyektlar, zonalar, smeta, ombor, moliya, vazifa, hisobot
 ```
 
 - Desktop-first veb ilova. **Mobil ilova scope’da yo‘q.**
-- Til: o‘zbek (lotin) asosiy, rus ikkinchi. Valyuta faqat UZS, QQS yo‘q. Vaqt zonasi `Asia/Tashkent`.
+- Til: o‘zbek (lotin) asosiy, rus ikkinchi. Saqlash va kiritish faqat UZS (`currency='UZS'`), QQS yo‘q. USD faqat ko‘rsatish uchun: headerda UZS/USD almashtirgich, CBU kursi (D7); Excel eksportlar UZS’da (narx varaqasidan tashqari). Vaqt zonasi `Asia/Tashkent`.
 - Nomida “AI” bo‘lsa ham, **AI yordamchi 2026-10-04 da egasi qarori bilan rejadan chiqarilgan**. AI funksiya qo‘shmang.
 - Platforma roli kompaniya operatsion ma’lumotiga **avtomatik kirmaydi** (break-glass o‘chirilgan).
 

@@ -9,6 +9,7 @@ import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
+import { displayCurrency } from '@/lib/currency-store';
 import {
   Alert,
   Badge,
@@ -124,17 +125,17 @@ export function PlatformDashboard() {
         <Stat
           label={t('platform.invoiced')}
           value={summary.data ? formatMoney(summary.data.invoiced, lang, false) : '—'}
-          sub="UZS"
+          sub={displayCurrency()}
         />
         <Stat
           label={t('platform.cash_received')}
           value={summary.data ? formatMoney(summary.data.cash_received, lang, false) : '—'}
-          sub="UZS"
+          sub={displayCurrency()}
         />
         <Stat
           label={t('platform.debt')}
           value={summary.data ? formatMoney(summary.data.debt, lang, false) : '—'}
-          sub="UZS"
+          sub={displayCurrency()}
         />
         <Stat
           label={t('platform.refunded')}
@@ -885,7 +886,7 @@ function NewInvoiceModal({
   tenant: TenantDetail;
   onDone: () => Promise<unknown>;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const onError = useApiError();
   const toast = useToast();
   const startDefault =
@@ -953,7 +954,7 @@ function NewInvoiceModal({
         <Input type="date" label={t('tenants.due_at')} value={due} onChange={(e) => setDue(e.target.value)} />
         <Input
           label={t('tenants.amount')}
-          value={tenant.subscription ? formatMoney(tenant.subscription.monthly_price) : ''}
+          value={tenant.subscription ? formatMoney(tenant.subscription.monthly_price, lang, true, 'UZS') : ''}
           readOnly
         />
       </div>

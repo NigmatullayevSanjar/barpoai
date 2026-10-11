@@ -670,6 +670,25 @@ try {
   assert.equal(fin2.cash, '-1700000.00');
   assert.equal(fin2.expense, '680000.00');
   checks.push('Payment request → approve → pay settles a service act; expense is booked once');
+  // Bosqich 2: kurs yo'q — USD o'chiq; kurs bo'lsa summalar USD'da (UZS ÷ kurs), sarlavha (USD), keyin UZS'ga qaytadi
+  const docsUrl = webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop();
+  await adminPage.goto(docsUrl);
+  const usd = adminPage.getByRole('button', { name: 'USD', exact: true });
+  await usd.waitFor();
+  assert.equal(await usd.isDisabled(), true, 'USD must be disabled without a rate');
+  await owner.query(
+    "INSERT INTO exchange_rates(currency,rate_date,rate,source) VALUES('USD','2026-10-10',12500,'CBU')",
+  );
+  await adminPage.reload();
+  await adminPage.getByText(/1 USD = 12.500 UZS/).waitFor();
+  await usd.click();
+  await adminPage.getByRole('columnheader', { name: /Summa \(USD\)/ }).waitFor();
+  await adminPage.getByRole('cell', { name: /^40( \$)?$/ }).first().waitFor();
+  await adminPage.getByRole('button', { name: 'UZS', exact: true }).click();
+  await adminPage.getByRole('columnheader', { name: /Summa \(UZS\)/ }).waitFor();
+  checks.push(
+    'Currency switch: USD disabled without a CBU rate; with a rate the documents table shows USD (500 000 ÷ 12 500 = 40) and switches back to UZS',
+  );
   await adminPage.goto(webURL + '/app/finance/payroll?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Davr ochish' }).first().click();
   await dialog().getByRole('button', { name: 'Yaratish', exact: true }).click();
