@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-10T19:12:22.105Z",
+  "executed_at": "2026-10-11T10:59:42.177Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -24,6 +24,7 @@
     "Counterparty and cash account created from the UI",
     "Supplier invoice matched to the receipt clears GR/IR; payment settles the debt and reduces cash",
     "Payment request → approve → pay settles a service act; expense is booked once",
+    "Currency switch: USD disabled without a CBU rate; with a rate the documents table shows USD (500 000 ÷ 12 500 = 40) and switches back to UZS",
     "Payroll period posts labor expense per employee and payment clears it through the cash account",
     "Task created from the kanban page with assignee, reviewer and priority",
     "Assignee starts and submits the task; reviewer accepts it with a note",
