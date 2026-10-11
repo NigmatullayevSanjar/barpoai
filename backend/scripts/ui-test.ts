@@ -680,7 +680,7 @@ try {
     "INSERT INTO exchange_rates(currency,rate_date,rate,source) VALUES('USD','2026-10-10',12500,'CBU')",
   );
   await adminPage.reload();
-  await adminPage.getByText(/1 USD = 12.500 UZS/).waitFor();
+  await adminPage.getByText(/1 USD = 12.500 so‘m/).waitFor();
   await usd.click();
   await adminPage.getByRole('columnheader', { name: /Summa \(USD\)/ }).waitFor();
   await adminPage.getByRole('cell', { name: /^40[.,]00( \$)?$/ }).first().waitFor();
