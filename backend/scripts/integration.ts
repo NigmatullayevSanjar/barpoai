@@ -364,13 +364,23 @@ try {
   assert.equal(block.kind, 'block');
   assert.equal(block.floors_count, 9);
   assert.equal(block.version, 1);
-  const floorZone = await call(
+  // Blok bo'lmagan zonaga qavatlar soni berilsa jim tashlab yuborilmaydi, 400
+  await call(
     'POST',
     `/v1/projects/${projectC.id}/zones`,
     { name: '1-qavat', parent_id: block.id, kind: 'floor', floors_count: 3 },
     adminToken,
+    undefined,
+    400,
   );
-  assert.equal(floorZone.floors_count, null);
+  await call(
+    'POST',
+    `/v1/projects/${projectC.id}/zones`,
+    { name: 'Hovli', floors_count: 2 },
+    adminToken,
+    undefined,
+    400,
+  );
   assert.equal(
     (await call('POST', `/v1/projects/${projectC.id}/zones`, { name: 'Hovli' }, adminToken)).kind,
     'other',
@@ -393,10 +403,18 @@ try {
     undefined,
     409,
   );
-  const retyped = await call(
+  await call(
     'PATCH',
     `/v1/projects/${projectC.id}/zones/${block.id}`,
     { version: 2, name: 'B blok', kind: 'entrance', floors_count: 5 },
+    adminToken,
+    undefined,
+    400,
+  );
+  const retyped = await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 2, name: 'B blok', kind: 'entrance', floors_count: null },
     adminToken,
   );
   assert.equal(retyped.floors_count, null);

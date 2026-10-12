@@ -2019,7 +2019,7 @@ paths:
               additionalProperties: false
   /v1/projects/{id}/zones:
     post:
-      summary: O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun saqlanadi
+      summary: O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun (aks holda 400)
       operationId: post_v1_projects__id_zones
       security:
         - bearerAuth: []
