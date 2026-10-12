@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-11T10:59:42.177Z",
+  "executed_at": "2026-10-12T03:55:45.521Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -32,10 +32,12 @@
     "Report acceptance posts progress once; a signed correction adjusts the effective fact without editing history",
     "Profile issues one-time Telegram deep link; UI switches between UZ and RU",
     "Dashboard blocks follow permissions in the browser: admin sees finance, brigadier does not",
+    "Dashboard charts: expense kinds, plan/budget/fact by month, over-budget and overdue lists render; period and project filters refetch from the server; brigadier sees no finance charts",
     "Settings page saves company name/phone (sidebar updates) and mutes a Telegram category",
     "Notifications page lists history and marks everything read",
     "Audit page filters by action prefix; files page shows report photos by project",
     "Plan–actual page renders the zone rollup and downloads the Excel export",
+    "Price list: a version is created from the UI with a 25% markup, premise prices come from the server and the USD column follows the version rate",
     "Super admin reads diagnostics (queue, migration) and answers a support request; the admin receives the reply as a notification",
     "Overpayment becomes tenant credit; the company billing page shows the credit balance and next invoice date",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
