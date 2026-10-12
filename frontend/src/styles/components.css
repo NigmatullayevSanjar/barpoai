@@ -955,3 +955,95 @@
 .kanban-card b {
   font-size: var(--fs-sm);
 }
+
+/* Dashboard grafiklari (inline SVG) */
+.chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chart-wrap {
+  position: relative;
+}
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-baseline {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.chart-axis {
+  fill: var(--text-3);
+  font-size: 11px;
+}
+.chart-center {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.chart-hover {
+  fill: var(--surface-2);
+}
+.chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-legend b {
+  color: var(--text);
+  font-weight: 600;
+}
+.chart-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.chart-swatch.line {
+  height: 3px;
+  border-radius: 2px;
+}
+.chart-tip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 8px 10px;
+  font-size: var(--fs-xs);
+  pointer-events: none;
+  min-width: 180px;
+  z-index: 2;
+}
+.chart-donut {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.chart-donut .chart-legend {
+  flex-direction: column;
+}
+.chart-donut svg {
+  width: 180px;
+}

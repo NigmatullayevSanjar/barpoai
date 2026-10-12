@@ -880,6 +880,23 @@ try {
   checks.push(
     'Dashboard blocks follow permissions in the browser: admin sees finance, brigadier does not',
   );
+  // 1.4: grafiklar va filtrlar — davr va obyekt tanlansa server javobi bilan qayta chiziladi
+  await adminPage.getByRole('heading', { name: 'Xarajat turlari' }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Reja, budjet va fakt (oylar bo‘yicha)' }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Budjetdan oshgan obyektlar' }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Kechikkan vazifalar' }).waitFor();
+  const dashQuery = (pattern: RegExp) =>
+    adminPage.waitForResponse((r) => r.url().includes('/v1/dashboard') && pattern.test(r.url()) && r.ok());
+  await Promise.all([dashQuery(/months=12/), adminPage.getByLabel('Davr').selectOption('12')]);
+  await Promise.all([
+    dashQuery(new RegExp(`project_id=${projectId}`)),
+    adminPage.getByLabel('Obyektni tanlang').selectOption(projectId),
+  ]);
+  await adminPage.getByText('Hozirgi holat', { exact: false }).first().waitFor();
+  assert.equal(await brigadierPage.getByRole('heading', { name: 'Xarajat turlari' }).count(), 0);
+  checks.push(
+    'Dashboard charts: expense kinds, plan/budget/fact by month, over-budget and overdue lists render; period and project filters refetch from the server; brigadier sees no finance charts',
+  );
   await adminPage.goto(webURL + '/app/settings');
   await adminPage.getByLabel('Kompaniya nomi').fill('UI Sinov Qurilish MCHJ');
   await adminPage.getByLabel('Telefon').fill('+998 71 200 00 11');

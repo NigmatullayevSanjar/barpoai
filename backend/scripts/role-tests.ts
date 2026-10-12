@@ -736,6 +736,7 @@ try {
     404,
   );
   await call('GET', `/v1/tasks?project_id=${projectA2.id}`, undefined, staff.foreman!.token, 404);
+  await call('GET', `/v1/dashboard?project_id=${projectA2.id}`, undefined, staff.foreman!.token, 404);
   await call(
     'GET',
     `/v1/stock/accounts/${warehouse2.account.id}/balances`,
@@ -794,6 +795,9 @@ try {
     'plan_total',
     'fact_total',
     'forecast_total',
+    'period_expense',
+    'share_percent',
+    'over_budget',
   ];
   // Narx huquqi yo'q rollar: prorab (smeta o'qiydi, narx yo'q) va brigadir (ombor/ish qatorlari/dashboard).
   const priceChecks: [string, string, string][] = [
@@ -812,6 +816,8 @@ try {
     ['work lines (brigadier)', `/v1/projects/${projectA1.id}/work-lines`, staff.brigadier!.token],
     ['dashboard (brigadier)', '/v1/dashboard', staff.brigadier!.token],
     ['dashboard (foreman)', '/v1/dashboard', staff.foreman!.token],
+    ['dashboard filtered (brigadier)', `/v1/dashboard?project_id=${projectA1.id}&months=12`, staff.brigadier!.token],
+    ['dashboard filtered (foreman)', `/v1/dashboard?project_id=${projectA1.id}&months=3`, staff.foreman!.token],
     ['tasks (brigadier)', `/v1/tasks?project_id=${projectA1.id}`, staff.brigadier!.token],
   ];
   for (const [label, url, token] of priceChecks) {

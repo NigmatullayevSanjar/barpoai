@@ -8450,12 +8450,29 @@ paths:
   /v1/dashboard:
     get:
       summary: "Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, moliya va xodimlar bloklari — faqat ruxsat bo‘lgan
-        bloklar, qolganlari null"
+        bloklar, qolganlari null; obyekt va davr (3/6/12 oy) filtri"
       operationId: get_v1_dashboard
       security:
         - bearerAuth: []
         - cookieAuth: []
-      parameters: []
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: months
+          in: query
+          required: true
+          schema:
+            default: "6"
+            type: string
+            enum:
+              - "3"
+              - "6"
+              - "12"
       x-permission: authenticated
       x-tenant-scope: true
       responses:
