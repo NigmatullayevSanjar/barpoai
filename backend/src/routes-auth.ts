@@ -66,6 +66,20 @@ export function authRoutes(add: (r: Endpoint) => void) {
   });
   add({
     method: 'GET',
+    path: '/v1/exchange-rates/latest',
+    summary:
+      'So‘nggi USD kursi (CBU): rate, rate_date, source; kurs yo‘q bo‘lsa rate=null. Faqat ko‘rsatish uchun, saqlash UZS’da',
+    // Ochiq CBU ma'lumoti: platforma xodimlari (tenant'siz) ham o'qiydi, shuning uchun tenant tekshiruvisiz (`/v1/auth/me` kabi).
+    passwordChange: true,
+    handler: async ({ db }) =>
+      (
+        await db.query(
+          "SELECT currency,rate::text,to_char(rate_date,'YYYY-MM-DD') rate_date,source,fetched_at FROM exchange_rates WHERE currency='USD' ORDER BY rate_date DESC LIMIT 1",
+        )
+      ).rows[0] ?? { currency: 'USD', rate: null, rate_date: null, source: null, fetched_at: null },
+  });
+  add({
+    method: 'GET',
     path: '/v1/auth/me',
     summary: 'Sessiya identifikatori va server roli',
     passwordChange: true,

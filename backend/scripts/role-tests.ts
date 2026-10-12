@@ -454,8 +454,15 @@ try {
     { tenant_id: A.id, plan_version_id: plan.id },
     ownerToken,
   );
+  // Bosqich 4: narx varaqasi versiyasi (xonadon 40 m², zonasiz ish haqi xarajati umumiy guruhga)
+  const priceList = await call(
+    'POST',
+    '/v1/pricing/price-lists',
+    { project_id: projectA1.id, markup_percent: '20' },
+    A.adminToken,
+  );
   passed.push(
-    'Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan',
+    'Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan, price list',
   );
 
   // ---------------------------------------------------------------- 1. Rol × endpoint matritsasi
@@ -473,6 +480,7 @@ try {
     '/v1/finance/payroll/periods': payrollPeriod.id,
     '/v1/stock/commands': receipt.id,
     '/v1/progress-entries': report.id,
+    '/v1/pricing/price-lists': priceList.id,
   };
   const queryValues: Record<string, string> = {
     project_id: projectA1.id,
@@ -578,6 +586,7 @@ try {
   }
   const crossWrites: [string, string, unknown][] = [
     ['PATCH', `/v1/projects/${projectA1.id}`, { version: projectA1.version, name: 'Hijack' }],
+    ['POST', '/v1/pricing/price-lists', { project_id: projectA1.id, markup_percent: '20' }],
     [
       'PATCH',
       `/v1/projects/${projectA1.id}/zones/${zone.id}`,
@@ -774,6 +783,17 @@ try {
     'amount',
     'price',
     'fact_value',
+    'cost',
+    'cost_m2',
+    'sale_m2',
+    'sale_m2_usd',
+    'price_usd',
+    'plan_value',
+    'forecast_value',
+    'forecast_m2',
+    'plan_total',
+    'fact_total',
+    'forecast_total',
   ];
   // Narx huquqi yo'q rollar: prorab (smeta o'qiydi, narx yo'q) va brigadir (ombor/ish qatorlari/dashboard).
   const priceChecks: [string, string, string][] = [
@@ -804,6 +824,43 @@ try {
     );
     if (leaked) findings.push(`price leak in ${label}: ${leaked}`);
   }
+  // Narx varaqasi: sahifa ruxsati bilan kirgan, lekin prices.read'siz rol (menejer) pul maydonlarini ko'rmaydi, Excel ololmaydi
+  rp = await call('GET', '/v1/company/role-permissions', undefined, A.adminToken);
+  await call(
+    'POST',
+    '/v1/company/role-permissions',
+    {
+      version: rp.version,
+      role: 'manager',
+      rules: [{ page: 'pricing', read: true, create: true, update: false, delete: false }],
+    },
+    A.adminToken,
+  );
+  const managerPricing = await login('a_manager', pass + '2');
+  const pricingChecks: [string, any][] = [
+    [
+      'price list versions (manager)',
+      await call('GET', `/v1/pricing/price-lists?project_id=${projectA1.id}`, undefined, managerPricing),
+    ],
+    [
+      'price list detail (manager)',
+      await call('GET', `/v1/pricing/price-lists/${priceList.id}`, undefined, managerPricing),
+    ],
+    [
+      'price list create (manager)',
+      await call(
+        'POST',
+        '/v1/pricing/price-lists',
+        { project_id: projectA1.id, markup_percent: '15' },
+        managerPricing,
+      ),
+    ],
+  ];
+  for (const [label, body] of pricingChecks) {
+    const leaked = hasKey(body, priceKeys);
+    if (leaked) findings.push(`price leak in ${label}: ${leaked}`);
+  }
+  await call('GET', `/v1/pricing/price-lists/${priceList.id}/export`, undefined, managerPricing, 403);
   await call('GET', `/v1/estimates/${estimate.id}`, undefined, staff.brigadier!.token, 403);
   await call('GET', '/v1/finance/summary', undefined, staff.brigadier!.token, 403);
   await call(

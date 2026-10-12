@@ -6,6 +6,7 @@ import { api, ApiError, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney, monthStart } from '@/lib/format';
+import { displayCurrency } from '@/lib/currency-store';
 import {
   Alert,
   Badge,
@@ -125,7 +126,7 @@ export function FinanceHubPage() {
           accent
           label={t('fin.actual_cost')}
           value={d ? formatMoney(d.actual_cost, lang, false) : '—'}
-          sub="UZS"
+          sub={displayCurrency()}
         />
         <Stat
           label={t('fin.net_cash')}
@@ -418,7 +419,7 @@ function CashAccountsPanel({ accounts }: { accounts: CashAccount[] }) {
                 {formatMoney(a.balance, lang, false)}
               </div>
               <div className="stat-sub">
-                {[a.bank_name, a.account_number].filter(Boolean).join(' · ') || 'UZS'}
+                {[a.bank_name, a.account_number].filter(Boolean).join(' · ') || displayCurrency()}
               </div>
             </button>
           ))}
@@ -763,7 +764,7 @@ export function BudgetsPage() {
     },
     {
       key: 'amount',
-      header: t('fin.budgets.amount'),
+      header: `${t('fin.budgets.amount_col')} (${displayCurrency()})`,
       align: 'right',
       render: (r) => formatMoney(r.amount, lang, false),
     },
@@ -833,7 +834,11 @@ export function BudgetsPage() {
         <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
       </div>
       <div className="grid-3">
-        <Stat label={t('fin.budgets.total')} value={formatMoney(total, lang, false)} sub="UZS" />
+        <Stat
+          label={t('fin.budgets.total')}
+          value={formatMoney(total, lang, false)}
+          sub={displayCurrency()}
+        />
         <Stat label={t('fin.budgets.actual')} value={formatMoney(totalActual, lang, false)} />
         <Stat label={t('fin.budgets.remaining')} value={formatMoney(total - totalActual, lang, false)} />
       </div>
@@ -980,7 +985,11 @@ export function ReconciliationPage() {
       {d && (
         <>
           <div className="grid-3">
-            <Stat label={t('fin.rec.total_debt')} value={formatMoney(d.totals.debt, lang, false)} sub="UZS" />
+            <Stat
+              label={t('fin.rec.total_debt')}
+              value={formatMoney(d.totals.debt, lang, false)}
+              sub={displayCurrency()}
+            />
             <Stat
               label={t('fin.counterparties.advance')}
               value={formatMoney(d.totals.advance, lang, false)}
@@ -995,7 +1004,9 @@ export function ReconciliationPage() {
                   <th>{t('fin.kind')}</th>
                   <th>{t('dash.projects')}</th>
                   <th>{t('fin.description')}</th>
-                  <th className="num">{t('fin.amount')}</th>
+                  <th className="num">
+                    {t('fin.amount_col')} ({displayCurrency()})
+                  </th>
                   <th className="num">{t('fin.rec.running')}</th>
                 </tr>
               </thead>

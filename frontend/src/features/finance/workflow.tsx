@@ -5,6 +5,7 @@ import { api, apiAll, ApiError, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney, formatQuantity, monthStart, todayIso } from '@/lib/format';
+import { displayCurrency } from '@/lib/currency-store';
 import {
   Alert,
   Badge,
@@ -103,7 +104,7 @@ export function PaymentRequestsPage() {
     },
     {
       key: 'amount',
-      header: t('fin.amount'),
+      header: `${t('fin.amount_col')} (${displayCurrency()})`,
       align: 'right',
       sortValue: (r) => num(r.amount),
       render: (r) => <b>{formatMoney(r.amount, lang, false)}</b>,
@@ -316,7 +317,8 @@ function PaymentRequestModal({
             .filter((p) => p.project_id === project)
             .map((p) => (
               <option key={p.id} value={p.id}>
-                {t(`fin.kind.${p.kind}`)} · {p.description.slice(0, 40)} · {formatMoney(p.outstanding, lang)}
+                {t(`fin.kind.${p.kind}`)} · {p.description.slice(0, 40)} ·{' '}
+                {formatMoney(p.outstanding, lang, true, 'UZS')}
               </option>
             ))}
         </Select>
@@ -375,7 +377,7 @@ function PaymentRequestActionModal({
       open
       onClose={onClose}
       title={t(titles[action])}
-      description={`${r.counterparty_name} · ${formatMoney(r.amount, lang)} · ${r.purpose}`}
+      description={`${r.counterparty_name} · ${formatMoney(r.amount, lang, true, 'UZS')} · ${r.purpose}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -404,7 +406,7 @@ function PaymentRequestActionModal({
               .filter((c) => !c.archived_at)
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} · {formatMoney(c.balance, lang)}
+                  {c.name} · {formatMoney(c.balance, lang, true, 'UZS')}
                 </option>
               ))}
           </Select>
@@ -505,7 +507,7 @@ export function PaymentCalendarPage() {
         <Stat
           label={`${formatDate(from, lang)} — ${formatDate(to, lang)}`}
           value={formatMoney(total, lang, false)}
-          sub="UZS"
+          sub={displayCurrency()}
         />
         <Stat label={t('fin.documents')} value={sorted.reduce((s, [, i]) => s + i.length, 0)} />
       </div>
@@ -709,7 +711,11 @@ export function PayrollPage() {
               sub={t(`fin.payroll.status.${period.status}`)}
             />
             <Stat label={t('fin.payroll.employee')} value={period.entries} />
-            <Stat label={t('fin.payroll.total')} value={formatMoney(period.total, lang, false)} sub="UZS" />
+            <Stat
+              label={t('fin.payroll.total')}
+              value={formatMoney(period.total, lang, false)}
+              sub={displayCurrency()}
+            />
             <Stat label={t('fin.payroll.paid')} value={formatMoney(period.paid, lang, false)} />
           </div>
           <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
@@ -853,19 +859,19 @@ function PayrollEntryModal({
           onChange={(e) => setPosition(e.target.value)}
         />
         <Input
-          label={t('fin.payroll.base')}
+          label={`${t('fin.payroll.base')} (UZS)`}
           inputMode="decimal"
           value={base}
           onChange={(e) => setBase(e.target.value)}
         />
         <Input
-          label={t('fin.payroll.bonus')}
+          label={`${t('fin.payroll.bonus')} (UZS)`}
           inputMode="decimal"
           value={bonus}
           onChange={(e) => setBonus(e.target.value)}
         />
         <Input
-          label={t('fin.payroll.deduction')}
+          label={`${t('fin.payroll.deduction')} (UZS)`}
           inputMode="decimal"
           value={deduction}
           onChange={(e) => setDeduction(e.target.value)}
@@ -898,7 +904,7 @@ function PayEntryModal({ entry, onClose }: { entry: PayrollEntry; onClose: () =>
       open
       onClose={onClose}
       title={t('fin.payroll.pay')}
-      description={`${entry.employee_name} · ${formatMoney(entry.net, lang)}`}
+      description={`${entry.employee_name} · ${formatMoney(entry.net, lang, true, 'UZS')}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -920,7 +926,7 @@ function PayEntryModal({ entry, onClose }: { entry: PayrollEntry; onClose: () =>
           .filter((c) => !c.archived_at)
           .map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name} · {formatMoney(c.balance, lang)}
+              {c.name} · {formatMoney(c.balance, lang, true, 'UZS')}
             </option>
           ))}
       </Select>
@@ -1024,7 +1030,9 @@ export function PlanActualPage() {
                   <th style={{ textAlign: 'left' }}>{t('est.col.kind')}</th>
                   <th className="num">{t('fin.pa.lines_count')}</th>
                   <th className="num">{t('fin.pa.percent')}</th>
-                  <th className="num">{t('fin.pa.plan')} (UZS)</th>
+                  <th className="num">
+                    {t('fin.pa.plan')} ({displayCurrency()})
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1101,8 +1109,12 @@ export function PlanActualPage() {
                       {t('fin.pa.fact')} ({t('est.col.quantity')})
                     </th>
                     <th className="num">{t('fin.pa.percent')}</th>
-                    <th className="num">{t('fin.pa.plan')} (UZS)</th>
-                    <th className="num">{t('fin.pa.fact')} (UZS)</th>
+                    <th className="num">
+                      {t('fin.pa.plan')} ({displayCurrency()})
+                    </th>
+                    <th className="num">
+                      {t('fin.pa.fact')} ({displayCurrency()})
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

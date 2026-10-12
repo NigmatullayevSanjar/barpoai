@@ -160,7 +160,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
                 .filter((c) => !c.archived_at)
                 .map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} · {formatMoney(c.balance, lang)}
+                    {c.name} · {formatMoney(c.balance, lang, true, 'UZS')}
                   </option>
                 ))}
             </Select>
@@ -227,7 +227,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {t(`fin.kind.${p.kind}`)} · {p.counterparty_name} · {p.description.slice(0, 40)} ·{' '}
-                    {t('fin.outstanding')}: {formatMoney(p.outstanding, lang)}
+                    {t('fin.outstanding')}: {formatMoney(p.outstanding, lang, true, 'UZS')}
                   </option>
                 ))}
             </Select>
@@ -239,7 +239,9 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             hint={
-              receiptValue ? `${t('fin.matched_receipt')}: ${formatMoney(receiptValue, lang)}` : undefined
+              receiptValue
+                ? `${t('fin.matched_receipt')}: ${formatMoney(receiptValue, lang, true, 'UZS')}`
+                : undefined
             }
           />
           <Input

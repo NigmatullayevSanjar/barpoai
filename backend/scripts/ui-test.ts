@@ -670,6 +670,25 @@ try {
   assert.equal(fin2.cash, '-1700000.00');
   assert.equal(fin2.expense, '680000.00');
   checks.push('Payment request → approve → pay settles a service act; expense is booked once');
+  // Bosqich 2: kurs yo'q — USD o'chiq; kurs bo'lsa summalar USD'da (UZS ÷ kurs), sarlavha (USD), keyin UZS'ga qaytadi
+  const docsUrl = webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop();
+  await adminPage.goto(docsUrl);
+  const usd = adminPage.getByRole('button', { name: 'USD', exact: true });
+  await usd.waitFor();
+  assert.equal(await usd.isDisabled(), true, 'USD must be disabled without a rate');
+  await owner.query(
+    "INSERT INTO exchange_rates(currency,rate_date,rate,source) VALUES('USD','2026-10-10',12500,'CBU')",
+  );
+  await adminPage.reload();
+  await adminPage.getByText(/1 USD = 12.500 so‘m/).waitFor();
+  await usd.click();
+  await adminPage.getByRole('columnheader', { name: /Summa \(USD\)/ }).waitFor();
+  await adminPage.getByRole('cell', { name: /^40[.,]00( \$)?$/ }).first().waitFor();
+  await adminPage.getByRole('button', { name: 'UZS', exact: true }).click();
+  await adminPage.getByRole('columnheader', { name: /Summa \(UZS\)/ }).waitFor();
+  checks.push(
+    'Currency switch: USD disabled without a CBU rate; with a rate the documents table shows USD (500 000 ÷ 12 500 = 40) and switches back to UZS',
+  );
   await adminPage.goto(webURL + '/app/finance/payroll?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Davr ochish' }).first().click();
   await dialog().getByRole('button', { name: 'Yaratish', exact: true }).click();
@@ -905,6 +924,27 @@ try {
   ]);
   assert.match(download.suggestedFilename(), /reja-fakt\.xlsx$/);
   checks.push('Plan–actual page renders the zone rollup and downloads the Excel export');
+  // Bosqich 4: narx varaqasi — versiya UI'dan yaratiladi, xonadon narxlari serverdan, USD ustuni versiya kursi bilan
+  await adminPage.goto(webURL + '/app/finance/pricing?project=' + projectId);
+  await adminPage.getByRole('button', { name: 'Yangi versiya' }).first().click();
+  await dialog().getByLabel('Ustama, %').fill('25');
+  await dialog().getByRole('button', { name: 'Yaratish', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByText(/^v1 · .*ustama 25/).waitFor();
+  await adminPage.getByRole('columnheader', { name: /^Narx \(UZS\)/ }).waitFor();
+  const row12 = adminPage
+    .getByRole('row')
+    .filter({ has: adminPage.getByRole('cell', { name: '12', exact: true }) })
+    .first();
+  await row12.getByText(/so‘m$/).first().waitFor();
+  await adminPage.getByRole('button', { name: 'USD', exact: true }).click();
+  await adminPage.getByRole('columnheader', { name: /^Narx \(USD\)/ }).waitFor();
+  await row12.getByText(/\$$/).first().waitFor();
+  await adminPage.getByRole('button', { name: 'UZS', exact: true }).click();
+  await adminPage.getByRole('columnheader', { name: /^Narx \(UZS\)/ }).waitFor();
+  checks.push(
+    'Price list: a version is created from the UI with a 25% markup, premise prices come from the server and the USD column follows the version rate',
+  );
   await owner.query(
     "INSERT INTO users(login,display_name,password_hash,role) VALUES('ui_tech','Texnik xodim',$1,'super_admin')",
     [await hashPassword(password)],

@@ -18,6 +18,7 @@ import { buildApp } from '../src/app.js';
 import { issueDueInvoices, periodEnd } from '../src/billing.js';
 import { hashPassword, digest } from '../src/security.js';
 import { dec } from '../src/money.js';
+import { refreshRates } from '../src/rates.js';
 import {
   createLinkToken,
   consumeLinkToken,
@@ -2682,6 +2683,245 @@ try {
   );
   passed.push(
     'Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)',
+  );
+  // ---- Bosqich 2: CBU kursi. Xatoda oxirgi kurs qoladi, 0 yozilmaydi; endpoint har bir foydalanuvchiga ochiq
+  const noRate = await call('GET', '/v1/exchange-rates/latest', undefined, adminAgain);
+  assert.equal(noRate.rate, null);
+  const cbu = (status: number, body: unknown) =>
+    (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '0', Date: '09.10.2026' }])), 'failed');
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12800.00', Date: '09.10.2026' }])), 'saved');
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '13000', Date: '10.10.2026' }])), 'skipped');
+  await admin.query("UPDATE exchange_rates SET fetched_at=now()-interval '13 hours'");
+  assert.equal(await refreshRates(appPool!, cbu(503, {})), 'failed');
+  assert.equal(
+    await refreshRates(appPool!, (async () => {
+      throw new Error('timeout');
+    }) as unknown as typeof fetch),
+    'failed',
+  );
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: 'abc', Date: '10.10.2026' }])), 'failed');
+  const kept = await call('GET', '/v1/exchange-rates/latest', undefined, pfToken);
+  assert.deepEqual([kept.rate, kept.rate_date, kept.source], ['12800.0000', '2026-10-09', 'CBU']);
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12850.27', Date: '10.10.2026' }])), 'saved');
+  const latestRate = await call('GET', '/v1/exchange-rates/latest', undefined, ownerToken);
+  assert.deepEqual([latestRate.rate, latestRate.rate_date], ['12850.2700', '2026-10-10']);
+  assert.equal((await admin.query('SELECT count(*)::int n FROM exchange_rates')).rows[0].n, 2);
+  await assert.rejects(admin.query("INSERT INTO exchange_rates(currency,rate_date,rate,source) VALUES('USD','2026-10-11',0,'CBU')"), /exchange_rates_rate_check/);
+  const anon = await app!.inject({ method: 'GET', url: '/v1/exchange-rates/latest' });
+  assert.equal(anon.statusCode, 401);
+  passed.push(
+    'CBU USD rate: worker saves a valid rate, skips while fresh, keeps the last rate on HTTP/parse/timeout errors and never stores 0; latest rate is readable by any signed-in user, not anonymously',
+  );
+  // ---- Bosqich 4: narx varaqasi. 4.4 nazorat misoli oxirigacha; reversal o'z guruhida; o'zgarmaslik; ruxsat; eksport
+  const finP = (await call('POST', '/v1/auth/login', { login: 'financier', password: pass + '2' })).access_token;
+  const foreP = (await call('POST', '/v1/auth/login', { login: 'foreman', password: pass + '2' })).access_token;
+  const projectP = await call('POST', '/v1/projects', { name: 'Narx obyekti', area_m2: '10000' }, adminAgain);
+  const zoneP = (body: object) => call('POST', `/v1/projects/${projectP.id}/zones`, body, adminAgain);
+  const pBlockA = await zoneP({ name: 'Blok A', kind: 'block' });
+  const pEntranceA = await zoneP({ name: '1-kirish', kind: 'entrance', parent_id: pBlockA.id });
+  const pBlockB = await zoneP({ name: 'Blok B', kind: 'block' });
+  const premiseP = (body: object) => call('POST', `/v1/projects/${projectP.id}/premises`, body, adminAgain);
+  const flat65 = await premiseP({ number: '65', kind: 'apartment', zone_id: pEntranceA.id, floor: 3, rooms: 2, area_m2: '65' });
+  await premiseP({ number: 'T-1', kind: 'commercial', zone_id: pBlockA.id, floor: null, rooms: null, area_m2: '2935' });
+  await premiseP({ number: '1', kind: 'apartment', zone_id: pBlockB.id, floor: null, rooms: null, area_m2: '7000' });
+  await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectP.id,
+      name: 'Narx smetasi',
+      lines: [
+        { kind: 'service', description: 'Blok A ishlari', unit_id: 'hour', quantity: '1', unit_price: '8000000000', zone_id: pBlockA.id },
+        { kind: 'service', description: 'Blok B ishlari', unit_id: 'hour', quantity: '1', unit_price: '14000000000', zone_id: pBlockB.id },
+        { kind: 'service', description: 'Umumiy xarajat', unit_id: 'hour', quantity: '1', unit_price: '3000000000' },
+      ],
+    },
+    adminAgain,
+  );
+  const expenseP = (amount: string, zone_id?: string) =>
+    call(
+      'POST',
+      '/v1/finance/documents',
+      {
+        project_id: projectP.id,
+        kind: 'service',
+        amount,
+        counterparty_id: supplier.id,
+        description: 'Narx varaqasi uchun xarajat',
+        document_date: '2026-10-05',
+        ...(zone_id ? { zone_id } : {}),
+      },
+      adminAgain,
+    );
+  await expenseP('8500000000', pBlockA.id);
+  const smallA = await expenseP('500000000', pBlockA.id);
+  await expenseP('5000000000', pBlockB.id);
+  await expenseP('1000000000');
+  await admin.query("INSERT INTO exchange_rates(currency,rate_date,rate,source) VALUES('USD','2026-10-12',12800,'CBU')");
+  await call('POST', `/v1/employees/${financier.id}/assignments`, { project_id: projectP.id }, adminAgain);
+  // D8: prorab narx varaqasini na yaratadi, na ko'radi
+  await call('POST', '/v1/pricing/price-lists', { project_id: projectP.id, markup_percent: '25' }, foreP, undefined, 403);
+  const v1 = await call('POST', '/v1/pricing/price-lists', { project_id: projectP.id, markup_percent: '25' }, finP);
+  assert.deepEqual(
+    [v1.version, v1.usd_rate, v1.usd_rate_date, v1.premises_count, v1.area_total, v1.plan_total, v1.fact_total, v1.forecast_total],
+    [1, '12800.0000', '2026-10-12', 3, '10000.00', '25000000000.00', '15000000000.00', '26000000000.00'],
+  );
+  assert.deepEqual(
+    v1.groups.map((g: any) => [g.zone_name, g.area_m2, g.plan_value, g.fact_value, g.forecast_value, g.forecast_m2]),
+    [
+      ['Blok A', '3000.00', '8000000000.00', '9000000000.00', '9000000000.00', '3000000.00'],
+      ['Blok B', '7000.00', '14000000000.00', '5000000000.00', '14000000000.00', '2000000.00'],
+      [null, '10000.00', '3000000000.00', '1000000000.00', '3000000000.00', '300000.00'],
+    ],
+  );
+  const d65 = await call('GET', `/v1/pricing/price-lists/${v1.id}?q=65`, undefined, finP);
+  assert.equal(d65.lines_total, 1);
+  const l65 = d65.lines[0];
+  assert.deepEqual(
+    [l65.premise_id, l65.block_name, l65.entrance_name, l65.floor, l65.cost, l65.cost_m2, l65.sale_m2, l65.price, l65.sale_m2_usd, l65.price_usd],
+    [flat65.id, 'Blok A', '1-kirish', 3, '214500000.00', '3300000.00', '4125000.00', '268125000.00', '322.00', '20930.00'],
+  );
+  const v1All = await call('GET', `/v1/pricing/price-lists/${v1.id}`, undefined, adminAgain);
+  assert.equal(v1All.lines.length, 3);
+  assert.equal(
+    v1All.lines.reduce((sum: any, l: any) => sum.add(l.cost), dec('0')).toFixed(2),
+    '26000000000.00',
+  );
+  await call('GET', `/v1/pricing/price-lists/${v1.id}`, undefined, foreP, undefined, 403);
+  await assert.rejects(admin.query('UPDATE price_lists SET markup_percent=30 WHERE id=$1', [v1.id]), /IMMUTABLE_LEDGER/);
+  await assert.rejects(admin.query('DELETE FROM price_list_lines WHERE price_list_id=$1', [v1.id]), /IMMUTABLE_LEDGER/);
+  // Zonali xarajat bekor qilinsa reversal asl hujjat zonasida qoladi: faqat Blok A fakti kamayadi, umumiy guruh o'zgarmaydi
+  await call('POST', `/v1/finance/documents/${smallA.id}/reverse`, { reason: 'Xato kiritilgan xarajat' }, adminAgain);
+  const v2 = await call('POST', '/v1/pricing/price-lists', { project_id: projectP.id, markup_percent: '30', note: 'Reversaldan keyin' }, adminAgain);
+  assert.equal(v2.version, 2);
+  assert.deepEqual(
+    v2.groups.map((g: any) => [g.zone_name, g.fact_value, g.forecast_value]),
+    [
+      ['Blok A', '8500000000.00', '8500000000.00'],
+      ['Blok B', '5000000000.00', '14000000000.00'],
+      [null, '1000000000.00', '3000000000.00'],
+    ],
+  );
+  assert.equal(v2.forecast_total, '25500000000.00');
+  const pVersions = await call('GET', `/v1/pricing/price-lists?project_id=${projectP.id}`, undefined, finP);
+  assert.deepEqual(
+    pVersions.items.map((v: any) => [v.version, v.markup_percent, v.note]),
+    [
+      [2, '30.00', 'Reversaldan keyin'],
+      [1, '25.00', null],
+    ],
+  );
+  const xlsUsd = await call('GET', `/v1/pricing/price-lists/${v1.id}/export?currency=USD`, undefined, finP);
+  assert.match(xlsUsd.filename, /-narx-v1-USD\.xlsx$/);
+  const usdBook = new ExcelJS.Workbook();
+  await usdBook.xlsx.load(Buffer.from(xlsUsd.base64, 'base64') as any);
+  const usdRow = usdBook.getWorksheet('Narx varaqasi')!.getRow(2).values as any[];
+  // T-1 (2 935 m², Blok A): tannarx 9 685 500 000 so'm; USD ustunlari versiya kursi 12 800 bilan
+  assert.deepEqual(
+    Array.from(usdRow.slice(1), (v: any) => v ?? ''),
+    ['Blok A', '', '', 'T-1', 'Tijorat', '', 2935, 257.81, 756679.69, 322, 945070],
+  );
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='export.price_list' AND resource_id=$1", [v1.id])).rows[0].n,
+    1,
+  );
+  // Kurs yo'q: USD maydonlari null, USD eksport rad etiladi
+  await admin.query('DELETE FROM exchange_rates');
+  const v3 = await call('POST', '/v1/pricing/price-lists', { project_id: projectP.id, markup_percent: '30' }, adminAgain);
+  assert.equal(v3.usd_rate, null);
+  assert.equal((await call('GET', `/v1/pricing/price-lists/${v3.id}`, undefined, adminAgain)).lines[0].price_usd, null);
+  assert.equal(
+    (await call('GET', `/v1/pricing/price-lists/${v3.id}/export?currency=USD`, undefined, adminAgain, undefined, 409)).error.code,
+    'PRICE_LIST_NO_RATE',
+  );
+  // Xonadonsiz va xarajatsiz obyekt; ustama chegarasi
+  const emptyP = await call('POST', '/v1/projects', { name: 'Bo‘sh obyekt' }, adminAgain);
+  assert.equal(
+    (await call('POST', '/v1/pricing/price-lists', { project_id: emptyP.id, markup_percent: '10' }, adminAgain, undefined, 409)).error.code,
+    'PRICE_LIST_NO_PREMISES',
+  );
+  await call('POST', `/v1/projects/${emptyP.id}/premises`, { number: '1', kind: 'apartment', zone_id: null, floor: null, rooms: null, area_m2: '50' }, adminAgain);
+  assert.equal(
+    (await call('POST', '/v1/pricing/price-lists', { project_id: emptyP.id, markup_percent: '10' }, adminAgain, undefined, 409)).error.code,
+    'PRICE_LIST_NO_COSTS',
+  );
+  await call('POST', '/v1/pricing/price-lists', { project_id: emptyP.id, markup_percent: '1000.01' }, adminAgain, undefined, 400);
+  // Egasi qarori (2026-10-11, 1-savol): zonasiz, lekin smeta qatoriga bog'langan sarf qator zonasiga tushadi.
+  // Reja A 100, sarf 80 (zonasiz, A qatoriga bog'langan) → A prognozi 100, umumiy guruh 0.
+  const brigP = (await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })).access_token;
+  const projectQ = await call('POST', '/v1/projects', { name: 'Sarf zonasi obyekti' }, adminAgain);
+  const qBlock = await call('POST', `/v1/projects/${projectQ.id}/zones`, { name: 'Blok Q', kind: 'block' }, adminAgain);
+  await call(
+    'POST',
+    `/v1/projects/${projectQ.id}/premises`,
+    { number: '1', kind: 'apartment', zone_id: qBlock.id, floor: null, rooms: null, area_m2: '10' },
+    adminAgain,
+  );
+  const brick = await call('POST', '/v1/materials', { name: 'G‘isht', unit_id: 'pcs' }, adminAgain);
+  const qEstimate = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectQ.id,
+      name: 'Sarf smetasi',
+      lines: [
+        { kind: 'material', description: 'G‘isht', material_id: brick.id, unit_id: 'pcs', quantity: '1', unit_price: '100', zone_id: qBlock.id },
+      ],
+    },
+    adminAgain,
+  );
+  await call('POST', `/v1/employees/${brigadier.id}/assignments`, { project_id: projectQ.id }, adminAgain);
+  const qWarehouse = await call('POST', '/v1/warehouses', { project_id: projectQ.id, name: 'Ombor Q' }, adminAgain);
+  const qCustody = await call('POST', '/v1/stock/custody', { project_id: projectQ.id, custodian_id: brigadier.id }, adminAgain);
+  await call(
+    'POST',
+    '/v1/stock/commands',
+    { project_id: projectQ.id, kind: 'opening', material_id: brick.id, to_account_id: qWarehouse.account.id, quantity: '1', unit_cost: '80', reason: 'Boshlang‘ich qoldiq' },
+    adminAgain,
+  );
+  const qTransfer = await call(
+    'POST',
+    '/v1/stock/commands',
+    { project_id: projectQ.id, kind: 'transfer', material_id: brick.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '1', reason: 'Brigadirga' },
+    adminAgain,
+  );
+  await call('POST', `/v1/stock/commands/${qTransfer.id}/actions`, { version: 1, action: 'accept', quantity: '1' }, brigP);
+  const qConsumption = await call(
+    'POST',
+    '/v1/stock/commands',
+    { project_id: projectQ.id, kind: 'consumption', material_id: brick.id, from_account_id: qCustody.id, quantity: '1', estimate_line_id: qEstimate.lines[0].id, reason: 'Zonasiz sarf' },
+    brigP,
+  );
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, adminAgain);
+  const vQ = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
+  assert.deepEqual(
+    vQ.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
+    [
+      ['Blok Q', '100.00', '80.00', '100.00'],
+      [null, '0.00', '0.00', '0.00'],
+    ],
+  );
+  assert.equal(vQ.forecast_total, '100.00');
+  // Sarf reversal (zona va qator nusxalanmaydi) ham asl buyruq orqali Blok Q da kamayadi
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, adminAgain);
+  const vQ2 = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
+  assert.deepEqual(
+    vQ2.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
+    [
+      ['Blok Q', '100.00', '0.00', '100.00'],
+      [null, '0.00', '0.00', '0.00'],
+    ],
+  );
+  // Tayyorlik: xonadonsiz obyekt va xarajatsiz obyekt sabablari
+  const readyQ = await call('GET', `/v1/pricing/readiness?project_id=${projectQ.id}`, undefined, adminAgain);
+  assert.deepEqual(readyQ, { premises_count: 1, has_costs: true });
+  assert.deepEqual(
+    await call('GET', `/v1/pricing/readiness?project_id=${emptyP.id}`, undefined, adminAgain),
+    { premises_count: 1, has_costs: false },
+  );
+  passed.push(
+    'Price list (stage 4): the 4.4 control example is reproduced end to end, a reversed expense stays in its zone group, versions are immutable and numbered per project, USD columns follow the version rate, the Excel export is audited, and pricing is limited to admin and financier',
   );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');

@@ -296,7 +296,10 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
         {step === 3 && preview && (
           <div className="stack">
             <Alert tone="success">
-              {t('est.import_ok', { n: preview.preview.lines.length, total: formatMoney(total, lang) })}
+              {t('est.import_ok', {
+                n: preview.preview.lines.length,
+                total: formatMoney(total, lang, true, 'UZS'),
+              })}
             </Alert>
             <p className="muted text-sm">{t('est.editor_hint')}</p>
           </div>

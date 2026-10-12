@@ -176,7 +176,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
               <th style={{ width: 230 }}>{t('est.col.quantity')}</th>
               <th style={{ width: 80 }}>{t('est.col.loss')}</th>
               <th style={{ width: 110 }}>{t('est.col.effective')}</th>
-              <th style={{ width: 120 }}>{t('est.col.unit_price')}</th>
+              <th style={{ width: 120 }}>{t('est.col.unit_price')} (UZS)</th>
               <th style={{ width: 130 }}>{t('est.col.total')}</th>
               <th style={{ width: 160 }}>{t('est.col.note')}</th>
               <th style={{ width: 110 }} />
@@ -373,7 +373,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                     />
                     {e.unit_price && <span className="cell-error">{e.unit_price}</span>}
                   </td>
-                  <td className="cell-calc">{formatMoney(totalOf(l), lang, false)}</td>
+                  <td className="cell-calc">{formatMoney(totalOf(l), lang, false, 'UZS')}</td>
                   <td>
                     <input
                       className="input"
@@ -427,7 +427,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
               <td colSpan={11} style={{ textAlign: 'right' }}>
                 {t('est.total')}
               </td>
-              <td className="cell-calc">{formatMoney(total, lang)}</td>
+              <td className="cell-calc">{formatMoney(total, lang, true, 'UZS')}</td>
               <td colSpan={2} />
             </tr>
           </tfoot>
@@ -440,7 +440,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
       </datalist>
       <div className="sticky-actions">
         <span className="muted text-sm">
-          {t('est.lines')}: {lines.length} · {t('est.total')}: <b>{formatMoney(total, lang)}</b>
+          {t('est.lines')}: {lines.length} · {t('est.total')}: <b>{formatMoney(total, lang, true, 'UZS')}</b>
         </span>
         <span className="row">
           <Button

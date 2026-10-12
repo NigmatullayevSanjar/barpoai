@@ -4,11 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Lock, LogOut, Menu, UserRound } from 'lucide-react';
 import { NavIcon as Icon } from '@/components/ui/icons';
 import { useAuth } from '@/lib/auth';
+import { useCurrency } from '@/lib/currency';
 import { useT, type Lang } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { pageRoutes, platformNav, tenantNav, type Page } from '@/lib/permissions';
-import { formatRelative } from '@/lib/format';
+import { formatDate, formatMoney, formatRelative } from '@/lib/format';
 import { Avatar, Button } from '@/components/ui';
+import type { Currency } from '@/lib/currency-store';
 
 export function LanguageSwitch() {
   const { lang, setLang } = useT();
@@ -20,6 +22,44 @@ export function LanguageSwitch() {
         </button>
       ))}
     </div>
+  );
+}
+
+export function CurrencySwitch() {
+  const { t } = useT();
+  const { display, setCurrency, rate } = useCurrency();
+  return (
+    <div className="lang-switch" role="group" aria-label={t('currency.label')} title={t('currency.label')}>
+      {(['UZS', 'USD'] as Currency[]).map((c) => {
+        const noRate = c === 'USD' && !rate;
+        return (
+          <button
+            key={c}
+            type="button"
+            aria-pressed={display === c}
+            disabled={noRate}
+            title={noRate ? t('currency.no_rate') : t('currency.label')}
+            onClick={() => setCurrency(c)}
+          >
+            {c}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RateNote() {
+  const { t, lang } = useT();
+  const { rate } = useCurrency();
+  if (!rate) return null;
+  return (
+    <p className="muted" style={{ padding: '0 10px 8px', margin: 0, fontSize: 'var(--fs-xs)' }}>
+      {t('currency.note', {
+        rate: formatMoney(rate.rate, lang, false, 'UZS'),
+        date: formatDate(rate.rate_date, lang),
+      })}
+    </p>
   );
 }
 
@@ -224,9 +264,11 @@ export function AppShell({ title }: { title?: ReactNode }) {
           )}
         </nav>
         <div className="sidebar-footer">
-          <div className="row-between" style={{ padding: '0 10px 8px' }}>
+          <div className="row-between" style={{ padding: '0 10px 8px', gap: 8 }}>
             <LanguageSwitch />
+            <CurrencySwitch />
           </div>
+          <RateNote />
           <UserMenu />
         </div>
       </aside>

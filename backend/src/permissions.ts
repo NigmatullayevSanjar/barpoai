@@ -49,6 +49,8 @@ export const permissions = [
   'files.write',
   'integrations.read',
   'audit.read',
+  'pricing.read',
+  'pricing.write',
 ] as const;
 export type Permission = (typeof permissions)[number];
 export const pages = [
@@ -80,6 +82,7 @@ export const pages = [
   'forecast',
   'payment_requests',
   'payment_calendar',
+  'pricing',
 ] as const;
 export const actions = ['create', 'read', 'update', 'delete'] as const;
 export type Page = (typeof pages)[number];
@@ -141,6 +144,8 @@ export const permissionPage: Record<Permission, [Page, Action]> = {
   'files.write': ['files', 'create'],
   'integrations.read': ['integrations', 'read'],
   'audit.read': ['audit', 'read'],
+  'pricing.read': ['pricing', 'read'],
+  'pricing.write': ['pricing', 'create'],
 };
 const common: Permission[] = [
   'projects.read',
@@ -169,6 +174,8 @@ export const basePermissions: Record<string, readonly Permission[]> = {
     'prices.read',
     'finance.read',
     'finance.allocate',
+    'pricing.read',
+    'pricing.write',
   ],
   accountant: [
     ...common,
@@ -372,6 +379,18 @@ export function redactPrices(value: any): any {
             'price',
             'monthly_price',
             'fact_value',
+            // Narx varaqasi (Bosqich 4)
+            'cost',
+            'cost_m2',
+            'sale_m2',
+            'sale_m2_usd',
+            'price_usd',
+            'plan_value',
+            'forecast_value',
+            'forecast_m2',
+            'plan_total',
+            'fact_total',
+            'forecast_total',
           ].includes(key),
       )
       .map(([k, v]) => [k, redactPrices(v)]),

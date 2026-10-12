@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { CurrencyProvider } from '@/lib/currency';
 import { I18nProvider } from '@/lib/i18n';
 import { homeFor, pageRoutes, pages, type Page } from '@/lib/permissions';
 import { ToastProvider } from '@/components/ui/Toast';
@@ -70,6 +71,7 @@ const Fin = {
   Payroll: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PayrollPage }))),
   PlanActual: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PlanActualPage }))),
   Forecast: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.ForecastPage }))),
+  Pricing: lazy(() => import('@/features/pricing/PricingPage').then((m) => ({ default: m.PricingPage }))),
   Reports: lazy(() =>
     import('@/features/finance/workflow').then((m) => ({ default: m.FinancialReportsPage })),
   ),
@@ -171,6 +173,7 @@ const tenantPages: Record<Page, React.ReactNode> = {
   payment_calendar: <Fin.Calendar />,
   payroll: <Fin.Payroll />,
   plan_actual: <Fin.PlanActual />,
+  pricing: <Fin.Pricing />,
   forecast: <Fin.Forecast />,
   financial_reports: <Fin.Reports />,
   permissions: <RolePermissionsPage />,
@@ -188,69 +191,71 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthProvider>
-            <BrowserRouter>
-              <Suspense fallback={<FullScreenLoading />}>
-                <Routes>
-                  <Route path="/" element={<HomeRedirect />} />
-                  <Route element={<RedirectIfAuthed />}>
-                    <Route element={<AuthLayout />}>
-                      <Route path="/login" element={<LoginPage />} />
-                      <Route path="/register" element={<RegisterPage />} />
-                      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                      <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <CurrencyProvider>
+              <BrowserRouter>
+                <Suspense fallback={<FullScreenLoading />}>
+                  <Routes>
+                    <Route path="/" element={<HomeRedirect />} />
+                    <Route element={<RedirectIfAuthed />}>
+                      <Route element={<AuthLayout />}>
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="/register" element={<RegisterPage />} />
+                        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                        <Route path="/reset-password" element={<ResetPasswordPage />} />
+                      </Route>
                     </Route>
-                  </Route>
-                  <Route element={<RequireAuth />}>
-                    <Route element={<AuthLayout />}>
-                      <Route path="/change-password" element={<ChangePasswordPage />} />
+                    <Route element={<RequireAuth />}>
+                      <Route element={<AuthLayout />}>
+                        <Route path="/change-password" element={<ChangePasswordPage />} />
+                      </Route>
+                      <Route element={<AppShell />}>
+                        <Route path="/profile" element={<ProfilePage />} />
+                        <Route path="/notifications" element={<NotificationsPage />} />
+                      </Route>
                     </Route>
-                    <Route element={<AppShell />}>
-                      <Route path="/profile" element={<ProfilePage />} />
-                      <Route path="/notifications" element={<NotificationsPage />} />
-                    </Route>
-                  </Route>
-                  <Route element={<RequireAuth platform={false} />}>
-                    <Route element={<AppShell />}>
-                      {pages.map((page) => (
-                        <Route key={page} element={<RequirePage page={page} />}>
-                          <Route path={pageRoutes[page]} element={tenantPages[page]} />
+                    <Route element={<RequireAuth platform={false} />}>
+                      <Route element={<AppShell />}>
+                        {pages.map((page) => (
+                          <Route key={page} element={<RequirePage page={page} />}>
+                            <Route path={pageRoutes[page]} element={tenantPages[page]} />
+                          </Route>
+                        ))}
+                        <Route element={<RequirePage page="projects" />}>
+                          <Route path="/app/projects/:id" element={<ProjectDetailPage />} />
                         </Route>
-                      ))}
-                      <Route element={<RequirePage page="projects" />}>
-                        <Route path="/app/projects/:id" element={<ProjectDetailPage />} />
-                      </Route>
-                      <Route element={<RequirePage page="estimates" />}>
-                        <Route path="/app/estimates/:id" element={<EstimateDetailPage />} />
-                      </Route>
-                      <Route element={<RequirePage page="estimates" action="create" />}>
-                        <Route path="/app/estimates/new" element={<EstimateEditorPage />} />
-                      </Route>
-                      <Route element={<RequirePage page="estimates" action="update" />}>
-                        <Route path="/app/estimates/:id/edit" element={<EstimateEditorPage />} />
+                        <Route element={<RequirePage page="estimates" />}>
+                          <Route path="/app/estimates/:id" element={<EstimateDetailPage />} />
+                        </Route>
+                        <Route element={<RequirePage page="estimates" action="create" />}>
+                          <Route path="/app/estimates/new" element={<EstimateEditorPage />} />
+                        </Route>
+                        <Route element={<RequirePage page="estimates" action="update" />}>
+                          <Route path="/app/estimates/:id/edit" element={<EstimateEditorPage />} />
+                        </Route>
                       </Route>
                     </Route>
-                  </Route>
-                  <Route element={<RequireAuth platform />}>
-                    <Route element={<AppShell />}>
-                      <Route path="/admin" element={<Platform.Dashboard />} />
-                      <Route path="/admin/tenants" element={<Platform.Tenants />} />
-                      <Route path="/admin/tenants/:id" element={<Platform.TenantDetail />} />
-                      <Route path="/admin/plans" element={<Platform.Plans />} />
-                      <Route path="/admin/billing" element={<Platform.Billing />} />
-                      <Route path="/admin/debtors" element={<Platform.Debtors />} />
-                      <Route path="/admin/support" element={<Platform.Support />} />
-                      <Route path="/admin/staff" element={<Platform.Staff />} />
-                      <Route path="/admin/diagnostics" element={<Platform.Diagnostics />} />
+                    <Route element={<RequireAuth platform />}>
+                      <Route element={<AppShell />}>
+                        <Route path="/admin" element={<Platform.Dashboard />} />
+                        <Route path="/admin/tenants" element={<Platform.Tenants />} />
+                        <Route path="/admin/tenants/:id" element={<Platform.TenantDetail />} />
+                        <Route path="/admin/plans" element={<Platform.Plans />} />
+                        <Route path="/admin/billing" element={<Platform.Billing />} />
+                        <Route path="/admin/debtors" element={<Platform.Debtors />} />
+                        <Route path="/admin/support" element={<Platform.Support />} />
+                        <Route path="/admin/staff" element={<Platform.Staff />} />
+                        <Route path="/admin/diagnostics" element={<Platform.Diagnostics />} />
+                      </Route>
                     </Route>
-                  </Route>
-                  <Route element={<RequireAuth />}>
-                    <Route element={<AppShell />}>
-                      <Route path="*" element={<NotFound />} />
+                    <Route element={<RequireAuth />}>
+                      <Route element={<AppShell />}>
+                        <Route path="*" element={<NotFound />} />
+                      </Route>
                     </Route>
-                  </Route>
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </CurrencyProvider>
           </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>

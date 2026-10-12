@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { formatDate, formatMoney } from '@/lib/format';
+import { displayCurrency } from '@/lib/currency-store';
 import { Badge, Button, Modal, Textarea } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { kindTone, payableKinds, useFinanceMutation, type DocKind, type FinanceDocument } from './model';
@@ -88,7 +89,7 @@ export function DocumentsTable({
     },
     {
       key: 'amount',
-      header: t('fin.amount'),
+      header: `${t('fin.amount_col')} (${displayCurrency()})`,
       align: 'right',
       sortValue: (r) => Number(r.amount),
       render: (r) => (
@@ -182,7 +183,7 @@ function ReverseModal({ doc, onClose }: { doc: FinanceDocument; onClose: () => v
       open
       onClose={onClose}
       title={t('fin.reverse')}
-      description={`${t(`fin.kind.${doc.kind}`)} · ${formatMoney(doc.amount, lang)} · ${doc.description}`}
+      description={`${t(`fin.kind.${doc.kind}`)} · ${formatMoney(doc.amount, lang, true, 'UZS')} · ${doc.description}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
