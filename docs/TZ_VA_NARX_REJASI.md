@@ -451,13 +451,13 @@ frontend — pnpm typecheck, pnpm build; npm run test:ui. Commit qilma.
 
 ---
 
-## 8. Dizayner va buyurtmachiga xabar berish kerak
+## 8. TZ’dan kelishilgan farqlar (egasi qarori)
 
-D9 tufayli TZ’ning quyidagi bandlari kodda bo‘lmaydi. Dizayner ularni chizmasin yoki “kelishilgan o‘zgarish” deb belgilasin (TZ 18-bo‘lim talabi):
+Loyihada dizayner yo‘q (2026-10-12): Figma maketi chizilmaydi, dizayn manbai — kodning o‘zi (mavjud komponentlar va `tokens.css`). Figma TZ talablar ro‘yxati sifatida ishlatiladi. D9 tufayli TZ’ning quyidagi bandlari kodda boshqacha; ular TZ 18-bo‘limi ma’nosida kelishilgan o‘zgarish hisoblanadi:
 
-- **L-01, L-02, L-03, AUTH-02–07, P01:** o‘zi ro‘yxatdan o‘tish, SMS kod, telefon orqali parol tiklash, kompaniya yaratish. Kodda taklif havolasi va admin bergan tiklash havolasi bor.
+- **L-01, L-02, L-03, AUTH-02–07, P01:** o‘zi ro‘yxatdan o‘tish, SMS kod, telefon orqali parol tiklash, kompaniya yaratish yo‘q. Kompaniya adminini platforma egasi bir martalik taklif havolasi (72 soat) bilan qo‘shadi; xodimlarni kompaniya admini login va boshlang‘ich parol bilan qo‘shadi (birinchi kirishda almashtirish majburiy); parol admin bergan bir martalik havola (30 daqiqa) bilan tiklanadi.
 - **EST-05, S-06, P04:** smeta tasdiqlash oqimi.
-- **5-bo‘lim, G-07:** 9 rol o‘rniga 10 rol; buxgalter alohida rol.
+- **5-bo‘lim, G-07:** 9 rol o‘rniga 10 rol (platforma: super admin, platforma egasi, texnik yordam; kompaniya: admin, prorab, brigadir, ombor mudiri, finansist, buxgalter, menejer); buxgalter alohida rol.
 - **P02:** begona kompaniya havolasi 403 emas, “topilmadi” (404). Ko‘rinishi D10 dagi 404 sahifasi.
 - **D-01, FIN-01:** ish haqi moduli kodda bor.
 - **G-05, SZ-02:** USD qo‘llanadi, lekin almashtirgich ko‘rinishida (bir vaqtda bitta valyuta). Valyuta tanlash va kurs sozlamasi o‘rniga CBU kursi.

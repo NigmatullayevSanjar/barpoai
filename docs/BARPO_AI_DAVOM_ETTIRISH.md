@@ -100,13 +100,14 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 6. **Qolgan ochiq ishlar:** O2 (Telegram bot material ro‘yxati `LIMIT 60`, qidiruv yo‘q), O9 (ba’zi UI testlari yo‘q), O11 (yetim fayllar, 08-bosqich bilan).
 7. **Rejaning 7-bo‘limi** (rejalashtirilmagan TZ talablari) — ko‘plari foydalanuvchidan qaror yoki provayder/kirish ma’lumotini talab qiladi (bank/Didox/iHamkor, UySot, kamera, email/SMS provayderi, markaziy katalog siyosati).
 8. Kichik texnik qarz: `backend/tests/rates.test.ts` frontenddagi `currency-math.ts` ni import qiladi va `decimal.js` ni `frontend/node_modules` dan oladi — faqat backend o‘rnatilgan muhitda yiqiladi (hozir CI yo‘q).
-9. Buxgalter uchun alohida dashboard hozir yo‘q (TZ DASH-01–06 da buxgalter yo‘q); dizaynerga “finansistnikiga yaqin” deb taklif qilingan — foydalanuvchi tasdiqlasa, keyinroq.
+9. Buxgalter uchun alohida dashboard hozir yo‘q (TZ DASH-01–06 da buxgalter yo‘q). Taklif: finansistnikiga yaqin (to‘lanmagan hujjatlar, kontragentlar qarzi, moslashtirilmagan to‘lovlar, davr xarajati, bekor qilingan hujjatlar) — foydalanuvchi tasdiqlasa, keyinroq.
+10. Ixtiyoriy “UI sifat” tekshiruvi (dizayner yo‘qligi sababli): `test:ui` skrinshotlari va lokal brauzer bo‘yicha bir xillik, bo‘sh holatlar, uz/ru matnlar, mobil ko‘rinish; topilmalar alohida kichik PR’larda.
 
-## 7. Dizayner bilan yozishma (foydalanuvchi yuboradi)
+## 7. Dizayn
 
-- D9 tufayli TZ’da bajarilmaydigan bandlar (rejaning 8-bo‘limi) bo‘yicha xabar tayyorlangan: L-01–03, AUTH-02–07, P01; EST-05, S-06, P04; 10 rol (3 platforma + 7 kompaniya, buxgalter alohida); P02 → 404; ish haqi qoladi; UZS/USD almashtirgich; Xonadonlar tabi va Narx varaqasi qo‘shilgan, CRM yo‘q.
-- **Aniqlik:** xodimlar taklif havolasi orqali qo‘shilmaydi. Taklif havolasini platforma egasi kompaniya uchun beradi (bir martalik, 72 soat). Xodimni kompaniya admini login va boshlang‘ich parol bilan qo‘shadi (parol bir marta ko‘rsatiladi, birinchi kirishda almashtirish majburiy). Parolni tiklash: admin xodim kartasidan 30 daqiqalik bir martalik havola oladi; eski sessiyalar yopiladi.
-- Dizaynerning taxminiy savollariga javob xati tayyorlangan; foydalanuvchi sana/muddatni to‘ldirib, skrinshotlar bilan yuboradi. Kerakli skrinshotlar (lokalda olinadi): “Topilmadi” sahifasi, USD rejimidagi jadval va header, Xonadonlar tabi va xatoli import oldindan ko‘rish, Narx varaqasi versiya ichi va “Yangi versiya” oynasi, xodim qo‘shilgandan keyingi boshlang‘ich parol oynasi.
+- Loyihada dizayner yo‘q (egasi, 2026-10-12). Figma maketi chizilmaydi; dizayn manbai — kod (mavjud komponentlar, `tokens.css`). Figma TZ faqat talablar ro‘yxati.
+- TZ’dan farqlar rejaning 8-bo‘limida “kelishilgan farqlar” sifatida qayd etilgan; hech kimga xabar yuborish kerak emas.
+- Aniqlik (8-bo‘limda ham): kompaniya adminini platforma egasi bir martalik taklif havolasi (72 soat) bilan qo‘shadi; xodimlarni admin login va boshlang‘ich parol bilan qo‘shadi (birinchi kirishda almashtirish majburiy); parolni tiklash — admin bergan 30 daqiqalik bir martalik havola.
 
 ## 8. Avtomatlashtirish
 
