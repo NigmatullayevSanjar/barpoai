@@ -99,7 +99,6 @@ export const financeRu: Record<string, string> = {
   'fin.invoices.unpaid': 'Неоплаченные',
   'fin.invoices.all': 'Все',
   'fin.invoices.new': 'Счёт / акт',
-  'fin.invoices.empty': 'Неоплаченных документов нет',
 
   'fin.docs.title': 'Первичные документы',
   'fin.docs.sub': 'Журнал всех финансовых документов: выделение, закупка, счёт, расход, платёж, сторно',

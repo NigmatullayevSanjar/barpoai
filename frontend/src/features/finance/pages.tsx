@@ -35,14 +35,12 @@ import {
   useCounterparties,
   useDocuments,
   useFinanceMutation,
-  usePayables,
   usePricesVisible,
   useSummary,
   type Budget,
   type CashAccount,
   type Counterparty,
   type DocKind,
-  type Payable,
 } from './model';
 
 /** Tanlangan obyekt yoki "barcha obyektlar" filtri */
@@ -1039,45 +1037,4 @@ export function ReconciliationPage() {
   );
 }
 
-/* ---------------- Payables helper export for calendar ---------------- */
-export function PayablesList({ projectId }: { projectId: string }) {
-  const { t, lang } = useT();
-  const list = useListState();
-  const q = usePayables(projectId, {}, list);
-  const columns: Column<Payable>[] = [
-    {
-      key: 'due',
-      header: t('fin.due_date'),
-      sortValue: (r) => r.due_date ?? '9',
-      render: (r) =>
-        r.due_date ? (
-          <span style={{ color: r.overdue ? 'var(--danger)' : undefined }}>
-            {formatDate(r.due_date, lang)}
-          </span>
-        ) : (
-          <span className="muted">—</span>
-        ),
-    },
-    { key: 'kind', header: t('fin.kind'), render: (r) => <Badge>{t(`fin.kind.${r.kind}`)}</Badge> },
-    { key: 'cp', header: t('fin.counterparty'), render: (r) => r.counterparty_name ?? '—' },
-    { key: 'desc', header: t('fin.description'), render: (r) => r.description },
-    {
-      key: 'out',
-      header: t('fin.outstanding'),
-      align: 'right',
-      render: (r) => <b>{formatMoney(r.outstanding, lang, false)}</b>,
-    },
-  ];
-  return (
-    <DataTable
-      columns={columns}
-      rows={q.data?.items}
-      rowKey={(r) => r.id}
-      loading={q.isLoading}
-      pagination={list.pagination}
-      empty={{ title: t('fin.invoices.empty') }}
-      dense
-    />
-  );
-}
 export { ProjectFilter, useProjectFilter };

@@ -101,7 +101,6 @@ export const financeUz: Record<string, string> = {
   'fin.invoices.unpaid': 'To‘lanmaganlar',
   'fin.invoices.all': 'Barchasi',
   'fin.invoices.new': 'Invoys / dalolatnoma',
-  'fin.invoices.empty': 'To‘lanmagan hujjatlar yo‘q',
 
   'fin.docs.title': 'Birlamchi hujjatlar',
   'fin.docs.sub': 'Barcha moliyaviy hujjatlar jurnali: ajratma, xarid, invoys, xarajat, to‘lov, reversal',
