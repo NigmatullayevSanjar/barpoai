@@ -3067,6 +3067,36 @@ try {
   passed.push(
     'Dashboard charts (stage 1.4): project and period filters, expense kinds sum to the period expense with server shares, a reversal stays in its original kind and document month, over-budget matches the budgets page, overdue tasks list',
   );
+  // O7: moliya yig'masi yozuv bo'lmasa ham 2 xonali summa qaytaradi ('0' emas, '0.00')
+  const emptyProject = await call('POST', '/v1/projects', { name: 'Bo‘sh yig‘ma' }, adminAgain);
+  const emptySummary = await call(
+    'GET',
+    `/v1/finance/summary?project_id=${emptyProject.id}`,
+    undefined,
+    adminAgain,
+  );
+  for (const key of [
+    'actual_cost',
+    'inventory_value',
+    'net_cash_flow',
+    'supplier_debt',
+    'advances',
+    'income',
+    'allocations',
+    'purchase_orders',
+  ])
+    assert.equal(emptySummary[key], '0.00', key);
+  assert.deepEqual(
+    emptySummary.by_project.map((p: any) => [p.actual_cost, p.debt, p.budget]),
+    [['0.00', '0.00', '0.00']],
+  );
+  const twoDecimals = /^-?\d+\.\d{2}$/;
+  const fullSummary = await call('GET', '/v1/finance/summary', undefined, adminAgain);
+  for (const row of [...fullSummary.top_debt, ...fullSummary.monthly, ...fullSummary.by_kind])
+    for (const key of ['debt', 'advance', 'expense', 'cash_out', 'cash_in', 'budget', 'amount'])
+      if (key in row) assert.match(row[key], twoDecimals, `${key}=${row[key]}`);
+  assert(fullSummary.top_debt.length > 0 && fullSummary.monthly.length > 0);
+  passed.push('Finance summary amounts always have two decimals, also for a project without entries');
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');
