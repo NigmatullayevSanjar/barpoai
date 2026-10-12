@@ -1,7 +1,18 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit, type Db, type Row } from './db.js';
-import { uuid, idParams, pageQuery, positiveQty, reason, version, date } from './schemas.js';
+import {
+  uuid,
+  idParams,
+  pageQuery,
+  positiveQty,
+  reason,
+  version,
+  date,
+  searchQuery,
+  likePattern,
+  queryBool,
+} from './schemas.js';
 import { projectScope, accountScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { createStock } from './inventory.js';
@@ -72,9 +83,10 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/stock/commands',
-    summary: 'Ombor harakatlari: kirim, jo‘natish, sarf, qaytarish, tuzatish, reversal',
+    summary:
+      'Ombor harakatlari: kirim, jo‘natish, sarf, qaytarish, tuzatish, reversal; q — material nomi; unmatched=true — invoysga bog‘lanmagan',
     permission: 'stock.read',
-    query: pageQuery.extend({
+    query: searchQuery.extend({
       project_id: uuid,
       status: z.enum(['pending', 'partial', 'posted', 'cancelled', 'disputed', 'open']).optional(),
       kind: z
@@ -82,6 +94,7 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
         .optional(),
       account_id: uuid.optional(),
       material_id: uuid.optional(),
+      unmatched: queryBool.optional(),
     }),
     sensitive: true,
     handler: async ({ db, actor, query }) => {
@@ -104,6 +117,8 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
                AND ($6::text IS NULL OR c.kind=$6)
                AND ($7::uuid IS NULL OR c.from_account_id=$7 OR c.to_account_id=$7)
                AND ($8::uuid IS NULL OR c.material_id=$8)
+               AND ($11::text IS NULL OR m.name ILIKE $11 ESCAPE '\\')
+               AND ($12::boolean IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM finance_documents f WHERE f.tenant_id=c.tenant_id AND f.matched_receipt_id=c.id))
                AND ($3<>'brigadier' OR af.custodian_id=$4 OR at.custodian_id=$4)
                AND ($3<>'warehouse_manager' OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=c.tenant_id AND w.user_id=$4 AND (w.warehouse_id=af.warehouse_id OR w.warehouse_id=at.warehouse_id)) OR (af.warehouse_id IS NULL AND at.warehouse_id IS NULL))
              ORDER BY c.created_at DESC,c.id LIMIT $9 OFFSET $10`,
@@ -118,6 +133,8 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
               query.material_id ?? null,
               query.limit,
               query.offset,
+              query.q ? likePattern(query.q) : null,
+              query.unmatched ?? null,
             ],
           )
         ).rows,

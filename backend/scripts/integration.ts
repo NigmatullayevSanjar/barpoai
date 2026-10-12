@@ -3067,6 +3067,61 @@ try {
   passed.push(
     'Dashboard charts (stage 1.4): project and period filters, expense kinds sum to the period expense with server shares, a reversal stays in its original kind and document month, over-budget matches the budgets page, overdue tasks list',
   );
+  // O1: invoysga bog'lanadigan kirim tanlovi — unmatched=true bog'langan kirimni chiqarmaydi, q material nomi bo'yicha
+  const receiptBody = {
+    project_id: project.id,
+    kind: 'receipt',
+    material_id: material.id,
+    to_account_id: warehouse.account.id,
+    quantity: '2',
+    unit_cost: '15',
+    reason: 'Yetkazib beruvchidan kirim',
+  };
+  const matchedReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
+  const freeReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
+  await call(
+    'POST',
+    '/v1/finance/documents',
+    {
+      project_id: project.id,
+      kind: 'supplier_invoice',
+      amount: '30',
+      counterparty_id: supplier.id,
+      matched_receipt_id: matchedReceipt.id,
+      description: 'Kirim uchun invoys',
+      document_date: '2026-10-02',
+    },
+    adminAgain,
+  );
+  const receiptIds = async (extra: string) =>
+    (
+      await call(
+        'GET',
+        `/v1/stock/commands?project_id=${project.id}&kind=receipt&status=posted&limit=100${extra}`,
+        undefined,
+        adminAgain,
+      )
+    ).items.map((r: any) => r.id);
+  const allReceipts = await receiptIds('');
+  assert(allReceipts.includes(matchedReceipt.id) && allReceipts.includes(freeReceipt.id));
+  const unmatchedReceipts = await receiptIds('&unmatched=true');
+  assert(!unmatchedReceipts.includes(matchedReceipt.id) && unmatchedReceipts.includes(freeReceipt.id));
+  assert.deepEqual(await receiptIds('&unmatched=false'), allReceipts);
+  assert(
+    (await receiptIds(`&unmatched=true&q=${encodeURIComponent(material.name)}`)).includes(freeReceipt.id),
+  );
+  assert.deepEqual(await receiptIds('&unmatched=true&q=mavjud-emas-xyz'), []);
+  await call(
+    'GET',
+    `/v1/stock/commands?project_id=${project.id}&unmatched=yes`,
+    undefined,
+    adminAgain,
+    undefined,
+    400,
+  );
+  passed.push(
+    'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name',
+  );
   // O7: moliya yig'masi yozuv bo'lmasa ham 2 xonali summa qaytaradi ('0' emas, '0.00')
   const emptyProject = await call('POST', '/v1/projects', { name: 'Bo‘sh yig‘ma' }, adminAgain);
   const emptySummary = await call(

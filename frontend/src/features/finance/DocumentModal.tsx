@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api, qs, type ListResponse } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { formatDate, formatMoney, formatQuantity, todayIso } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select, Textarea } from '@/components/ui';
@@ -40,23 +39,15 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
   const [reference, setReference] = useState('');
   const [description, setDescription] = useState('');
   const [receipt, setReceipt] = useState('');
+  const [selectedReceipt, setSelectedReceipt] = useState<StockCommand | null>(null);
   const [invoice, setInvoice] = useState(preset?.allocated_invoice_id ?? '');
   const [zone, setZone] = useState('');
-  const receipts = useQuery({
-    queryKey: ['stock-receipts', projectId],
-    queryFn: () =>
-      api<ListResponse<StockCommand>>(
-        `/v1/stock/commands${qs({ project_id: projectId, kind: 'receipt', status: 'posted', limit: 100 })}`,
-      ),
-    enabled: kind === 'supplier_invoice',
-  });
   const payables = usePayables(projectId, counterparty ? { counterparty_id: counterparty } : {}, {
     offset: 0,
     limit: 100,
   });
   const needsCounterparty = [...payableKinds, 'payment', 'advance'].includes(kind);
   const needsCash = cashKinds.includes(kind);
-  const selectedReceipt = receipts.data?.items.find((r) => r.id === receipt);
   const receiptValue = selectedReceipt
     ? (Number(selectedReceipt.unit_cost ?? 0) * Number(selectedReceipt.accepted_quantity)).toFixed(2)
     : null;
@@ -116,6 +107,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
           onChange={(e) => {
             setKind(e.target.value as DocKind);
             setReceipt('');
+            setSelectedReceipt(null);
             setInvoice('');
           }}
         >
@@ -183,27 +175,25 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
             </Select>
           )}
           {kind === 'supplier_invoice' && (
-            <Select
+            <SearchSelect<StockCommand>
               wrapClassName="span-2"
+              path="/v1/stock/commands"
+              params={{ project_id: projectId, kind: 'receipt', status: 'posted', unmatched: true }}
               label={t('fin.matched_receipt')}
               required
               hint={t('fin.matched_receipt_hint')}
               value={receipt}
-              onChange={(e) => {
-                setReceipt(e.target.value);
-                const r = receipts.data?.items.find((x) => x.id === e.target.value);
+              onChange={(id, r) => {
+                setReceipt(id);
+                setSelectedReceipt(r);
                 if (r && r.unit_cost)
                   setAmount((Number(r.unit_cost) * Number(r.accepted_quantity)).toFixed(2));
               }}
-            >
-              <option value="">—</option>
-              {(receipts.data?.items ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {formatDate(r.created_at, lang)} · {r.material_name} ·{' '}
-                  {formatQuantity(r.accepted_quantity, r.unit_id)} · {r.to_name}
-                </option>
-              ))}
-            </Select>
+              getId={(r) => r.id}
+              getLabel={(r) =>
+                `${formatDate(r.created_at, lang)} · ${r.material_name} · ${formatQuantity(r.accepted_quantity, r.unit_id)} · ${r.to_name}`
+              }
+            />
           )}
           {kind === 'payment' && (
             <Select
