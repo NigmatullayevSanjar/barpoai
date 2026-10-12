@@ -1,17 +1,33 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiAll, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney, formatQuantity, formatRelative } from '@/lib/format';
-import { Alert, Badge, EmptyState, PageHeader, Stat, type Tone } from '@/components/ui';
+import { Alert, Badge, EmptyState, PageHeader, Select, Stat, type Tone } from '@/components/ui';
+import { displayCurrency } from '@/lib/currency-store';
+import { monthLabel } from '@/features/finance/model';
+import { DonutChart, MonthlyChart } from './charts';
 import { ProjectStatusBadge } from '@/features/projects/ProjectsPage';
-import type { ProjectStatus } from '@/features/projects/types';
+import type { Project, ProjectStatus } from '@/features/projects/types';
 import { priorityTone, statusTone, type Priority, type TaskStatus } from '@/features/work/model';
 
+type TaskItem = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: Priority;
+  deadline: string | null;
+  project_id: string;
+  project_name: string;
+  mine: boolean;
+};
 type Dashboard = {
   generated_at: string;
+  project_id: string | null;
+  period: { months: number; from: string; to: string };
   projects: {
     total: number;
     active: number;
@@ -37,20 +53,11 @@ type Dashboard = {
     due_today: number;
     awaiting_my_review: number;
     my_open: number;
-    accepted_30d: number;
-    items: {
-      id: string;
-      title: string;
-      status: TaskStatus;
-      priority: Priority;
-      deadline: string | null;
-      project_id: string;
-      project_name: string;
-      mine: boolean;
-      overdue: boolean;
-    }[];
+    accepted_period: number;
+    items: (TaskItem & { overdue: boolean })[];
+    overdue_items: (TaskItem & { assignee_name: string })[];
   } | null;
-  reports: { pending_review: number | null; my_returned: number; last_7d: number } | null;
+  reports: { pending_review: number | null; my_returned: number; in_period: number } | null;
   stock: {
     low: number;
     materials: number;
@@ -70,10 +77,10 @@ type Dashboard = {
   } | null;
   finance: {
     budget_total: string;
-    budget_month: string;
+    period_budget: string;
     plan_total: string;
     actual_cost: string;
-    month_expense: string;
+    period_expense: string;
     remaining_budget: string;
     net_cash_flow: string;
     supplier_debt: string;
@@ -81,6 +88,16 @@ type Dashboard = {
     income: string;
     payment_requests: { pending: number; approved: number };
     overdue_payables: { count: number; amount: string };
+    monthly: { month: string; plan: string; budget: string; fact: string }[];
+    by_kind: { kind: string; amount: string; share_percent: string | null }[];
+    over_budget: {
+      id: string;
+      name: string;
+      code: string | null;
+      budget: string;
+      actual: string;
+      over: string;
+    }[];
   } | null;
   employees: { active: number; by_role: Record<string, number> } | null;
 };
@@ -104,19 +121,71 @@ function Progress({ value, bad }: { value: number | null; bad?: boolean }) {
 export function TenantDashboard() {
   const { t, lang } = useT();
   const { me, can } = useAuth();
-  const query = useQuery({ queryKey: ['dashboard'], queryFn: () => api<Dashboard>('/v1/dashboard') });
+  const [projectId, setProjectId] = useState('');
+  const [months, setMonths] = useState('6');
+  const query = useQuery({
+    queryKey: ['dashboard', projectId, months],
+    queryFn: () =>
+      api<Dashboard>(`/v1/dashboard?months=${months}${projectId ? `&project_id=${projectId}` : ''}`),
+  });
+  // Obyekt ro'yxati filtr uchun; obyektlar sahifasiga ruxsat bo'lmasa filtr ko'rsatilmaydi.
+  const projectList = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => apiAll<Project>('/v1/projects'),
+    enabled: can('projects', 'read'),
+  });
   const notifications = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api<{ items: Notification[]; unread: number }>('/v1/me/notifications?limit=20'),
   });
   const d = query.data;
   const m = (v: string | null | undefined) => (v == null ? '—' : formatMoney(v, lang, false));
+  // Har KPI yonida izoh: davrga bog'liq yoki hozirgi holat.
+  const periodNote = d
+    ? t('dash.note_period', { from: formatDate(d.period.from, lang), to: formatDate(d.period.to, lang) })
+    : '';
+  const currentNote = t('dash.note_current');
+  const kindColor: Record<string, string> = {
+    material: 'var(--chart-1)',
+    labor: 'var(--chart-2)',
+    equipment: 'var(--chart-3)',
+    service: 'var(--chart-4)',
+  };
+  const monthlyEmpty = d?.finance?.monthly.every(
+    (r) => Number(r.plan) === 0 && Number(r.budget) === 0 && Number(r.fact) === 0,
+  );
   return (
     <div className="stack" style={{ gap: 18 }}>
       <PageHeader
         title={t('dash.welcome', { name: me?.display_name })}
         description={me?.tenant_name ?? t('dash.sub')}
       />
+      <div className="toolbar">
+        {(projectList.data?.items.length ?? 0) > 0 && (
+          <Select
+            aria-label={t('erp.select_project')}
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            style={{ minWidth: 240 }}
+          >
+            <option value="">{t('dash.filter_project_all')}</option>
+            {projectList.data!.items.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code ? `${p.code} · ` : ''}
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Select aria-label={t('dash.period')} value={months} onChange={(e) => setMonths(e.target.value)}>
+          {['3', '6', '12'].map((n) => (
+            <option key={n} value={n}>
+              {t('dash.period_months', { n })}
+            </option>
+          ))}
+        </Select>
+        {d && <span className="muted text-sm">{periodNote}</span>}
+      </div>
       {query.isError && (
         <Alert tone="danger">
           {errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
@@ -128,14 +197,28 @@ export function TenantDashboard() {
             accent
             label={t('dash.projects_total')}
             value={d.projects.total}
-            sub={`${t('dash.projects_active')}: ${d.projects.active} · ${t('dash.behind')}: ${d.projects.behind_schedule}`}
+            sub={
+              <>
+                {`${t('dash.projects_active')}: ${d.projects.active} · ${t('dash.behind')}: ${d.projects.behind_schedule}`}
+                <small className="muted" style={{ display: 'block' }}>
+                  {currentNote}
+                </small>
+              </>
+            }
           />
         )}
         {d?.tasks && (
           <Stat
             label={t('dash.tasks_open')}
             value={d.tasks.open}
-            sub={`${t('dash.tasks_overdue')}: ${d.tasks.overdue} · ${t('dash.due_today')}: ${d.tasks.due_today}`}
+            sub={
+              <>
+                {`${t('dash.tasks_overdue')}: ${d.tasks.overdue} · ${t('dash.due_today')}: ${d.tasks.due_today}`}
+                <small className="muted" style={{ display: 'block' }}>
+                  {currentNote} · {t('dash.accepted_period')}: {d.tasks.accepted_period} ({periodNote})
+                </small>
+              </>
+            }
           />
         )}
         {d?.reports &&
@@ -143,41 +226,191 @@ export function TenantDashboard() {
             <Stat
               label={t('dash.reports_pending')}
               value={d.reports.pending_review}
-              sub={`${t('dash.reports_7d')}: ${d.reports.last_7d}`}
+              sub={
+                <>
+                  {currentNote}
+                  <small className="muted" style={{ display: 'block' }}>
+                    {t('dash.reports_period')}: {d.reports.in_period} ({periodNote})
+                  </small>
+                </>
+              }
             />
           ) : (
             <Stat
               label={t('dash.my_returned')}
               value={d.reports.my_returned}
-              sub={`${t('dash.reports_7d')}: ${d.reports.last_7d}`}
+              sub={
+                <>
+                  {currentNote}
+                  <small className="muted" style={{ display: 'block' }}>
+                    {t('dash.reports_period')}: {d.reports.in_period} ({periodNote})
+                  </small>
+                </>
+              }
             />
           ))}
         {d?.finance ? (
           <Stat
-            label={t('dash.remaining')}
-            value={m(d.finance.remaining_budget)}
-            sub={`${t('dash.budget_total')}: ${m(d.finance.budget_total)}`}
+            label={t('dash.period_expense')}
+            value={m(d.finance.period_expense)}
+            sub={
+              <>
+                {`${t('dash.period_budget')}: ${m(d.finance.period_budget)} · ${displayCurrency()}`}
+                <small className="muted" style={{ display: 'block' }}>
+                  {periodNote}
+                </small>
+              </>
+            }
           />
         ) : d?.stock ? (
           <Stat
             label={t('dash.stock_low')}
             value={d.stock.low}
-            sub={`${t('dash.requests_pending')}: ${d.stock.pending_requests}`}
+            sub={
+              <>
+                {`${t('dash.requests_pending')}: ${d.stock.pending_requests}`}
+                <small className="muted" style={{ display: 'block' }}>
+                  {currentNote}
+                </small>
+              </>
+            }
           />
         ) : d?.employees ? (
-          <Stat label={t('dash.employees_active')} value={d.employees.active} />
+          <Stat label={t('dash.employees_active')} value={d.employees.active} sub={currentNote} />
         ) : null}
       </div>
       {!d && !query.isError && <div className="skeleton" style={{ height: 120 }} />}
+
+      {d?.finance && (
+        <div className="grid-2" style={{ alignItems: 'start' }}>
+          <section className="card">
+            <div className="card-header">
+              <h3>{t('dash.chart_monthly')}</h3>
+              <small className="muted">{t('dash.amounts_in', { cur: displayCurrency() })}</small>
+            </div>
+            <div className="card-pad">
+              {monthlyEmpty ? (
+                <EmptyState title={t('dash.chart_empty')} />
+              ) : (
+                <MonthlyChart
+                  title={t('dash.chart_monthly')}
+                  rows={d.finance.monthly}
+                  monthLabel={(month) => monthLabel(month, lang)}
+                  series={[
+                    { key: 'plan', label: t('dash.series_plan'), color: 'var(--chart-1)', kind: 'bar' },
+                    { key: 'fact', label: t('dash.series_fact'), color: 'var(--chart-2)', kind: 'bar' },
+                    { key: 'budget', label: t('dash.series_budget'), color: 'var(--chart-3)', kind: 'line' },
+                  ]}
+                />
+              )}
+            </div>
+          </section>
+          <section className="card">
+            <div className="card-header">
+              <h3>{t('dash.chart_kinds')}</h3>
+              <small className="muted">{periodNote}</small>
+            </div>
+            <div className="card-pad">
+              {d.finance.by_kind.every((k) => Number(k.amount) === 0) ? (
+                <EmptyState title={t('dash.kinds_empty')} />
+              ) : (
+                <DonutChart
+                  title={t('dash.chart_kinds')}
+                  total={d.finance.period_expense}
+                  items={d.finance.by_kind.map((k) => ({
+                    key: k.kind,
+                    label: t(`est.kind.${k.kind}`),
+                    color: kindColor[k.kind] ?? 'var(--muted)',
+                    amount: k.amount,
+                    share: k.share_percent,
+                  }))}
+                />
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {(d?.finance || d?.tasks) && (
+        <div className="grid-2" style={{ alignItems: 'start' }}>
+          {d.finance && (
+            <section className="card">
+              <div className="card-header">
+                <h3>{t('dash.over_budget')}</h3>
+                <small className="muted">{currentNote}</small>
+              </div>
+              {d.finance.over_budget.length === 0 ? (
+                <EmptyState title={t('dash.over_budget_none')} />
+              ) : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {d.finance.over_budget.map((p) => (
+                    <li key={p.id} style={{ borderBottom: '1px solid var(--border)', padding: '10px 20px' }}>
+                      <div className="row-between">
+                        <Link
+                          to={`/app/finance/budgets?project=${p.id}`}
+                          style={{ fontWeight: 500, color: 'inherit' }}
+                        >
+                          {p.code ? `${p.code} · ` : ''}
+                          {p.name}
+                        </Link>
+                        <Badge tone="danger">{t('dash.over_by', { amount: m(p.over) })}</Badge>
+                      </div>
+                      <small className="muted">
+                        {t('dash.budget_vs_actual', { budget: m(p.budget), actual: m(p.actual) })}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+          {d.tasks && (
+            <section className="card">
+              <div className="card-header">
+                <h3>{t('dash.overdue_tasks')}</h3>
+                <small className="muted">
+                  {currentNote} · {d.tasks.overdue}
+                </small>
+              </div>
+              {d.tasks.overdue_items.length === 0 ? (
+                <EmptyState title={t('dash.overdue_none')} />
+              ) : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {d.tasks.overdue_items.map((task) => (
+                    <li key={task.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <Link
+                        to={`/app/tasks?project=${task.project_id}`}
+                        className="row-between"
+                        style={{ padding: '10px 20px', color: 'inherit', gap: 10 }}
+                      >
+                        <span className="grow">
+                          <span style={{ fontWeight: 500 }}>{task.title}</span>
+                          <small className="muted" style={{ display: 'block' }}>
+                            {task.project_name} · {task.assignee_name}
+                          </small>
+                        </span>
+                        <Badge tone="danger">
+                          {t('tasks.overdue')} · {formatDate(task.deadline, lang)}
+                        </Badge>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </div>
+      )}
 
       <div className="grid-2" style={{ alignItems: 'start' }}>
         {d?.projects && (
           <section className="card">
             <div className="card-header">
               <h3>{t('dash.my_projects')}</h3>
-              <Link to="/app/projects" className="text-sm">
-                {t('common.all')}
-              </Link>
+              <span className="row text-sm">
+                <small className="muted">{currentNote}</small>
+                <Link to="/app/projects">{t('common.all')}</Link>
+              </span>
             </div>
             {d.projects.items.length === 0 ? (
               <EmptyState
@@ -239,7 +472,7 @@ export function TenantDashboard() {
             <div className="card-header">
               <h3>{t('dash.my_tasks')}</h3>
               <span className="row text-sm muted">
-                {t('dash.my_open')}: {d.tasks.my_open}
+                {currentNote} · {t('dash.my_open')}: {d.tasks.my_open}
                 {d.tasks.awaiting_my_review > 0 &&
                   ` · ${t('dash.awaiting_review')}: ${d.tasks.awaiting_my_review}`}
               </span>
@@ -282,9 +515,10 @@ export function TenantDashboard() {
           <section className="card">
             <div className="card-header">
               <h3>{t('dash.finance')}</h3>
-              <Link to="/app/finance" className="text-sm">
-                {t('common.all')}
-              </Link>
+              <span className="row text-sm">
+                <small className="muted">{currentNote}</small>
+                <Link to="/app/finance">{t('common.all')}</Link>
+              </span>
             </div>
             <div className="card-pad stack" style={{ gap: 10 }}>
               {(() => {
@@ -307,13 +541,8 @@ export function TenantDashboard() {
               <dl className="kv">
                 <dt>{t('dash.actual_cost')}</dt>
                 <dd>{m(d.finance.actual_cost)}</dd>
-                <dt>{t('dash.month_expense')}</dt>
-                <dd>
-                  {m(d.finance.month_expense)}
-                  {Number(d.finance.budget_month) > 0 && (
-                    <small className="muted"> / {m(d.finance.budget_month)}</small>
-                  )}
-                </dd>
+                <dt>{t('dash.remaining')}</dt>
+                <dd>{m(d.finance.remaining_budget)}</dd>
                 <dt>{t('dash.debt')}</dt>
                 <dd style={{ color: Number(d.finance.supplier_debt) > 0 ? 'var(--danger)' : undefined }}>
                   {m(d.finance.supplier_debt)}
@@ -344,9 +573,10 @@ export function TenantDashboard() {
           <section className="card">
             <div className="card-header">
               <h3>{t('dash.stock')}</h3>
-              <Link to="/app/stock" className="text-sm">
-                {t('common.all')}
-              </Link>
+              <span className="row text-sm">
+                <small className="muted">{currentNote}</small>
+                <Link to="/app/stock">{t('common.all')}</Link>
+              </span>
             </div>
             <div className="card-pad stack" style={{ gap: 10 }}>
               <dl className="kv">

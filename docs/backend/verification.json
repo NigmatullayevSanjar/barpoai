@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-11T10:49:37.738Z",
+  "executed_at": "2026-10-12T03:52:05.545Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -62,6 +62,8 @@
     "Premises Excel import: server template, real sheet row numbers, errors block the commit, re-upload updates or skips instead of duplicating, stale preview rejected, audit",
     "Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)",
     "CBU USD rate: worker saves a valid rate, skips while fresh, keeps the last rate on HTTP/parse/timeout errors and never stores 0; latest rate is readable by any signed-in user, not anonymously",
+    "Price list (stage 4): the 4.4 control example is reproduced end to end, a reversed expense stays in its zone group, versions are immutable and numbered per project, USD columns follow the version rate, the Excel export is audited, and pricing is limited to admin and financier",
+    "Dashboard charts (stage 1.4): project and period filters, expense kinds sum to the period expense with server shares, a reversal stays in its original kind and document month, over-budget matches the budgets page, overdue tasks list",
     "OpenAPI generated from registered API routes"
   ],
   "failed": []

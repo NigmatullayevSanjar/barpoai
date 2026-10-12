@@ -26,6 +26,14 @@ const workFactSql = `(coalesce((SELECT sum(pe.quantity) FROM progress_entries pe
   +coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))`;
 /** Rol doirasidagi stock hisoblari (ombor mudiri — biriktirilgan omborlar, brigadir — o'z hisobi). */
 const accountScopeSql = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
+/** Xarajat yozuvlari ($1 tenant, $2 obyektlar): tur va hisob sanasi. Hujjat — `document_date`, ombor sarfida hujjat sanasi yo'q,
+ *  shuning uchun yozuvning Toshkent sanasi. Storno asl hujjat turida hisoblanadi. Yetkazib beruvchi invoysi xarajat emas (clearing). */
+const expenseSql = `SELECT j.amount,CASE WHEN j.stock_command_id IS NOT NULL THEN 'material' ELSE coalesce(o.kind,f.kind) END kind,
+    coalesce(f.document_date,(j.created_at AT TIME ZONE '${TZ}')::date) AS day
+  FROM journal_entries j LEFT JOIN finance_documents f ON f.tenant_id=j.tenant_id AND f.id=j.finance_document_id
+       LEFT JOIN finance_documents o ON o.tenant_id=f.tenant_id AND o.id=f.reverses_id
+  WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='expense'`;
+const expenseKinds = ['material', 'labor', 'equipment', 'service'];
 
 async function companyView(db: Db, actor: Row) {
   const row = await one(
@@ -51,9 +59,19 @@ async function companyView(db: Db, actor: Row) {
 }
 
 /** Bosh sahifa bloklari. Har blok faqat tegishli ruxsat bo'lsa hisoblanadi; manbalar docs/BARPO_DASHBOARD_METRICS.md. */
-async function dashboard(db: Db, actor: Row) {
+async function dashboard(db: Db, actor: Row, query: Row) {
   invariant(actor.tenant_id, 'FORBIDDEN', 403);
-  const projects = await projectIds(db, actor);
+  const projects = query.project_id
+    ? [(await projectScope(db, actor, query.project_id)).id as string]
+    : await projectIds(db, actor);
+  // Davr: joriy oy bilan tugaydigan N ta to'liq oy (Toshkent), [from, until).
+  const months = Number(query.months);
+  const period = await one(
+    db,
+    `SELECT to_char(s,'YYYY-MM-DD') "from",to_char(s+make_interval(months=>$1),'YYYY-MM-DD') until,to_char((s+make_interval(months=>$1))::date-1,'YYYY-MM-DD') "to"
+     FROM (SELECT (date_trunc('month',now() AT TIME ZONE '${TZ}')-make_interval(months=>$1-1))::date s) x`,
+    [months],
+  );
   // Bitta pg mijozida ketma-ket so'rovlar (parallel query navbati pg@9 da olib tashlanadi).
   const canProjects = await pageAllowed(db, actor, 'projects', 'read');
   const canTasks = await allowed(db, actor, 'tasks.read');
@@ -65,8 +83,11 @@ async function dashboard(db: Db, actor: Row) {
   const prices = await allowed(db, actor, 'prices.read');
   const canEmployees = await pageAllowed(db, actor, 'employees', 'read');
   const scope: unknown[] = [actor.tenant_id, projects];
+  const range: unknown[] = [...scope, period.from, period.until];
   const result: Row = {
     generated_at: new Date().toISOString(),
+    project_id: query.project_id ?? null,
+    period: { months, from: period.from, to: period.to },
     projects: null,
     tasks: null,
     reports: null,
@@ -105,9 +126,12 @@ async function dashboard(db: Db, actor: Row) {
               count(*) FILTER(WHERE status<>'accepted' AND ${todaySql('deadline')})::int due_today,
               count(*) FILTER(WHERE status='submitted' AND reviewer_id=$3)::int awaiting_my_review,
               count(*) FILTER(WHERE status IN ('todo','in_progress','returned') AND assignee_id=$3)::int my_open,
-              count(*) FILTER(WHERE status='accepted' AND created_at>now()-interval '30 days')::int accepted_30d
+              /* audit oynasi audit_tenant(tenant_id,created_at) indeksi bo'yicha bir marta o'qiladi */
+              (SELECT count(DISTINCT t.id)::int FROM audit_events a JOIN tasks t ON t.tenant_id=a.tenant_id AND t.id=a.resource_id
+                WHERE a.tenant_id=$1 AND a.action='task.accepted' AND a.created_at>=($5::date::timestamp AT TIME ZONE '${TZ}') AND a.created_at<($6::date::timestamp AT TIME ZONE '${TZ}')
+                  AND t.status='accepted' AND t.project_id=ANY($2::uuid[]) AND t.archived_at IS NULL AND ($4 OR t.assignee_id=$3 OR t.reviewer_id=$3)) accepted_period
        FROM tasks WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) AND archived_at IS NULL AND ($4 OR assignee_id=$3 OR reviewer_id=$3)`,
-      [...scope, actor.id, manageTasks],
+      [...scope, actor.id, manageTasks, period.from, period.until],
     );
     const items = (
       await db.query(
@@ -119,16 +143,26 @@ async function dashboard(db: Db, actor: Row) {
         [...scope, actor.id],
       )
     ).rows;
-    result.tasks = { ...counts, items };
+    const overdueItems = (
+      await db.query(
+        `SELECT t.id,t.title,t.status,t.priority,t.deadline,t.project_id,p.name project_name,u.display_name assignee_name,(t.assignee_id=$3) mine
+         FROM tasks t JOIN projects p ON p.id=t.project_id JOIN users u ON u.id=t.assignee_id
+         WHERE t.tenant_id=$1 AND t.project_id=ANY($2::uuid[]) AND t.archived_at IS NULL AND t.status<>'accepted' AND t.deadline<now()
+           AND ($4 OR t.assignee_id=$3 OR t.reviewer_id=$3)
+         ORDER BY t.deadline,t.created_at LIMIT 6`,
+        [...scope, actor.id, manageTasks],
+      )
+    ).rows;
+    result.tasks = { ...counts, items, overdue_items: overdueItems };
   }
   if (canReports) {
     const counts = await one(
       db,
       `SELECT count(*) FILTER(WHERE status='submitted')::int pending_review,
               count(*) FILTER(WHERE status='returned' AND author_id=$3)::int my_returned,
-              count(*) FILTER(WHERE created_at>now()-interval '7 days')::int last_7d
+              count(*) FILTER(WHERE report_date>=$5::date AND report_date<$6::date)::int in_period
        FROM reports WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) AND archived_at IS NULL AND ($4 OR author_id=$3)`,
-      [...scope, actor.id, reviewReports],
+      [...scope, actor.id, reviewReports, period.from, period.until],
     );
     result.reports = { ...counts, pending_review: reviewReports ? counts.pending_review : null };
   }
@@ -166,7 +200,6 @@ async function dashboard(db: Db, actor: Row) {
     const journal = await one(
       db,
       `SELECT coalesce(sum(amount) FILTER(WHERE account='expense'),0)::text actual_cost,
-              coalesce(sum(amount) FILTER(WHERE account='expense' AND date_trunc('month',created_at)=date_trunc('month',now())),0)::text month_expense,
               coalesce(sum(amount) FILTER(WHERE account='cash'),0)::text net_cash_flow,
               (-coalesce(sum(amount) FILTER(WHERE account='payable'),0))::text supplier_debt,
               coalesce(sum(amount) FILTER(WHERE account='advance'),0)::text advances,
@@ -176,8 +209,8 @@ async function dashboard(db: Db, actor: Row) {
     );
     const budget = await one(
       db,
-      `SELECT coalesce(sum(amount),0)::text AS total,coalesce(sum(amount) FILTER(WHERE month=date_trunc('month',current_date)::date),0)::text AS month FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])`,
-      scope,
+      `SELECT coalesce(sum(amount),0)::text AS total,coalesce(sum(amount) FILTER(WHERE month>=$3::date AND month<$4::date),0)::text AS period FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])`,
+      range,
     );
     const plan = await one(
       db,
@@ -194,12 +227,76 @@ async function dashboard(db: Db, actor: Row) {
       `SELECT coalesce(sum(${outstandingSql}),0)::text amount,count(*)::int count FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($3::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date<current_date`,
       [...scope, payableKinds],
     );
+    // Oylar: reja (smeta oylik taqsimoti), budjet va fakt xarajat (hisob sanasi bo'yicha).
+    const monthly = (
+      await db.query(
+        `WITH m AS (SELECT generate_series($3::date,$4::date-1,interval '1 month')::date AS month),
+              exp AS (${expenseSql}),
+              plan AS (SELECT em.month,sum(em.quantity*l.unit_price) v FROM estimate_months em JOIN estimate_lines l ON l.tenant_id=em.tenant_id AND l.id=em.line_id JOIN estimates e ON e.id=l.estimate_id
+                       WHERE em.tenant_id=$1 AND l.project_id=ANY($2::uuid[]) AND l.archived_at IS NULL AND e.archived_at IS NULL AND em.month>=$3::date AND em.month<$4::date GROUP BY em.month),
+              budget AS (SELECT month,sum(amount) v FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) AND month>=$3::date AND month<$4::date GROUP BY month),
+              fact AS (SELECT date_trunc('month',day)::date AS month,sum(amount) v FROM exp WHERE day>=$3::date AND day<$4::date GROUP BY 1)
+         SELECT to_char(m.month,'YYYY-MM-DD') AS month,coalesce(plan.v,0)::text plan,coalesce(budget.v,0)::text budget,coalesce(fact.v,0)::text fact
+         FROM m LEFT JOIN plan ON plan.month=m.month LEFT JOIN budget ON budget.month=m.month LEFT JOIN fact ON fact.month=m.month ORDER BY m.month`,
+        range,
+      )
+    ).rows.map((r) => ({
+      month: r.month,
+      plan: money(r.plan),
+      budget: money(r.budget),
+      fact: money(r.fact),
+    }));
+    // Turlar: har xarajat yozuvi bir marta; ulush foizi serverda (davr jamiga nisbatan).
+    const kindRows = (
+      await db.query(
+        `WITH exp AS (${expenseSql}) SELECT kind,sum(amount)::text amount FROM exp WHERE day>=$3::date AND day<$4::date GROUP BY kind`,
+        range,
+      )
+    ).rows;
+    const periodExpense = kindRows.reduce((s, r) => s.add(r.amount), dec('0'));
+    // Ulush musbat turlar yig'indisiga nisbatan (storno yoki ortiqcha inventarizatsiya turni manfiy qilishi mumkin).
+    const positive = kindRows.reduce(
+      (s, r) => (dec(r.amount).gt(0) ? s.add(r.amount) : s),
+      dec('0'),
+    );
+    const byKind = [
+      ...expenseKinds,
+      ...kindRows.map((r) => r.kind).filter((k) => !expenseKinds.includes(k)),
+    ].map((kind) => {
+      const amount = dec(kindRows.find((r) => r.kind === kind)?.amount ?? '0');
+      return {
+        kind,
+        amount: money(amount),
+        share_percent:
+          positive.gt(0) && !amount.isNegative() ? amount.div(positive).mul(100).toFixed(1) : null,
+      };
+    });
+    // Budjetdan oshgan obyektlar — "Budjetlar" sahifasidagi ta'rif: budjet kiritilgan oylar bo'yicha fakt xarajat
+    // (yozuv oyi, created_at) yig'indisi shu oylar budjeti yig'indisidan katta.
+    const overBudget = (
+      await db.query(
+        `WITH b AS (SELECT project_id,month,amount FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])),
+              a AS (SELECT project_id,to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,sum(amount) v FROM journal_entries
+                    WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) AND account='expense' GROUP BY 1,2)
+         SELECT p.id,p.name,p.code,sum(b.amount)::text budget,coalesce(sum(a.v),0)::text actual
+         FROM b JOIN projects p ON p.tenant_id=$1 AND p.id=b.project_id LEFT JOIN a ON a.project_id=b.project_id AND a.month=b.month
+         GROUP BY p.id HAVING coalesce(sum(a.v),0)>sum(b.amount) ORDER BY coalesce(sum(a.v),0)-sum(b.amount) DESC`,
+        scope,
+      )
+    ).rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      code: r.code,
+      budget: money(r.budget),
+      actual: money(r.actual),
+      over: money(dec(r.actual).minus(r.budget)),
+    }));
     result.finance = {
       budget_total: money(budget.total),
-      budget_month: money(budget.month),
+      period_budget: money(budget.period),
       plan_total: money(plan.total),
       actual_cost: money(journal.actual_cost),
-      month_expense: money(journal.month_expense),
+      period_expense: money(periodExpense),
       remaining_budget: money(dec(budget.total).minus(journal.actual_cost)),
       net_cash_flow: money(journal.net_cash_flow),
       supplier_debt: money(journal.supplier_debt),
@@ -207,13 +304,17 @@ async function dashboard(db: Db, actor: Row) {
       income: money(journal.income),
       payment_requests: requests,
       overdue_payables: { count: overdue.count, amount: money(overdue.amount) },
+      monthly,
+      by_kind: byKind,
+      over_budget: overBudget,
     };
   }
   if (canEmployees) {
     const rows = (
       await db.query(
-        'SELECT role,count(*)::int n FROM users WHERE tenant_id=$1 AND active GROUP BY role',
-        [actor.tenant_id],
+        `SELECT role,count(*)::int n FROM users u WHERE tenant_id=$1 AND active
+           AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=u.tenant_id AND a.user_id=u.id AND a.project_id=$2)) GROUP BY role`,
+        [actor.tenant_id, query.project_id ?? null],
       )
     ).rows;
     result.employees = {
@@ -225,6 +326,10 @@ async function dashboard(db: Db, actor: Row) {
 }
 
 const projectQuery = z.object({ project_id: uuid });
+const dashboardQuery = z.object({
+  project_id: uuid.optional(),
+  months: z.enum(['3', '6', '12']).default('6'),
+});
 export function dashboardRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
@@ -282,8 +387,9 @@ export function dashboardRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/dashboard',
     summary:
-      'Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, moliya va xodimlar bloklari — faqat ruxsat bo‘lgan bloklar, qolganlari null',
-    handler: ({ db, actor }) => dashboard(db, actor),
+      'Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, moliya va xodimlar bloklari — faqat ruxsat bo‘lgan bloklar, qolganlari null; obyekt va davr (3/6/12 oy) filtri',
+    query: dashboardQuery,
+    handler: ({ db, actor, query }) => dashboard(db, actor, query),
   });
   // ---------------------------------------------------------------- Excel eksportlar
   add({

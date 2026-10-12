@@ -2923,6 +2923,113 @@ try {
   passed.push(
     'Price list (stage 4): the 4.4 control example is reproduced end to end, a reversed expense stays in its zone group, versions are immutable and numbered per project, USD columns follow the version rate, the Excel export is audited, and pricing is limited to admin and financier',
   );
+  // ---- 1.4: dashboard grafiklari — obyekt va davr filtri, turlar yig'indisi = davr xarajati, budjetdan oshgan obyekt
+  const dash6 = await call('GET', '/v1/dashboard', undefined, adminAgain);
+  assert.equal(dash6.period.months, 6);
+  assert.equal(dash6.finance.monthly.length, 6);
+  const sumKey = (rows: any[], key: string) => rows.reduce((s: any, r: any) => s.add(r[key]), dec('0')).toFixed(2);
+  assert.equal(sumKey(dash6.finance.by_kind, 'amount'), dash6.finance.period_expense);
+  assert.equal(sumKey(dash6.finance.monthly, 'fact'), dash6.finance.period_expense);
+  assert.deepEqual(
+    dash6.finance.by_kind.map((k: any) => k.kind),
+    ['material', 'labor', 'equipment', 'service'],
+  );
+  const positiveKinds = dash6.finance.by_kind
+    .filter((k: any) => dec(k.amount).gt(0))
+    .reduce((s: any, k: any) => s.add(k.amount), dec('0'));
+  for (const k of dash6.finance.by_kind)
+    assert.equal(
+      k.share_percent,
+      dec(k.amount).isNegative() ? null : dec(k.amount).div(positiveKinds).mul(100).toFixed(1),
+    );
+  assert(dec(dash6.finance.by_kind[0].amount).gt(0), 'material consumption is an expense kind');
+  // Alohida obyekt, sanalar bugunga nisbatan: eski oyda texnika akti, bugun xizmat akti va texnika aktining stornosi.
+  const projectD = await call('POST', '/v1/projects', { name: 'Dashboard grafik obyekti' }, adminAgain);
+  const firstMonth = dash6.period.from as string; // 6 oylik oynaning birinchi oyi
+  const todayTk = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
+  const docD = (kind: string, amount: string, document_date: string) =>
+    call(
+      'POST',
+      '/v1/finance/documents',
+      { project_id: projectD.id, kind, amount, counterparty_id: supplier.id, description: 'Dashboard testi', document_date },
+      adminAgain,
+    );
+  const oldEquipment = await docD('equipment', '700.00', firstMonth);
+  await docD('service', '300.00', todayTk);
+  await call('POST', `/v1/finance/documents/${oldEquipment.id}/reverse`, { reason: 'Dashboard storno testi' }, adminAgain);
+  const reversalDate = (
+    await admin.query("SELECT document_date::text d FROM finance_documents WHERE reverses_id=$1", [oldEquipment.id])
+  ).rows[0].d as string;
+  const dashD = await call('GET', `/v1/dashboard?project_id=${projectD.id}&months=6`, undefined, adminAgain);
+  assert.equal(dashD.project_id, projectD.id);
+  assert.deepEqual([dashD.projects.total, dashD.projects.items[0].id], [1, projectD.id]);
+  // Mustaqil tekshiruv: hamma yozuv oynada, demak davr xarajati = jurnaldagi butun xarajat
+  const rawD = (
+    await admin.query(
+      "SELECT coalesce(sum(amount),0)::numeric(20,2)::text v FROM journal_entries WHERE project_id=$1 AND account='expense'",
+      [projectD.id],
+    )
+  ).rows[0].v;
+  assert.deepEqual([dashD.finance.period_expense, dashD.finance.actual_cost, rawD], ['300.00', '300.00', '300.00']);
+  // Storno asl tur (texnika) va o'z hujjat sanasi oyida: texnika jami 0, ulush null emas (0.0)
+  assert.deepEqual(
+    dashD.finance.by_kind.map((k: any) => [k.kind, k.amount, k.share_percent]),
+    [
+      ['material', '0.00', '0.0'],
+      ['labor', '0.00', '0.0'],
+      ['equipment', '0.00', '0.0'],
+      ['service', '300.00', '100.0'],
+    ],
+  );
+  const factOf = (month: string) => dashD.finance.monthly.find((m: any) => m.month === month)?.fact;
+  const monthOf = (d: string) => `${d.slice(0, 7)}-01`;
+  if (monthOf(reversalDate) === monthOf(todayTk)) {
+    assert.equal(factOf(firstMonth), '700.00');
+    assert.equal(factOf(monthOf(todayTk)), '-400.00');
+  }
+  // 3 oylik oynada eski akt yo'q, faqat bugungi xizmat va storno: texnika manfiy, ulushi null
+  const dashD3 = await call('GET', `/v1/dashboard?project_id=${projectD.id}&months=3`, undefined, adminAgain);
+  assert.deepEqual(
+    dashD3.finance.by_kind.map((k: any) => [k.kind, k.amount, k.share_percent]).slice(2),
+    [
+      ['equipment', '-700.00', null],
+      ['service', '300.00', '100.0'],
+    ],
+  );
+  assert.equal(dashD3.finance.period_expense, '-400.00');
+  // Budjetdan oshgan obyekt "Budjetlar" sahifasi bilan bir xil: budjet oylari fakti > budjet
+  const thisMonth = `${dash6.period.to.slice(0, 7)}-01`;
+  await call('POST', '/v1/budgets', { project_id: projectP.id, month: thisMonth, amount: '1000000000.00' }, adminAgain);
+  const dashOver = await call('GET', `/v1/dashboard?project_id=${projectP.id}`, undefined, adminAgain);
+  const summaryP = await call('GET', `/v1/finance/summary?project_id=${projectP.id}`, undefined, adminAgain);
+  const budgetPageActual = summaryP.monthly.find((m: any) => m.month.slice(0, 10) === thisMonth).expense;
+  assert.deepEqual(dashOver.finance.over_budget, [
+    {
+      id: projectP.id,
+      name: projectP.name,
+      code: projectP.code ?? null,
+      budget: '1000000000.00',
+      actual: dec(budgetPageActual).toFixed(2),
+      over: dec(budgetPageActual).minus('1000000000').toFixed(2),
+    },
+  ]);
+  assert.equal(dashOver.finance.period_budget, '1000000000.00');
+  // Vazifalar: davrda qabul qilingan va kechikkan ro'yxat
+  assert(dash6.tasks.accepted_period >= 1, 'accepted task counted in period');
+  const openTask = (
+    await admin.query("SELECT id FROM tasks WHERE project_id=$1 AND status<>'accepted' AND archived_at IS NULL LIMIT 1", [project.id])
+  ).rows[0];
+  await admin.query("UPDATE tasks SET deadline=now()-interval '2 days' WHERE id=$1", [openTask.id]);
+  const dashTasks = await call('GET', `/v1/dashboard?project_id=${project.id}&months=3`, undefined, adminAgain);
+  assert(dashTasks.tasks.overdue_items.some((x: any) => x.id === openTask.id && x.assignee_name));
+  assert(dashTasks.tasks.overdue_items.every((x: any) => new Date(x.deadline) < new Date()));
+  assert.equal(typeof dashTasks.reports.in_period, 'number');
+  // Noto'g'ri davr — 400, ko'rinmaydigan obyekt — 404
+  await call('GET', '/v1/dashboard?months=5', undefined, adminAgain, undefined, 400);
+  await call('GET', `/v1/dashboard?project_id=${randomUUID()}`, undefined, adminAgain, undefined, 404);
+  passed.push(
+    'Dashboard charts (stage 1.4): project and period filters, expense kinds sum to the period expense with server shares, a reversal stays in its original kind and document month, over-budget matches the budgets page, overdue tasks list',
+  );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

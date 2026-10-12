@@ -30,6 +30,12 @@
   --info: #1d4ed8;
   --info-bg: #eff6ff;
 
+  /* Grafik seriyalari: kategorial, qat'iy tartibda (rang tur bilan bog'liq, o'rni bilan emas). */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 14px;

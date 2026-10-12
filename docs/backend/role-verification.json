@@ -1,9 +1,9 @@
 {
-  "executed_at": "2026-10-11T10:51:08.879Z",
+  "executed_at": "2026-10-12T03:52:34.930Z",
   "passed": [
-    "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan",
-    "Role × GET endpoint matrix: 66 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
-    "Cross-tenant isolation: 16 id-routes and 9 writes with foreign ids are rejected; lists stay tenant-scoped",
+    "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan, price list",
+    "Role × GET endpoint matrix: 70 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
+    "Cross-tenant isolation: 18 id-routes and 10 writes with foreign ids are rejected; lists stay tenant-scoped",
     "Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; brigadier responses carry no price fields",
     "Replays with the same idempotency key, parallel version races, double accept and double reversal never write money/material/progress twice"
   ],
@@ -11,52 +11,52 @@
   "matrix": {
     "foreman": {
       "allowed": 34,
-      "denied": 32,
+      "denied": 36,
       "mismatches": []
     },
     "brigadier": {
       "allowed": 29,
-      "denied": 37,
+      "denied": 41,
       "mismatches": []
     },
     "warehouse_manager": {
       "allowed": 29,
-      "denied": 37,
+      "denied": 41,
       "mismatches": []
     },
     "financier": {
-      "allowed": 42,
+      "allowed": 46,
       "denied": 24,
       "mismatches": []
     },
     "accountant": {
       "allowed": 42,
-      "denied": 24,
+      "denied": 28,
       "mismatches": []
     },
     "manager": {
       "allowed": 21,
-      "denied": 45,
+      "denied": 49,
       "mismatches": []
     },
     "tenant_admin": {
-      "allowed": 58,
+      "allowed": 62,
       "denied": 8,
       "mismatches": []
     },
     "platform_owner": {
       "allowed": 10,
-      "denied": 56,
+      "denied": 60,
       "mismatches": []
     },
     "super_admin": {
       "allowed": 7,
-      "denied": 59,
+      "denied": 63,
       "mismatches": []
     },
     "support": {
       "allowed": 6,
-      "denied": 60,
+      "denied": 64,
       "mismatches": []
     }
   },
