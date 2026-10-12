@@ -469,13 +469,12 @@ D9 tufayli TZ’ning quyidagi bandlari kodda bo‘lmaydi. Dizayner ularni chizma
 
 ### 9.1. Joriy holat
 
-- **Bajarilgan va commit qilingan:** 1.1, 1.2, 1.5 (`ec91638`), 1.3 (`af70f57`).
-- **Bosqich 1 test natijalari:** `docs/tests/BOSQICH_1_NATIJA.md` — 57 o‘tdi; UI-11 ma’lum cheklov; ERR-03 qisman tekshirilgan.
-- **Bosqich 3 (xonadonlar):** bajarildi, 3-bo‘limdagi holat yozuvi.
-- **Bosqich 2 (UZS/USD):** bajarildi, 3-bo‘limdagi holat yozuvi.
-- **Bosqich 4 (narx varaqasi):** bajarildi 2026-10-11, branch `stage-4-pricing` (commit yo‘q, egasi ko‘rib chiqadi), 3-bo‘limdagi holat yozuvi.
-- **Keyingi qadam:** Bosqich 4 ni ko‘rib chiqib `main` ga qo‘shish; keyin 1.4 (dashboard grafiklari) va 9.4 dagi ochiq ishlar.
-- **Bosqich 1.4 (dashboard grafiklari):** bajarildi 2026-10-12, 3-bo‘limdagi holat yozuvi.
+Holat 2026-10-12 ga.
+
+- **Bajarilgan va `main` da:** 1.1, 1.2, 1.5 (`ec91638`), 1.3 (`af70f57`), 3 (PR #1), 2 va 4 (PR #2), 1.4 (PR #3). Har birining tafsiloti 3-bo‘limda.
+- **Bosqich 1 test natijalari:** `docs/tests/BOSQICH_1_NATIJA.md` — 57 o‘tdi; ERR-03 qisman tekshirilgan. UI-11 cheklovi O1 bilan yopildi.
+- **Kichik tuzatishlar (2026-10-12):** O1, O4, O5, O6, O7, O8, O10 bajarildi, har biri alohida commit (9.4).
+- **Keyingi qadam:** O3 (frontenddagi pul yig‘indilarini serverga o‘tkazish) alohida ish sifatida. Keyin 9.4 dagi qolgan ochiq ishlar va 7-bo‘lim.
 
 ### 9.2. Yangi kompyuterni tayyorlash
 
@@ -508,15 +507,16 @@ Qator raqamlari 2026-10-10 holatiga tegishli.
 
 | # | Ish | Manba | Taklif |
 |---|---|---|---|
-| O1 | Invoysga bog‘lanadigan ombor kirimlari tanlovi `limit=100`: 101-chi eski, hali bog‘lanmagan kirim chiqmaydi | NATIJA UI-11, `DocumentModal.tsx:49` | `GET /v1/stock/commands` ga `unmatched=true` filtri va `SearchSelect` |
+| O1 | **Bajarildi 2026-10-12.** Invoysga bog‘lanadigan ombor kirimlari tanlovi `limit=100`: 101-chi eski, hali bog‘lanmagan kirim chiqmaydi | NATIJA UI-11, `DocumentModal.tsx:49` | `GET /v1/stock/commands` ga `unmatched=true` va `q` (material nomi); invoys formasida `SearchSelect` |
 | O2 | Telegram bot material ro‘yxati `LIMIT 60`, qidiruvsiz: 60+ materialli kompaniya bot orqali material so‘ray olmaydi | `telegram-flows.ts:153` | Botda nom bo‘yicha qidiruv yoki sahifalash |
 | O3 | Frontendda pul yig‘indisi: kassalar (`finance/pages.tsx:387`), budjet (`:755–756`), to‘lov kalendari (`workflow.tsx:483, 525`), smeta importi oldindan ko‘rish (`ImportWizard.tsx:153`) | NATIJA UI-10, EST-06 | Jamlarni serverdan olish (`CLAUDE.md` qoidasi) |
-| O4 | Tarmoq xatosi (status 0) avtomatik qayta urinilmaydi | `frontend/src/app/App.tsx:141` | Retry shartini tuzatish |
-| O5 | Obyekt PATCH’ida `FOR UPDATE` yo‘q: poyga holatida 409 o‘rniga 404 | 1.3 tekshiruvi | `FOR UPDATE` qo‘shish |
-| O6 | Blok bo‘lmagan zonaga `floors_count` xatosiz tashlab yuboriladi | 1.3 | 400 qaytarish |
-| O7 | `top_debt` va obyekt yig‘masi yozuv bo‘lmasa `'0'` qaytarishi mumkin, `'0.00'` emas | Tuzatish sessiyasi | `::numeric(20,2)` |
-| O8 | `docs/backend/BARPO_API_GUIDE.md` dagi auditga yoziladigan eksportlar ro‘yxatida smeta eksporti yo‘q | Tuzatish sessiyasi | Hujjatni yangilash |
+| O4 | **Bajarildi 2026-10-12.** Tarmoq xatosi (status 0) avtomatik qayta urinilmaydi | `frontend/src/app/App.tsx:141` | Faqat GET so‘rovlar (query) uchun: status 0 va 5xx 2 martagacha qayta uriniladi; mutation’lar qayta urinilmaydi |
+| O5 | **Bajarildi 2026-10-12.** Obyekt PATCH’ida `FOR UPDATE` yo‘q: poyga holatida 409 o‘rniga 404 | 1.3 tekshiruvi | Qator `FOR NO KEY UPDATE` bilan qulflanadi, keyin versiya solishtiriladi; integratsion test poygani takrorlaydi |
+| O6 | **Bajarildi 2026-10-12.** Blok bo‘lmagan zonaga `floors_count` xatosiz tashlab yuboriladi | 1.3 | Yaratish va tahrirda 400 `VALIDATION_ERROR` (`floors_count`) |
+| O7 | **Bajarildi 2026-10-12.** `top_debt` va obyekt yig‘masi yozuv bo‘lmasa `'0'` qaytarishi mumkin, `'0.00'` emas | Tuzatish sessiyasi | `/v1/finance/summary` dagi barcha summalar `::numeric(20,2)`. Obyekt yig‘masi (`/v1/projects/:id/dashboard`) avvaldan `money()` orqali `'0.00'` qaytarardi |
+| O8 | **Bajarildi 2026-10-12.** `docs/backend/BARPO_API_GUIDE.md` dagi auditga yoziladigan eksportlar ro‘yxatida smeta eksporti yo‘q | Tuzatish sessiyasi | `GET /v1/estimates/{id}/export` ro‘yxatga qo‘shildi |
 | O9 | `/admin/tenants/abc` va Billing default sahifa hajmi uchun UI testi yo‘q; ERR-03 ning super_admin va support qismi tekshirilmagan | NATIJA | `ui-test.ts` ga qo‘shish (bootstrap bilan) |
-| O10 | `PayablesList` (`finance/pages.tsx`) hech qayerda ishlatilmaydi | Kod ko‘rib chiqish | So‘rab, o‘chirish yoki ulash |
+| O10 | **Bajarildi 2026-10-12.** `PayablesList` (`finance/pages.tsx`) hech qayerda ishlatilmaydi | Kod ko‘rib chiqish | O‘chirildi (egasi qarori) |
 | O11 | Rasm almashtirilganda eski fayl qoladi (yetim fayllar) | 1.3, BACKEND_TODO 08 | 08-bosqich bilan |
 | O12 | Fakt xarajat oyi sahifalarda `journal_entries.created_at` (yozuv vaqti) bo‘yicha: reja–fakt (`routes-finance-extra.ts:66`) va Budjetlar sahifasi manbasi `/v1/finance/summary` (`routes-finance-extra.ts:294`). Dashboard grafiklari esa hisob sanasi (`document_date`) bo‘yicha, shuning uchun o‘tgan sana bilan kiritilgan hujjat dashboardda va sahifada turli oyda ko‘rinadi. “Budjetdan oshgan obyekt” sahifa bilan bir xil bo‘lishi uchun hozircha `created_at` da | 1.4 (egasi, 2026-10-12) | Sahifalarni ham hisob sanasiga o‘tkazish (`routes-dashboard.ts` dagi `expenseSql` ni umumiy qilish), keyin `over_budget` ham |
+| O13 | Bekor qilingan (reversal) invoys ombor kirimini bo‘shatmaydi: `finance_documents` da `UNIQUE(tenant_id, matched_receipt_id)` bor, asl invoys `matched_receipt_id` ni saqlab qoladi. Shuning uchun kirimni yangi invoysga bog‘lab bo‘lmaydi va u O1 dagi `unmatched=true` tanlovida ham chiqmaydi | O1 (egasi, 2026-10-12) | Xatti-harakat hozircha o‘zgartirilmagan. Kerak bo‘lsa: unikallikni faqat bekor qilinmagan invoyslarga qo‘llash (qisman indeks) va `unmatched` filtrini shunga moslash |
