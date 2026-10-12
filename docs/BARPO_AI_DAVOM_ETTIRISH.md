@@ -1,0 +1,119 @@
+# BARPO AI — ishni davom ettirish uchun to‘liq holat (boshqa Claude sessiyasi uchun)
+
+> **Sana:** 2026-10-12. **Repo:** `Ismoil59/barpoai` (private), asosiy branch `main`.
+> **Foydalanuvchi:** o‘zbekcha yozadi — javoblar o‘zbekcha. Loyiha egasi qarorlarini foydalanuvchi beradi.
+> Bu fayl yangi sessiyani tez boshlash uchun holat surati. Sanasidan keyingi o‘zgarishlar uchun `git log` va ochiq PR’larni tekshiring; ziddiyat bo‘lsa reja hujjati va `BARPO_BUSINESS_RULES.md` ustun.
+
+---
+
+## 1. Birinchi qadam (majburiy)
+
+1. `CLAUDE.md` ni o‘qing (xulq-atvor qoidalari va loyiha ko‘rsatkichlari).
+2. `docs/TZ_VA_NARX_REJASI.md` — joriy ish rejasi. 1-bo‘lim (D1–D10, R1, R2) **majburiy** va eski hujjatlardan ustun. 3-bo‘lim — bosqichlar holati, 4-bo‘lim — narx varaqasi hisob qoidalari, 5-bo‘lim — valyuta qoidalari, 6-bo‘lim — tayyor promptlar, 9-bo‘lim — boshqa kompyuterda davom ettirish va ochiq ishlar (9.4 jadvali).
+3. `docs/BARPO_AI_HANDOFF.md` — to‘liq loyiha konteksti (ishga tushirish, API, ruxsatlar, testlar).
+4. `docs/backend/BARPO_BUSINESS_RULES.md` — biznes qoidalari (xonadonlar, valyuta, narx varaqasi bo‘limlari shu sessiyalarda qo‘shilgan).
+5. Mijoz TZ’si: `docs/tz/BARPO_AI_Figma_TZ.md` (qidirish uchun), asl nusxasi `.docx`.
+
+## 2. Loyiha qisqacha
+
+Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta, ombor, moliya (jurnal), vazifa va hisobotlar, ish haqi, Telegram bot, SaaS billing, 10 rol (3 platforma + 7 kompaniya). Stack: backend Node/TypeScript + Fastify + PostgreSQL 17 (RLS), frontend Vite + React + TS + react-query. Joylashuv: `backend/`, `frontend/`, `docs/`.
+
+**Qat’iy qoidalar (CLAUDE.md dan):**
+- Pul va miqdor — oxirigacha decimal string. Saqlash va kiritish faqat UZS. USD faqat ko‘rsatish uchun: konvertatsiya faqat `formatMoney` ichida, server bergan CBU kursi bilan, decimal arifmetika (Number emas). Frontend yig‘indi hisoblamaydi, jamlar serverdan.
+- Ruxsat serverda (UI faqat yashiradi). Har yangi matn `uz` va `ru` lokallarga. Statik demo raqam yo‘q — bo‘sh/xato holatlari.
+- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `017_price_lists.sql`, keyingisi **018**.
+- AI funksiya qo‘shilmaydi. CRM, sotuv, bron, mijoz, shartnoma yo‘q (D1).
+- Sirlar `backend/.env` da (gitignore). Token yoki parol yaratmang, so‘ramang, faylga yozmang. Lokal hisob parollari hech qayerda yozilmagan — kerak bo‘lsa foydalanuvchi o‘zi kiradi.
+
+## 3. Ish tartibi (foydalanuvchi talab qiladi)
+
+1. Har bosqich: **avval reja va taxminlar → foydalanuvchi tasdig‘i → ish → tekshiruv**. Savol va taxminlarni aniq ayting, tavsiyangizni bering.
+2. Modellar taqsimoti — rejaning 6.0-bo‘limi: qidiruv `Explore` (haiku); mexanik UI/lokal kod `general-purpose` (sonnet) aniq fayl ro‘yxati va qabul mezoni bilan; migratsiya, ruxsat, pul va hisob — asosiy sessiya; oxirida diff’ni yangi opus sub-agent mustaqil tekshiradi (hisob modullari uchun fable, bo‘lmasa opus).
+3. Tekshiruv (har commit oldidan): backend `npm run build`, `npm test`, `npm run test:integration`, `npm run test:roles`, `npm run test:ui`, route o‘zgarsa `npm run docs`; frontend `pnpm typecheck`, `pnpm build`. O‘tmagan testni “o‘tdi” demang; natijani jadval bilan bering.
+4. **Commit, push va PR faqat foydalanuvchi ruxsati bilan.** Har bosqich `main` ustidan alohida branch, alohida PR. PR’ni foydalanuvchi birlashtiradi.
+5. Testlar qayta yozadigan hisobot fayllarini (`docs/backend/verification.json`, `role-verification.json`, `ui-verification.json`, `BARPO_ROLE_TEST_REPORT.md`, `platform-tenant-ui.png`, `ui-failure-*.png`) faqat ataylab yangilash kerak bo‘lsa commit qiling; aks holda `git checkout --` bilan qaytaring. Haqiqiy hujjat o‘zgarishlari (OpenAPI, DDL, biznes qoidalari) commit’ga kiradi.
+6. Prettier: o‘zgartirgan faylingiz oldin prettier-toza bo‘lsa formatlang; toza bo‘lmasa, boshqa qatorlarni qayta formatlamang (diff faqat o‘zingizniki bo‘lsin).
+7. Parallel thread’lar: ikki thread bir faylni o‘zgartirsa, ikkinchi birlashadigan PR’da konflikt bo‘ladi. Ayniqsa `docs/TZ_VA_NARX_REJASI.md` (3-bo‘lim va 9.4-jadval). Ikkinchi PR’dan oldin `main` ni qo‘shib testlarni qayta o‘tkazing.
+
+## 4. Muhit
+
+**Bulut konteyneri (Claude Code on the web):**
+- Node 22 (talab ≥24) — build va hamma testlar shu bilan o‘tadi.
+- Docker daemon o‘zi ishlamaydi: `dockerd` ni fonda ishga tushiring, `docker info` bilan kuting. Konteyner qayta tug‘ilsa daemon yana o‘chadi.
+- Docker Hub 429 bersa: `docker pull mirror.gcr.io/library/postgres:17-bookworm` va `docker tag mirror.gcr.io/library/postgres:17-bookworm postgres:17-bookworm`.
+- `test:ui` Google Chrome kutadi: `mkdir -p /opt/google/chrome && ln -sf /opt/pw-browsers/chromium-1194/chrome-linux/chrome /opt/google/chrome/chrome` (faqat konteynerda, repoga hech narsa qo‘shmang).
+- `cbu.uz` ga tarmoq ruxsati yo‘q (403) — CBU jonli faqat lokalda tekshiriladi.
+- Agar repo ko‘rinmasa: `add_repo` (Ismoil59/barpoai); GitHub ulanishi `https://claude.ai/connect-github` da.
+
+**Foydalanuvchining lokal kompyuteri (Windows):** `D:\Ismoil\VScode\Frontend\Frontend\barpo-ai`.
+- `backend/` da `docker compose up --build -d` (migratsiyalar avtomatik), API `127.0.0.1:3001`, DB `127.0.0.1:5433`, frontend `pnpm dev` → `localhost:5173` (strictPort).
+- `COMPOSE_PROJECT_NAME=barpo`; boshqa loyihaning `backend_postgres_data` volume’iga tegmang.
+- Lokal bazada “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; bulutga ko‘chmaydi.
+- `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
+- Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
+
+## 5. Bajarilgan ishlar (holat 2026-10-12)
+
+| Bosqich | Mazmun | Qayerda |
+|---|---|---|
+| 1.1, 1.2, 1.5 | server sahifalash va qidiruv, smeta jamlari serverdan, 404 va xato holatlari | `main` (`ec91638`) |
+| 1.3 | obyekt maydoni/rasmi, zona turi va tahriri, migratsiya 014 | `main` (`af70f57`) |
+| 3 | xonadonlar (`premises`) ro‘yxati va Excel import, migratsiya 015 | `main` (PR #1) |
+| 2 | UZS/USD almashtirgich, CBU kursi, migratsiya 016 | `main` (PR #2) |
+| 4 | narx varaqasi, migratsiya 017 | `main` (PR #2, `a1ba70c`) |
+| 1.4 | dashboard grafiklari, obyekt va davr filtri | **PR #3 ochiq** (branch `claude/project-thread-2r4vmu`), birlashtirilmagan |
+| Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chiriladi), reja 9.1 yangilanishi | **boshqa thread’da jarayonda**, reja tasdiqlangan, push qilinmagan |
+
+### Bosqich 3 — xonadonlar (asosiy qarorlar)
+- Jadval `premises`: zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar 0…50, maydon numeric(12,2) > 0, arxiv, version; RLS, kompozit FK.
+- **R2 bazada:** `block_zone_id` faqat trigger hisoblaydi (eng yaqin `kind='block'` ota zona); ikkita qisman unikal indeks (`lower(number)`, faqat arxivlanmaganlar). Zona turi o‘zgarsa bloklar qayta hisoblanadi, to‘qnashuv → `PREMISE_NUMBER_CONFLICT` (409). Obyekt bo‘yicha advisory qulf (`1503`) har qanday qator qulfidan oldin olinadi.
+- Excel import: qat’iy shablon (Blok, Kirish, Qavat, Raqam, Tur, Xonalar, Maydon; uz yoki ru sarlavhalar), haqiqiy Excel qator raqamlari, xato bo‘lsa import bloklanadi. Qayta yuklash: (blok, raqam) bo‘yicha — farq bo‘lsa yangilanadi, bir xil bo‘lsa o‘zgarishsiz. Yo‘q blok/kirish → xato (zona avtomatik yaratilmaydi). Tur qiymatlari uz/ru so‘zlar. Arxivlangan raqam unikallikda hisoblanmaydi. Qavat blok `floors_count` dan oshmaydi. Katak 500 belgigacha; Raqam son katagi faqat butun son.
+- Ma’lum cheklovlar: blok qavatlari keyin kamaytirilsa mavjud xonadonlar qayta tekshirilmaydi; JS va PostgreSQL katta-kichik harf farqi kamdan-kam holatda commit paytida 409 beradi.
+
+### Bosqich 2 — valyuta (asosiy qarorlar)
+- `exchange_rates` umumiy jadval (RLS yo‘q, kurs > 0). Worker `refreshRates` (`backend/src/rates.ts`): 12 soat yangi bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi, keyingi urinish 1 soatdan keyin; boshqa worker ishlaridan alohida `try`.
+- `GET /v1/exchange-rates/latest` — har bir kirgan foydalanuvchi, platforma xodimlari ham (`passwordChange: true` bilan tenant tekshiruvisiz; kurs ochiq ma’lumot).
+- Frontend: `CurrencyProvider` (`lib/currency.tsx`, `localStorage['barpo.currency']`), sof hisob `lib/currency-math.ts` (decimal.js, precision 40, HALF_UP, 2 xona), `formatMoney(value, lang, withCurrency, pin?)` — `pin='UZS'` formalarda, `pin='USD'` narx varaqasida (server bergan USD qiymat). USD “20 947,30 $”. Jadval sarlavhalari `displayCurrency()`. Formalar va eksportlar UZS (narx varaqasi bundan mustasno).
+
+### Bosqich 4 — narx varaqasi (asosiy qarorlar)
+- `price_lists` va `price_list_lines` o‘zgarmas (trigger) + RLS; yangi `pricing` sahifasi, ruxsatlar `pricing.read/write`, bazaviy siyosat `tenant_admin` va `financier` (D8). Hisob `backend/src/pricing.ts`; 4.4 nazorat misoli testda aynan chiqadi.
+- Egasi qarorlari: hamma tur maydon bo‘yicha teng ulush (D4); fakt = `account='expense'` jurnal yozuvlari; reversal xarajati asl hujjat zonasiga; zonasiz sarf zonasi smeta qatori zonasidan; **xonadonsiz zona xarajati eng yaqin xonadonli ota zonaga**, topilmasa umumiy guruhga (rejaning 4.1-bandi shunga yangilangan); barcha arxivlanmagan smetalar rejaga kiradi (muqobil smetalarni arxivlash kerak — chegara, hujjatlangan); prognoz 0 → `PRICE_LIST_NO_COSTS`; ustama 0..1000, oldingisidan to‘ldiriladi; versiyalar o‘chirilmaydi, oxirgisi joriy; guruhlar jsonb; eksport `prices.read` talab qiladi.
+
+### Bosqich 1.4 — dashboard (PR #3, ko‘rib chiqish kutilmoqda)
+- `GET /v1/dashboard` ga `project_id` va `months` (3/6/12); `finance.monthly`, `by_kind`, `over_budget`; `tasks.overdue_items`.
+- Foydalanuvchi tuzatishlari bajarilgan: obyekt filtri hamma bloklarga, davr filtri davrga bog‘liq ko‘rsatkichlarga, davrsiz sanoqlarda “hozirgi holat” izohi; grafiklar `document_date` bo‘yicha; “budjetdan oshgan” Budjetlar sahifasi ta’rifi bilan (u `created_at`); turlar material/ish haqi/texnika/xizmat, yig‘indi = davr xarajati; ulushlar serverdan.
+- API’dan `month_expense`, `budget_month`, `accepted_30d`, `last_7d` o‘chirildi (iste’molchilar faqat dashboard, tekshirilgan).
+- Yangi ochiq ish **O12** (PR #3 ichida): reja–fakt va budjet sahifalari `created_at` ishlatadi, `document_date` emas.
+- PR #3 oxirgi commit’i Docker PostgreSQL 17 bilan qayta tekshirilgan (`4333e45`).
+
+## 6. Qilinishi kerak bo‘lgan ishlar (tavsiya tartibi)
+
+1. **PR #3 (1.4)** — foydalanuvchi ko‘rib chiqadi va birlashtiradi.
+2. **Kichik tuzatishlar PR’i** (O1, O4–O8, O10) — tayyor bo‘lgach; agar PR #3 oldin birlashsa, `main` ni qo‘shib testlarni qayta o‘tkazish (9.4-jadvalda konflikt bo‘lishi mumkin).
+3. **O3** — frontenddagi pul yig‘indilarini serverga ko‘chirish (kassalar `finance/pages.tsx`, budjet, to‘lov kalendari `workflow.tsx`, smeta importi oldindan ko‘rish `ImportWizard.tsx`). Opus tekshiruvi qo‘shimcha joylarni ham topgan: `finance/pages.tsx` (~178, ~783, ~843) va `workflow.tsx` (~976, ~1345) da `num(a) - num(b)`. Kichik tuzatishlar birlashgandan keyin alohida.
+4. **O12** — reja–fakt va budjet sahifalarini `document_date` ga o‘tkazish (dashboard “budjetdan oshgan” ro‘yxati ham birga).
+5. **Ruxsatlarni qayta yuklashdagi miltillash** (yangi ochiq ish, 9.4 ga qo‘shish kerak): `frontend/src/lib/auth.tsx` `loadPermissions` xato bersa `permissions=null` → `RequirePage` bir lahza `Forbidden` ko‘rsatadi. UI testda bir marta “topilmadi” tekshiruvini yiqitgan (`ui-test.ts` ~1139). Taklif: qayta yuklash paytida eski ruxsatlarni saqlash.
+6. **Qolgan ochiq ishlar:** O2 (Telegram bot material ro‘yxati `LIMIT 60`, qidiruv yo‘q), O9 (ba’zi UI testlari yo‘q), O11 (yetim fayllar, 08-bosqich bilan).
+7. **Rejaning 7-bo‘limi** (rejalashtirilmagan TZ talablari) — ko‘plari foydalanuvchidan qaror yoki provayder/kirish ma’lumotini talab qiladi (bank/Didox/iHamkor, UySot, kamera, email/SMS provayderi, markaziy katalog siyosati).
+8. Kichik texnik qarz: `backend/tests/rates.test.ts` frontenddagi `currency-math.ts` ni import qiladi va `decimal.js` ni `frontend/node_modules` dan oladi — faqat backend o‘rnatilgan muhitda yiqiladi (hozir CI yo‘q).
+9. Buxgalter uchun alohida dashboard hozir yo‘q (TZ DASH-01–06 da buxgalter yo‘q); dizaynerga “finansistnikiga yaqin” deb taklif qilingan — foydalanuvchi tasdiqlasa, keyinroq.
+
+## 7. Dizayner bilan yozishma (foydalanuvchi yuboradi)
+
+- D9 tufayli TZ’da bajarilmaydigan bandlar (rejaning 8-bo‘limi) bo‘yicha xabar tayyorlangan: L-01–03, AUTH-02–07, P01; EST-05, S-06, P04; 10 rol (3 platforma + 7 kompaniya, buxgalter alohida); P02 → 404; ish haqi qoladi; UZS/USD almashtirgich; Xonadonlar tabi va Narx varaqasi qo‘shilgan, CRM yo‘q.
+- **Aniqlik:** xodimlar taklif havolasi orqali qo‘shilmaydi. Taklif havolasini platforma egasi kompaniya uchun beradi (bir martalik, 72 soat). Xodimni kompaniya admini login va boshlang‘ich parol bilan qo‘shadi (parol bir marta ko‘rsatiladi, birinchi kirishda almashtirish majburiy). Parolni tiklash: admin xodim kartasidan 30 daqiqalik bir martalik havola oladi; eski sessiyalar yopiladi.
+- Dizaynerning taxminiy savollariga javob xati tayyorlangan; foydalanuvchi sana/muddatni to‘ldirib, skrinshotlar bilan yuboradi. Kerakli skrinshotlar (lokalda olinadi): “Topilmadi” sahifasi, USD rejimidagi jadval va header, Xonadonlar tabi va xatoli import oldindan ko‘rish, Narx varaqasi versiya ichi va “Yangi versiya” oynasi, xodim qo‘shilgandan keyingi boshlang‘ich parol oynasi.
+
+## 8. Avtomatlashtirish
+
+- “Haftalik holat” routine: har dushanba 9:45 da faqat o‘qiydigan o‘zbekcha qisqa hisobot (birlashgan bosqichlar, ochiq PR’lar, keyingi qadam). Yoqilgan.
+
+## 9. Yangi sessiya uchun boshlang‘ich prompt
+
+```text
+CLAUDE.md, docs/BARPO_AI_HANDOFF.md va docs/TZ_VA_NARX_REJASI.md ni o‘qi (1-, 3-, 4-, 5- va 9-bo‘limlar).
+Holat faylini ham o‘qi: docs/BARPO_AI_DAVOM_ETTIRISH.md.
+git fetch qil va main, ochiq PR’lar va branch’larni fayldagi holat bilan solishtir; farq bo‘lsa ayt.
+Joriy holatni va keyingi qadamni qisqa ayt, hech narsani o‘zgartirma.
+Keyingi ishni boshlashdan oldin reja va taxminlaringni ber, tasdig‘imni kut. Commit/push/PR faqat ruxsatim bilan.
+```
