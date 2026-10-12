@@ -1,6 +1,6 @@
 # BARPO AI — ishni davom ettirish uchun to‘liq holat (boshqa Claude sessiyasi uchun)
 
-> **Sana:** 2026-10-12. **Repo:** `Ismoil59/barpoai` (private), asosiy branch `main`.
+> **Sana:** 2026-10-12 (PR #3 va #4 birlashgandan keyin yangilangan, `main` = `6a9d200`). **Repo:** `Ismoil59/barpoai` (private), asosiy branch `main`.
 > **Foydalanuvchi:** o‘zbekcha yozadi — javoblar o‘zbekcha. Loyiha egasi qarorlarini foydalanuvchi beradi.
 > Bu fayl yangi sessiyani tez boshlash uchun holat surati. Sanasidan keyingi o‘zgarishlar uchun `git log` va ochiq PR’larni tekshiring; ziddiyat bo‘lsa reja hujjati va `BARPO_BUSINESS_RULES.md` ustun.
 
@@ -45,10 +45,12 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - `cbu.uz` ga tarmoq ruxsati yo‘q (403) — CBU jonli faqat lokalda tekshiriladi.
 - Agar repo ko‘rinmasa: `add_repo` (Ismoil59/barpoai); GitHub ulanishi `https://claude.ai/connect-github` da.
 
-**Foydalanuvchining lokal kompyuteri (Windows):** `D:\Ismoil\VScode\Frontend\Frontend\barpo-ai`.
+**Foydalanuvchining kompyuterlari (Windows):**
+- **Yangi (joriy):** `D:\SANCEEK\barpoai\barpo-ai` — GitHub’dan olingan. Baza bo‘sh boshlanadi; platforma egasini foydalanuvchi o‘zi `npm.cmd run bootstrap` bilan yaratadi (parol hech qayerda saqlanmaydi, so‘ramang). PowerShell `pnpm.ps1` ni bloklasa: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` yoki `pnpm.cmd` / `npm.cmd`.
+- **Eski:** `D:\Ismoil\VScode\Frontend\Frontend\barpo-ai` — lokal bazada “Sinov kompaniya” bor.
 - `backend/` da `docker compose up --build -d` (migratsiyalar avtomatik), API `127.0.0.1:3001`, DB `127.0.0.1:5433`, frontend `pnpm dev` → `localhost:5173` (strictPort).
 - `COMPOSE_PROJECT_NAME=barpo`; boshqa loyihaning `backend_postgres_data` volume’iga tegmang.
-- Lokal bazada “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; bulutga ko‘chmaydi.
+- Eski kompyuter bazasida “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; yangi kompyuterga va bulutga ko‘chmaydi.
 - `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
 - Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
 
@@ -61,7 +63,8 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 | 3 | xonadonlar (`premises`) ro‘yxati va Excel import, migratsiya 015 | `main` (PR #1) |
 | 2 | UZS/USD almashtirgich, CBU kursi, migratsiya 016 | `main` (PR #2) |
 | 4 | narx varaqasi, migratsiya 017 | `main` (PR #2, `a1ba70c`) |
-| 1.4 | dashboard grafiklari, obyekt va davr filtri | **PR #3 ochiq** (branch `claude/project-thread-2r4vmu`), birlashtirilmagan |
+| 1.4 | dashboard grafiklari, obyekt va davr filtri | `main` (PR #3, `16b2d43`) |
+| Hujjat | shu holat fayli va `CLAUDE.md` ko‘rsatkichi | `main` (PR #4, `6a9d200`) |
 | Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chiriladi), reja 9.1 yangilanishi | **boshqa thread’da jarayonda**, reja tasdiqlangan, push qilinmagan |
 
 ### Bosqich 3 — xonadonlar (asosiy qarorlar)
@@ -79,17 +82,18 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - `price_lists` va `price_list_lines` o‘zgarmas (trigger) + RLS; yangi `pricing` sahifasi, ruxsatlar `pricing.read/write`, bazaviy siyosat `tenant_admin` va `financier` (D8). Hisob `backend/src/pricing.ts`; 4.4 nazorat misoli testda aynan chiqadi.
 - Egasi qarorlari: hamma tur maydon bo‘yicha teng ulush (D4); fakt = `account='expense'` jurnal yozuvlari; reversal xarajati asl hujjat zonasiga; zonasiz sarf zonasi smeta qatori zonasidan; **xonadonsiz zona xarajati eng yaqin xonadonli ota zonaga**, topilmasa umumiy guruhga (rejaning 4.1-bandi shunga yangilangan); barcha arxivlanmagan smetalar rejaga kiradi (muqobil smetalarni arxivlash kerak — chegara, hujjatlangan); prognoz 0 → `PRICE_LIST_NO_COSTS`; ustama 0..1000, oldingisidan to‘ldiriladi; versiyalar o‘chirilmaydi, oxirgisi joriy; guruhlar jsonb; eksport `prices.read` talab qiladi.
 
-### Bosqich 1.4 — dashboard (PR #3, ko‘rib chiqish kutilmoqda)
+### Bosqich 1.4 — dashboard (`main`, PR #3)
 - `GET /v1/dashboard` ga `project_id` va `months` (3/6/12); `finance.monthly`, `by_kind`, `over_budget`; `tasks.overdue_items`.
 - Foydalanuvchi tuzatishlari bajarilgan: obyekt filtri hamma bloklarga, davr filtri davrga bog‘liq ko‘rsatkichlarga, davrsiz sanoqlarda “hozirgi holat” izohi; grafiklar `document_date` bo‘yicha; “budjetdan oshgan” Budjetlar sahifasi ta’rifi bilan (u `created_at`); turlar material/ish haqi/texnika/xizmat, yig‘indi = davr xarajati; ulushlar serverdan.
 - API’dan `month_expense`, `budget_month`, `accepted_30d`, `last_7d` o‘chirildi (iste’molchilar faqat dashboard, tekshirilgan).
-- Yangi ochiq ish **O12** (PR #3 ichida): reja–fakt va budjet sahifalari `created_at` ishlatadi, `document_date` emas.
-- PR #3 oxirgi commit’i Docker PostgreSQL 17 bilan qayta tekshirilgan (`4333e45`).
+- Yangi ochiq ish **O12** (9.4-jadvalda): reja–fakt va budjet sahifalari `created_at` ishlatadi, `document_date` emas.
+- Docker PostgreSQL 17 bilan tekshirilgan: integration 63, roles 5, UI 47.
+- Ko‘rib chiqishdagi kichik kuzatuvlar (bloklamagan): oylik reja `oylik miqdor × birlik narxi` qatorma-qator yaxlitlanmaydi (smeta jamidan tiyinlarga farq qilishi mumkin); reja barcha arxivlanmagan smetalardan; “qolgan budjet” davrga emas, butun muddatga; obyekt filtri bilan xodimlar sonida kompaniya admini hisoblanmaydi (biriktirilmagan).
 
 ## 6. Qilinishi kerak bo‘lgan ishlar (tavsiya tartibi)
 
-1. **PR #3 (1.4)** — foydalanuvchi ko‘rib chiqadi va birlashtiradi.
-2. **Kichik tuzatishlar PR’i** (O1, O4–O8, O10) — tayyor bo‘lgach; agar PR #3 oldin birlashsa, `main` ni qo‘shib testlarni qayta o‘tkazish (9.4-jadvalda konflikt bo‘lishi mumkin).
+1. **Kichik tuzatishlar PR’i** (O1, O4–O8, O10, reja 9.1) — boshqa thread’da; PR ochishdan oldin yangi `main` ni (PR #3 bilan O12 qatori qo‘shilgan) branch’ga qo‘shib testlarni qayta o‘tkazish (9.4-jadvalda konflikt bo‘lishi mumkin). Foydalanuvchi ko‘rib chiqib birlashtiradi.
+2. **Yangi kompyuterda tekshiruv** (foydalanuvchi): `git pull`, `docker compose up --build -d`, platforma egasini bootstrap, brauzerda dashboard grafiklari, Xonadonlar, Narx varaqasi va UZS/USD.
 3. **O3** — frontenddagi pul yig‘indilarini serverga ko‘chirish (kassalar `finance/pages.tsx`, budjet, to‘lov kalendari `workflow.tsx`, smeta importi oldindan ko‘rish `ImportWizard.tsx`). Opus tekshiruvi qo‘shimcha joylarni ham topgan: `finance/pages.tsx` (~178, ~783, ~843) va `workflow.tsx` (~976, ~1345) da `num(a) - num(b)`. Kichik tuzatishlar birlashgandan keyin alohida.
 4. **O12** — reja–fakt va budjet sahifalarini `document_date` ga o‘tkazish (dashboard “budjetdan oshgan” ro‘yxati ham birga).
 5. **Ruxsatlarni qayta yuklashdagi miltillash** (yangi ochiq ish, 9.4 ga qo‘shish kerak): `frontend/src/lib/auth.tsx` `loadPermissions` xato bersa `permissions=null` → `RequirePage` bir lahza `Forbidden` ko‘rsatadi. UI testda bir marta “topilmadi” tekshiruvini yiqitgan (`ui-test.ts` ~1139). Taklif: qayta yuklash paytida eski ruxsatlarni saqlash.
