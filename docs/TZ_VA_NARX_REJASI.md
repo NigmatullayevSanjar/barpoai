@@ -453,7 +453,7 @@ frontend — pnpm typecheck, pnpm build; npm run test:ui. Commit qilma.
 
 ## 8. TZ’dan kelishilgan farqlar (egasi qarori)
 
-Loyihada dizayner yo‘q (2026-10-12): Figma maketi chizilmaydi, dizayn manbai — kodning o‘zi (mavjud komponentlar va `tokens.css`). Figma TZ talablar ro‘yxati sifatida ishlatiladi. D9 tufayli TZ’ning quyidagi bandlari kodda boshqacha; ular TZ 18-bo‘limi ma’nosida kelishilgan o‘zgarish hisoblanadi:
+Loyihada dizayner yo‘q (2026-10-12): Figma maketi chizilmaydi, dizayn manbai — kodning o‘zi (mavjud komponentlar va `tokens.css`). Figma TZ’ni egasi o‘zi tayyorlagan va u talablar ro‘yxati sifatida ishlatiladi; tashqi buyurtmachiga xabar berish shart emas. D9 tufayli TZ’ning quyidagi bandlari kodda boshqacha; ular TZ 18-bo‘limi ma’nosida kelishilgan o‘zgarish hisoblanadi:
 
 - **L-01, L-02, L-03, AUTH-02–07, P01:** o‘zi ro‘yxatdan o‘tish, SMS kod, telefon orqali parol tiklash, kompaniya yaratish yo‘q. Kompaniya adminini platforma egasi bir martalik taklif havolasi (72 soat) bilan qo‘shadi; xodimlarni kompaniya admini login va boshlang‘ich parol bilan qo‘shadi (birinchi kirishda almashtirish majburiy); parol admin bergan bir martalik havola (30 daqiqa) bilan tiklanadi.
 - **EST-05, S-06, P04:** smeta tasdiqlash oqimi.
