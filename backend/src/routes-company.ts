@@ -125,7 +125,13 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     }),
     idempotent: true,
     handler: async ({ db, actor, body, params }) => {
-      const current = await projectScope(db, actor, params.id);
+      await projectScope(db, actor, params.id);
+      // Qator avval qulflanadi: parallel tahrirda UPDATE 0 qator (404) emas, VERSION_CONFLICT (409) bo'ladi.
+      const current = await one(
+        db,
+        'SELECT * FROM projects WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE',
+        [actor.tenant_id, params.id],
+      );
       invariant(current.version === body.version, 'VERSION_CONFLICT');
       dateOrder(body.planned_start, body.planned_end);
       dateOrder(body.actual_start, body.actual_end);

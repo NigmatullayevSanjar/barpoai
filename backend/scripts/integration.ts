@@ -332,6 +332,25 @@ try {
     undefined,
     404,
   );
+  // Parallel tahrir: qator band bo'lsa PATCH kutadi va yangi versiyani ko'rib 409 qaytaradi (404 emas)
+  const racer = await admin.connect();
+  try {
+    await racer.query('BEGIN');
+    await racer.query('UPDATE projects SET version=version+1 WHERE id=$1', [projectC.id]);
+    const pending = call(
+      'PATCH',
+      `/v1/projects/${projectC.id}`,
+      { version: 5, name: 'Obyekt C' },
+      adminToken,
+      undefined,
+      409,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await racer.query('COMMIT');
+    await pending;
+  } finally {
+    racer.release();
+  }
   await assert.rejects(
     admin.query('UPDATE projects SET image_file_id=$1 WHERE id=$2', [foreignFile.id, projectC.id]),
     /projects_image_file_fk/,
