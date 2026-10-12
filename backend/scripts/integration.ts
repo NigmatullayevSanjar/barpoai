@@ -332,6 +332,25 @@ try {
     undefined,
     404,
   );
+  // Parallel tahrir: qator band bo'lsa PATCH kutadi va yangi versiyani ko'rib 409 qaytaradi (404 emas)
+  const racer = await admin.connect();
+  try {
+    await racer.query('BEGIN');
+    await racer.query('UPDATE projects SET version=version+1 WHERE id=$1', [projectC.id]);
+    const pending = call(
+      'PATCH',
+      `/v1/projects/${projectC.id}`,
+      { version: 5, name: 'Obyekt C' },
+      adminToken,
+      undefined,
+      409,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await racer.query('COMMIT');
+    await pending;
+  } finally {
+    racer.release();
+  }
   await assert.rejects(
     admin.query('UPDATE projects SET image_file_id=$1 WHERE id=$2', [foreignFile.id, projectC.id]),
     /projects_image_file_fk/,
@@ -345,13 +364,23 @@ try {
   assert.equal(block.kind, 'block');
   assert.equal(block.floors_count, 9);
   assert.equal(block.version, 1);
-  const floorZone = await call(
+  // Blok bo'lmagan zonaga qavatlar soni berilsa jim tashlab yuborilmaydi, 400
+  await call(
     'POST',
     `/v1/projects/${projectC.id}/zones`,
     { name: '1-qavat', parent_id: block.id, kind: 'floor', floors_count: 3 },
     adminToken,
+    undefined,
+    400,
   );
-  assert.equal(floorZone.floors_count, null);
+  await call(
+    'POST',
+    `/v1/projects/${projectC.id}/zones`,
+    { name: 'Hovli', floors_count: 2 },
+    adminToken,
+    undefined,
+    400,
+  );
   assert.equal(
     (await call('POST', `/v1/projects/${projectC.id}/zones`, { name: 'Hovli' }, adminToken)).kind,
     'other',
@@ -374,10 +403,18 @@ try {
     undefined,
     409,
   );
-  const retyped = await call(
+  await call(
     'PATCH',
     `/v1/projects/${projectC.id}/zones/${block.id}`,
     { version: 2, name: 'B blok', kind: 'entrance', floors_count: 5 },
+    adminToken,
+    undefined,
+    400,
+  );
+  const retyped = await call(
+    'PATCH',
+    `/v1/projects/${projectC.id}/zones/${block.id}`,
+    { version: 2, name: 'B blok', kind: 'entrance', floors_count: null },
     adminToken,
   );
   assert.equal(retyped.floors_count, null);
@@ -3030,6 +3067,91 @@ try {
   passed.push(
     'Dashboard charts (stage 1.4): project and period filters, expense kinds sum to the period expense with server shares, a reversal stays in its original kind and document month, over-budget matches the budgets page, overdue tasks list',
   );
+  // O1: invoysga bog'lanadigan kirim tanlovi — unmatched=true bog'langan kirimni chiqarmaydi, q material nomi bo'yicha
+  const receiptBody = {
+    project_id: project.id,
+    kind: 'receipt',
+    material_id: material.id,
+    to_account_id: warehouse.account.id,
+    quantity: '2',
+    unit_cost: '15',
+    reason: 'Yetkazib beruvchidan kirim',
+  };
+  const matchedReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
+  const freeReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
+  await call(
+    'POST',
+    '/v1/finance/documents',
+    {
+      project_id: project.id,
+      kind: 'supplier_invoice',
+      amount: '30',
+      counterparty_id: supplier.id,
+      matched_receipt_id: matchedReceipt.id,
+      description: 'Kirim uchun invoys',
+      document_date: '2026-10-02',
+    },
+    adminAgain,
+  );
+  const receiptIds = async (extra: string) =>
+    (
+      await call(
+        'GET',
+        `/v1/stock/commands?project_id=${project.id}&kind=receipt&status=posted&limit=100${extra}`,
+        undefined,
+        adminAgain,
+      )
+    ).items.map((r: any) => r.id);
+  const allReceipts = await receiptIds('');
+  assert(allReceipts.includes(matchedReceipt.id) && allReceipts.includes(freeReceipt.id));
+  const unmatchedReceipts = await receiptIds('&unmatched=true');
+  assert(!unmatchedReceipts.includes(matchedReceipt.id) && unmatchedReceipts.includes(freeReceipt.id));
+  assert.deepEqual(await receiptIds('&unmatched=false'), allReceipts);
+  assert(
+    (await receiptIds(`&unmatched=true&q=${encodeURIComponent(material.name)}`)).includes(freeReceipt.id),
+  );
+  assert.deepEqual(await receiptIds('&unmatched=true&q=mavjud-emas-xyz'), []);
+  await call(
+    'GET',
+    `/v1/stock/commands?project_id=${project.id}&unmatched=yes`,
+    undefined,
+    adminAgain,
+    undefined,
+    400,
+  );
+  passed.push(
+    'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name',
+  );
+  // O7: moliya yig'masi yozuv bo'lmasa ham 2 xonali summa qaytaradi ('0' emas, '0.00')
+  const emptyProject = await call('POST', '/v1/projects', { name: 'Bo‘sh yig‘ma' }, adminAgain);
+  const emptySummary = await call(
+    'GET',
+    `/v1/finance/summary?project_id=${emptyProject.id}`,
+    undefined,
+    adminAgain,
+  );
+  for (const key of [
+    'actual_cost',
+    'inventory_value',
+    'net_cash_flow',
+    'supplier_debt',
+    'advances',
+    'income',
+    'allocations',
+    'purchase_orders',
+  ])
+    assert.equal(emptySummary[key], '0.00', key);
+  assert.deepEqual(
+    emptySummary.by_project.map((p: any) => [p.actual_cost, p.debt, p.budget]),
+    [['0.00', '0.00', '0.00']],
+  );
+  const twoDecimals = /^-?\d+\.\d{2}$/;
+  const fullSummary = await call('GET', '/v1/finance/summary', undefined, adminAgain);
+  for (const row of [...fullSummary.top_debt, ...fullSummary.monthly, ...fullSummary.by_kind])
+    for (const key of ['debt', 'advance', 'expense', 'cash_out', 'cash_in', 'budget', 'amount'])
+      if (key in row) assert.match(row[key], twoDecimals, `${key}=${row[key]}`);
+  assert(fullSummary.top_debt.length > 0 && fullSummary.monthly.length > 0);
+  passed.push('Finance summary amounts always have two decimals, also for a project without entries');
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

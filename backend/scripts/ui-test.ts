@@ -606,9 +606,7 @@ try {
   await adminPage.getByRole('button', { name: 'Invoys / dalolatnoma' }).first().click();
   await dialog().getByLabel('Turi').selectOption('supplier_invoice');
   await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
-  await dialog()
-    .getByLabel(/Bog‘lanadigan ombor kirimi/)
-    .selectOption({ index: 1 });
+  await pickOption(dialog(), /Bog‘lanadigan ombor kirimi/, '', /Sement M500/);
   await dialog().getByLabel('To‘lov muddati').fill('2026-10-20');
   await dialog().getByLabel('Tavsif').fill('Sement M500 uchun invoys');
   await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();

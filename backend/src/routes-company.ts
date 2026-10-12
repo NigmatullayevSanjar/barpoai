@@ -125,7 +125,13 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     }),
     idempotent: true,
     handler: async ({ db, actor, body, params }) => {
-      const current = await projectScope(db, actor, params.id);
+      await projectScope(db, actor, params.id);
+      // Qator avval qulflanadi: parallel tahrirda UPDATE 0 qator (404) emas, VERSION_CONFLICT (409) bo'ladi.
+      const current = await one(
+        db,
+        'SELECT * FROM projects WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE',
+        [actor.tenant_id, params.id],
+      );
       invariant(current.version === body.version, 'VERSION_CONFLICT');
       dateOrder(body.planned_start, body.planned_end);
       dateOrder(body.actual_start, body.actual_end);
@@ -165,18 +171,28 @@ export function companyRoutes(add: (r: Endpoint) => void) {
   });
   const zoneKind = z.enum(['block', 'entrance', 'floor', 'other']);
   const zoneFloors = z.number().int().min(1).max(500).nullable().optional();
+  // Blok bo'lmagan zonaga qavatlar soni jim tashlab yuborilmaydi: 400 VALIDATION_ERROR.
+  const floorsOnlyForBlock = (b: { kind?: string; floors_count?: number | null }) =>
+    b.kind === 'block' || b.floors_count == null;
+  const floorsOnlyForBlockError = {
+    path: ['floors_count'],
+    message: 'Qavatlar soni faqat blok uchun',
+  };
   add({
     method: 'POST',
     path: '/v1/projects/:id/zones',
-    summary: 'O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun saqlanadi',
+    summary:
+      'O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun (aks holda 400)',
     permission: 'projects.write',
     params: idParams,
-    body: z.strictObject({
-      name: text,
-      parent_id: uuid.optional(),
-      kind: zoneKind.optional(),
-      floors_count: zoneFloors,
-    }),
+    body: z
+      .strictObject({
+        name: text,
+        parent_id: uuid.optional(),
+        kind: zoneKind.optional(),
+        floors_count: zoneFloors,
+      })
+      .refine(floorsOnlyForBlock, floorsOnlyForBlockError),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
@@ -190,7 +206,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.name,
           body.parent_id ?? null,
           kind,
-          kind === 'block' ? (body.floors_count ?? null) : null,
+          body.floors_count ?? null,
         ],
       );
       await audit(db, actor, 'zone.create', row.id, { project_id: params.id });
@@ -203,7 +219,9 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     summary: 'Zona nomi, turi va qavatlar sonini tahrirlash (version bilan); parent o‘zgarmaydi',
     permission: 'projects.write',
     params: z.strictObject({ id: uuid, zone_id: uuid }),
-    body: z.strictObject({ version, name: text, kind: zoneKind, floors_count: zoneFloors }),
+    body: z
+      .strictObject({ version, name: text, kind: zoneKind, floors_count: zoneFloors })
+      .refine(floorsOnlyForBlock, floorsOnlyForBlockError),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
@@ -218,13 +236,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       const row = await one(
         db,
         'UPDATE zones SET name=$2,kind=$3,floors_count=$4,version=version+1 WHERE tenant_id=$5 AND id=$1 RETURNING *',
-        [
-          zone.id,
-          body.name,
-          body.kind,
-          body.kind === 'block' ? (body.floors_count ?? null) : null,
-          actor.tenant_id,
-        ],
+        [zone.id, body.name, body.kind, body.floors_count ?? null, actor.tenant_id],
       );
       await audit(db, actor, 'zone.update', row.id, { project_id: params.id });
       return row;

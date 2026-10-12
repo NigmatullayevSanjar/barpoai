@@ -273,18 +273,18 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         : await projectIds(db, actor);
       const totals = await one(
         db,
-        `SELECT coalesce(sum(amount) FILTER(WHERE account='expense'),0)::text actual_cost,
-                coalesce(sum(amount) FILTER(WHERE account='inventory'),0)::text inventory_value,
-                coalesce(sum(amount) FILTER(WHERE account='cash'),0)::text net_cash_flow,
-                (-coalesce(sum(amount) FILTER(WHERE account='payable'),0))::text supplier_debt,
-                coalesce(sum(amount) FILTER(WHERE account='advance'),0)::text advances,
-                (-coalesce(sum(amount) FILTER(WHERE account='income'),0))::text income
+        `SELECT coalesce(sum(amount) FILTER(WHERE account='expense'),0)::numeric(20,2)::text actual_cost,
+                coalesce(sum(amount) FILTER(WHERE account='inventory'),0)::numeric(20,2)::text inventory_value,
+                coalesce(sum(amount) FILTER(WHERE account='cash'),0)::numeric(20,2)::text net_cash_flow,
+                (-coalesce(sum(amount) FILTER(WHERE account='payable'),0))::numeric(20,2)::text supplier_debt,
+                coalesce(sum(amount) FILTER(WHERE account='advance'),0)::numeric(20,2)::text advances,
+                (-coalesce(sum(amount) FILTER(WHERE account='income'),0))::numeric(20,2)::text income
          FROM journal_entries WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])`,
         [actor.tenant_id, projects],
       );
       const allocated = await one(
         db,
-        `SELECT coalesce(sum(f.amount) FILTER(WHERE f.kind='allocation'),0)::text allocations,coalesce(sum(f.amount) FILTER(WHERE f.kind='purchase_order'),0)::text purchase_orders
+        `SELECT coalesce(sum(f.amount) FILTER(WHERE f.kind='allocation'),0)::numeric(20,2)::text allocations,coalesce(sum(f.amount) FILTER(WHERE f.kind='purchase_order'),0)::numeric(20,2)::text purchase_orders
          FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND ${notReversedSql}`,
         [actor.tenant_id, projects],
       );
@@ -297,28 +297,28 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
                     coalesce(sum(amount) FILTER(WHERE account='cash' AND amount>0),0) cash_in
              FROM journal_entries WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) GROUP BY 1),
            budget AS (SELECT month,sum(amount) amount FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) GROUP BY month)
-           SELECT coalesce(m.month,b.month) AS month,coalesce(m.expense,0)::text expense,coalesce(m.cash_out,0)::text cash_out,coalesce(m.cash_in,0)::text cash_in,coalesce(b.amount,0)::text budget
+           SELECT coalesce(m.month,b.month) AS month,coalesce(m.expense,0)::numeric(20,2)::text expense,coalesce(m.cash_out,0)::numeric(20,2)::text cash_out,coalesce(m.cash_in,0)::numeric(20,2)::text cash_in,coalesce(b.amount,0)::numeric(20,2)::text budget
            FROM months m FULL JOIN budget b ON b.month=m.month ORDER BY 1`,
           [actor.tenant_id, projects],
         )
       ).rows;
       const byKind = (
         await db.query(
-          `SELECT f.kind,count(*)::int count,coalesce(sum(f.amount),0)::text amount FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND ${notReversedSql} GROUP BY f.kind ORDER BY f.kind`,
+          `SELECT f.kind,count(*)::int count,coalesce(sum(f.amount),0)::numeric(20,2)::text amount FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND ${notReversedSql} GROUP BY f.kind ORDER BY f.kind`,
           [actor.tenant_id, projects],
         )
       ).rows;
       const topDebt = (
         await db.query(
-          `SELECT c.id,c.name,c.kind,(-coalesce(sum(j.amount) FILTER(WHERE j.account='payable'),0))::text debt,coalesce(sum(j.amount) FILTER(WHERE j.account='advance'),0)::text advance
+          `SELECT c.id,c.name,c.kind,(-coalesce(sum(j.amount) FILTER(WHERE j.account='payable'),0))::numeric(20,2)::text debt,coalesce(sum(j.amount) FILTER(WHERE j.account='advance'),0)::numeric(20,2)::text advance
            FROM journal_entries j JOIN counterparties c ON c.id=j.counterparty_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) GROUP BY c.id HAVING sum(j.amount) FILTER(WHERE j.account IN ('payable','advance'))<>0 ORDER BY 4 DESC LIMIT 10`,
           [actor.tenant_id, projects],
         )
       ).rows;
       const byProject = (
         await db.query(
-          `SELECT p.id,p.name,p.code,coalesce(sum(j.amount) FILTER(WHERE j.account='expense'),0)::text actual_cost,(-coalesce(sum(j.amount) FILTER(WHERE j.account='payable'),0))::text debt,
-                  (SELECT coalesce(sum(b.amount),0)::text FROM budgets b WHERE b.tenant_id=p.tenant_id AND b.project_id=p.id) budget
+          `SELECT p.id,p.name,p.code,coalesce(sum(j.amount) FILTER(WHERE j.account='expense'),0)::numeric(20,2)::text actual_cost,(-coalesce(sum(j.amount) FILTER(WHERE j.account='payable'),0))::numeric(20,2)::text debt,
+                  (SELECT coalesce(sum(b.amount),0)::numeric(20,2)::text FROM budgets b WHERE b.tenant_id=p.tenant_id AND b.project_id=p.id) budget
            FROM projects p LEFT JOIN journal_entries j ON j.tenant_id=p.tenant_id AND j.project_id=p.id WHERE p.tenant_id=$1 AND p.id=ANY($2::uuid[]) GROUP BY p.id ORDER BY p.name`,
           [actor.tenant_id, projects],
         )

@@ -140,7 +140,8 @@ const Platform = {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
+      // Faqat GET so'rovlar: tarmoq xatosi (status 0) va 5xx qayta uriniladi, 4xx yo'q. Mutation'lar qayta urinilmaydi.
+      retry: (count, error) => !(error instanceof ApiError && error.status > 0 && error.status < 500) && count < 2,
       staleTime: 15000,
       refetchOnWindowFocus: true,
     },

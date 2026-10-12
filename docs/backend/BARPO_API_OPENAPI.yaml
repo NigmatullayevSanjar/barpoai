@@ -2019,7 +2019,7 @@ paths:
               additionalProperties: false
   /v1/projects/{id}/zones:
     post:
-      summary: O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun saqlanadi
+      summary: O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun (aks holda 400)
       operationId: post_v1_projects__id_zones
       security:
         - bearerAuth: []
@@ -3261,7 +3261,8 @@ paths:
         "503": *a59
   /v1/stock/commands:
     get:
-      summary: "Ombor harakatlari: kirim, jo‘natish, sarf, qaytarish, tuzatish, reversal"
+      summary: "Ombor harakatlari: kirim, jo‘natish, sarf, qaytarish, tuzatish, reversal; q — material nomi; unmatched=true —
+        invoysga bog‘lanmagan"
       operationId: get_v1_stock_commands
       security:
         - bearerAuth: []
@@ -3283,6 +3284,12 @@ paths:
             type: integer
             minimum: 0
             maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
         - name: project_id
           in: query
           required: true
@@ -3329,6 +3336,11 @@ paths:
             type: string
             format: uuid
             pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        - name: unmatched
+          in: query
+          required: false
+          schema:
+            type: boolean
       x-permission: stock.read
       x-tenant-scope: true
       responses:
