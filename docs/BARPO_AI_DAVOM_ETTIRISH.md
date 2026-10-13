@@ -1,6 +1,6 @@
 # BARPO AI — ishni davom ettirish uchun to‘liq holat (boshqa Claude sessiyasi uchun)
 
-> **Sana:** 2026-10-12 (PR #3 va #4 birlashgandan keyin yangilangan, `main` = `6a9d200`). **Repo:** `Ismoil59/barpoai` (private), asosiy branch `main`.
+> **Sana:** 2026-10-12 (PR #3–#6 birlashgandan keyin yangilangan, `main` = `0542d87`). **Repo:** `Ismoil59/barpoai` (private), asosiy branch `main`.
 > **Foydalanuvchi:** o‘zbekcha yozadi — javoblar o‘zbekcha. Loyiha egasi qarorlarini foydalanuvchi beradi.
 > Bu fayl yangi sessiyani tez boshlash uchun holat surati. Sanasidan keyingi o‘zgarishlar uchun `git log` va ochiq PR’larni tekshiring; ziddiyat bo‘lsa reja hujjati va `BARPO_BUSINESS_RULES.md` ustun.
 
@@ -66,7 +66,8 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 | 4 | narx varaqasi, migratsiya 017 | `main` (PR #2, `a1ba70c`) |
 | 1.4 | dashboard grafiklari, obyekt va davr filtri | `main` (PR #3, `16b2d43`) |
 | Hujjat | shu holat fayli va `CLAUDE.md` ko‘rsatkichi | `main` (PR #4, `6a9d200`) |
-| Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chiriladi), reja 9.1 yangilanishi | `main` (PR #5, #6) |
+| Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chirildi), reja 9.1/9.4; yangi O13 | `main` (PR #6, `ec9a706`) |
+| Hujjat | TZ’dan kelishilgan farqlar (8-bo‘lim), bosqichlar holati | `main` (PR #5, `0542d87`) |
 | Egasi fikri 2026-10-12 | D11–D14: tarif tahriri (018), super_admin huquqlari va parol tiklash havolasi, parol 6 belgi, blok kartasi va blok sahifasi (019, xonadon reja rasmi, narx varaqasidagi tannarx), Excel import tuzatishi (openpyxl fayllari, sarlavha qatorini topish, birlik sinonimlari), login sahifasi ru tili, bildirishnomadan sahifaga o‘tish, “Obuna to‘lovlari”, overscroll, Windows Chrome kursori, logo, kalendar va select komponentlari, smeta muharriri joylashuvi; `scripts/seed-dev.ts` (dev hisoblar, parol faqat `SEED_PASSWORD`) | branch `claude/feedback-2026-10-12`, PR egasi ruxsati bilan |
 
 ### Bosqich 3 — xonadonlar (asosiy qarorlar)
@@ -94,16 +95,17 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 
 ## 6. Qilinishi kerak bo‘lgan ishlar (tavsiya tartibi)
 
-1. **Kichik tuzatishlar PR’i** (O1, O4–O8, O10, reja 9.1) — boshqa thread’da; PR ochishdan oldin yangi `main` ni (PR #3 bilan O12 qatori qo‘shilgan) branch’ga qo‘shib testlarni qayta o‘tkazish (9.4-jadvalda konflikt bo‘lishi mumkin). Foydalanuvchi ko‘rib chiqib birlashtiradi.
-2. **Yangi kompyuterda tekshiruv** (foydalanuvchi): `git pull`, `docker compose up --build -d`, platforma egasini bootstrap, brauzerda dashboard grafiklari, Xonadonlar, Narx varaqasi va UZS/USD.
-3. **O3** — frontenddagi pul yig‘indilarini serverga ko‘chirish (kassalar `finance/pages.tsx`, budjet, to‘lov kalendari `workflow.tsx`, smeta importi oldindan ko‘rish `ImportWizard.tsx`). Opus tekshiruvi qo‘shimcha joylarni ham topgan: `finance/pages.tsx` (~178, ~783, ~843) va `workflow.tsx` (~976, ~1345) da `num(a) - num(b)`. Kichik tuzatishlar birlashgandan keyin alohida.
-4. **O12** — reja–fakt va budjet sahifalarini `document_date` ga o‘tkazish (dashboard “budjetdan oshgan” ro‘yxati ham birga).
-5. **Ruxsatlarni qayta yuklashdagi miltillash** (yangi ochiq ish, 9.4 ga qo‘shish kerak): `frontend/src/lib/auth.tsx` `loadPermissions` xato bersa `permissions=null` → `RequirePage` bir lahza `Forbidden` ko‘rsatadi. UI testda bir marta “topilmadi” tekshiruvini yiqitgan (`ui-test.ts` ~1139). Taklif: qayta yuklash paytida eski ruxsatlarni saqlash.
-6. **Qolgan ochiq ishlar:** O2 (Telegram bot material ro‘yxati `LIMIT 60`, qidiruv yo‘q), O9 (ba’zi UI testlari yo‘q), O11 (yetim fayllar, 08-bosqich bilan).
-7. **Rejaning 7-bo‘limi** (rejalashtirilmagan TZ talablari) — ko‘plari foydalanuvchidan qaror yoki provayder/kirish ma’lumotini talab qiladi (bank/Didox/iHamkor, UySot, kamera, email/SMS provayderi, markaziy katalog siyosati).
-8. Kichik texnik qarz: `backend/tests/rates.test.ts` frontenddagi `currency-math.ts` ni import qiladi va `decimal.js` ni `frontend/node_modules` dan oladi — faqat backend o‘rnatilgan muhitda yiqiladi (hozir CI yo‘q).
-9. Buxgalter uchun alohida dashboard hozir yo‘q (TZ DASH-01–06 da buxgalter yo‘q). Taklif: finansistnikiga yaqin (to‘lanmagan hujjatlar, kontragentlar qarzi, moslashtirilmagan to‘lovlar, davr xarajati, bekor qilingan hujjatlar) — foydalanuvchi tasdiqlasa, keyinroq.
-10. Ixtiyoriy “UI sifat” tekshiruvi (dizayner yo‘qligi sababli): `test:ui` skrinshotlari va lokal brauzer bo‘yicha bir xillik, bo‘sh holatlar, uz/ru matnlar, mobil ko‘rinish; topilmalar alohida kichik PR’larda.
+**`main` = `0542d87` da to‘liq tekshiruv (2026-10-12, bulut, Docker PostgreSQL 17):** build, unit 27, integration 65, roles 5 (topilma yo‘q), UI 47; frontend typecheck va build — hammasi o‘tdi.
+
+1. **Yangi kompyuterda tekshiruv** (foydalanuvchi): `git pull`, `docker compose up --build -d`, platforma egasini bootstrap, brauzerda dashboard grafiklari, Xonadonlar, Narx varaqasi va UZS/USD.
+2. **O3** — frontenddagi pul yig‘indilarini serverga ko‘chirish (kassalar `finance/pages.tsx`, budjet, to‘lov kalendari `workflow.tsx`, smeta importi oldindan ko‘rish `ImportWizard.tsx`). Opus tekshiruvi qo‘shimcha joylarni ham topgan: `finance/pages.tsx` (~178, ~783, ~843) va `workflow.tsx` (~976, ~1345) da `num(a) - num(b)`. Alohida PR. Shu ro‘yxatga `finance/DocumentModal.tsx` dagi kirim summasi (`unit_cost × accepted_quantity`, `Number`) ham kiradi.
+3. **O12** — reja–fakt va budjet sahifalarini `document_date` ga o‘tkazish (dashboard “budjetdan oshgan” ro‘yxati ham birga).
+4. **O14 — ruxsatlarni qayta yuklashdagi miltillash** (9.4 da): `frontend/src/lib/auth.tsx` `loadPermissions` xato bersa `permissions=null` → `RequirePage` bir lahza `Forbidden` ko‘rsatadi. UI testda bir marta “topilmadi” tekshiruvini yiqitgan (`ui-test.ts` ~1139). Taklif: qayta yuklash paytida eski ruxsatlarni saqlash.
+5. **Qolgan ochiq ishlar:** O2 (Telegram bot material ro‘yxati `LIMIT 60`, qidiruv yo‘q), O9 (ba’zi UI testlari yo‘q), O11 (yetim fayllar, 08-bosqich bilan), O13 (bekor qilingan invoys ombor kirimini bo‘shatmaydi — egasi qarori kerak).
+6. **Rejaning 7-bo‘limi** (rejalashtirilmagan TZ talablari) — ko‘plari foydalanuvchidan qaror yoki provayder/kirish ma’lumotini talab qiladi (bank/Didox/iHamkor, UySot, kamera, email/SMS provayderi, markaziy katalog siyosati).
+7. Kichik texnik qarz: `backend/tests/rates.test.ts` frontenddagi `currency-math.ts` ni import qiladi va `decimal.js` ni `frontend/node_modules` dan oladi — faqat backend o‘rnatilgan muhitda yiqiladi (hozir CI yo‘q).
+8. Buxgalter uchun alohida dashboard hozir yo‘q (TZ DASH-01–06 da buxgalter yo‘q). Taklif: finansistnikiga yaqin (to‘lanmagan hujjatlar, kontragentlar qarzi, moslashtirilmagan to‘lovlar, davr xarajati, bekor qilingan hujjatlar) — foydalanuvchi tasdiqlasa, keyinroq.
+9. Ixtiyoriy “UI sifat” tekshiruvi (dizayner yo‘qligi sababli): `test:ui` skrinshotlari va lokal brauzer bo‘yicha bir xillik, bo‘sh holatlar, uz/ru matnlar, mobil ko‘rinish; topilmalar alohida kichik PR’larda.
 
 ## 7. Dizayn
 
