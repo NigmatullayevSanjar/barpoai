@@ -77,7 +77,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - Ma’lum cheklovlar: blok qavatlari keyin kamaytirilsa mavjud xonadonlar qayta tekshirilmaydi; JS va PostgreSQL katta-kichik harf farqi kamdan-kam holatda commit paytida 409 beradi.
 
 ### Bosqich 2 — valyuta (asosiy qarorlar)
-- `exchange_rates` umumiy jadval (RLS yo‘q, kurs > 0). Worker `refreshRates` (`backend/src/rates.ts`): 12 soat yangi bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi, keyingi urinish 1 soatdan keyin; boshqa worker ishlaridan alohida `try`.
+- `exchange_rates` umumiy jadval (RLS yo‘q, kurs > 0). Worker `refreshRates` (`backend/src/rates.ts`): bugungi sanali kurs bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi, keyingi urinish 10 daqiqadan keyin; boshqa worker ishlaridan alohida `try`.
 - `GET /v1/exchange-rates/latest` — har bir kirgan foydalanuvchi, platforma xodimlari ham (`passwordChange: true` bilan tenant tekshiruvisiz; kurs ochiq ma’lumot).
 - Frontend: `CurrencyProvider` (`lib/currency.tsx`, `localStorage['barpo.currency']`), sof hisob `lib/currency-math.ts` (decimal.js, precision 40, HALF_UP, 2 xona), `formatMoney(value, lang, withCurrency, pin?)` — `pin='UZS'` formalarda, `pin='USD'` narx varaqasida (server bergan USD qiymat). USD “20 947,30 $”. Jadval sarlavhalari `displayCurrency()`. Formalar va eksportlar UZS (narx varaqasi bundan mustasno).
 

@@ -20,12 +20,13 @@ export function parseCbuRate(body: unknown, currency = 'USD') {
 }
 
 /**
- * Oxirgi 12 soatda kurs olinmagan bo'lsa CBU'dan oladi. Xatoda hech narsa yozilmaydi — oxirgi kurs qoladi.
+ * Bugungi (Toshkent sanasi) kurs bazada bo'lsa o'tkaziladi; aks holda CBU'dan oladi — CBU yangi kursni ertalab
+ * e'lon qiladi, dam olish kunlari oldingi kursni qaytaradi (shu sana bilan). Xatoda hech narsa yozilmaydi — oxirgi kurs qoladi.
  * Natija: 'skipped' | 'saved' | 'failed'.
  */
 export async function refreshRates(pool: pg.Pool, fetcher: typeof fetch = fetch) {
   const fresh = await pool.query(
-    "SELECT 1 FROM exchange_rates WHERE currency='USD' AND fetched_at > now() - interval '12 hours'",
+    "SELECT 1 FROM exchange_rates WHERE currency='USD' AND rate_date >= (now() AT TIME ZONE 'Asia/Tashkent')::date",
   );
   if (fresh.rowCount) return 'skipped' as const;
   try {

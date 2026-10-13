@@ -2728,9 +2728,13 @@ try {
   const cbu = (status: number, body: unknown) =>
     (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
   assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '0', Date: '09.10.2026' }])), 'failed');
+  // Bugungi (Toshkent) sanali kurs bor — CBU'ga so'rov yo'q; eski sanali kurs bo'lsa har siklda qayta so'raladi (dam olish kunlari CBU oldingi sanani qaytaradi)
+  const cbuToday = (await admin.query("SELECT to_char((now() AT TIME ZONE 'Asia/Tashkent')::date,'DD.MM.YYYY') d")).rows[0].d as string;
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12800.00', Date: cbuToday }])), 'saved');
+  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '13000', Date: cbuToday }])), 'skipped');
+  await admin.query("DELETE FROM exchange_rates WHERE currency='USD'");
   assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12800.00', Date: '09.10.2026' }])), 'saved');
-  assert.equal(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '13000', Date: '10.10.2026' }])), 'skipped');
-  await admin.query("UPDATE exchange_rates SET fetched_at=now()-interval '13 hours'");
+  assert.notEqual(await refreshRates(appPool!, cbu(200, [{ Ccy: 'USD', Rate: '12800.00', Date: '09.10.2026' }])), 'skipped');
   assert.equal(await refreshRates(appPool!, cbu(503, {})), 'failed');
   assert.equal(
     await refreshRates(appPool!, (async () => {

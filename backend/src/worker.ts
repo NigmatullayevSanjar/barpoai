@@ -118,14 +118,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     } catch (error: any) {
       console.error('Worker cycle failed', error?.code ?? error?.message);
     }
-    // CBU kursi boshqa ishlardan alohida: xato bo'lsa oxirgi kurs qoladi, keyingi urinish 1 soatdan keyin.
+    // CBU kursi boshqa ishlardan alohida: xato bo'lsa oxirgi kurs qoladi, keyingi urinish 10 daqiqadan keyin
+    // (tarmoq yoki Docker qayta ko'tarilganda kurs soatlab eskirib qolmasin).
     if (Date.now() - lastRateAttempt > 10 * 60 * 1000) {
       lastRateAttempt = Date.now();
       try {
-        if ((await refreshRates(pool)) === 'failed') {
-          console.error('CBU rate fetch failed');
-          lastRateAttempt = Date.now() + 50 * 60 * 1000;
-        }
+        if ((await refreshRates(pool)) === 'failed') console.error('CBU rate fetch failed');
       } catch (error: any) {
         console.error('CBU rate refresh failed', error?.code ?? error?.message);
       }
