@@ -8,6 +8,7 @@ import { Check, Copy, KeyRound, Link2, Pencil, Plus, ShieldBan, ShieldCheck, Arc
 import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
+import { canManageStaff, isPlatformOwner } from '@/lib/permissions';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { displayCurrency } from '@/lib/currency-store';
@@ -252,6 +253,8 @@ function TenantsTable({
 export function TenantsPage() {
   const { t } = useT();
   const list = useListState();
+  const { me } = useAuth();
+  const owner = isPlatformOwner(me?.role);
   const [filter, setFilter] = useState<'all' | AccessState>('all');
   const [open, setOpen] = useState(false);
   const query = useQuery({
@@ -272,9 +275,11 @@ export function TenantsPage() {
         title={t('tenants.title')}
         description={t('tenants.sub')}
         actions={
-          <Button icon={<Plus />} onClick={() => setOpen(true)}>
-            {t('tenants.new')}
-          </Button>
+          owner && (
+            <Button icon={<Plus />} onClick={() => setOpen(true)}>
+              {t('tenants.new')}
+            </Button>
+          )
         }
       />
       <div className="toolbar">
@@ -302,9 +307,11 @@ export function TenantsPage() {
         refetch={query.refetch}
         pagination={list.pagination}
         action={
-          <Button icon={<Plus />} onClick={() => setOpen(true)}>
-            {t('tenants.new')}
-          </Button>
+          owner && (
+            <Button icon={<Plus />} onClick={() => setOpen(true)}>
+              {t('tenants.new')}
+            </Button>
+          )
         }
       />
       <CreateTenantModal open={open} onClose={() => setOpen(false)} />
@@ -424,6 +431,8 @@ export function TenantDetailPage() {
   const { t, lang } = useT();
   const toast = useToast();
   const onError = useApiError();
+  const { me } = useAuth();
+  const owner = isPlatformOwner(me?.role);
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['platform-tenant', id],
@@ -573,6 +582,7 @@ export function TenantDetailPage() {
         }
         description={<span className="mono">{d.registration_key}</span>}
         actions={
+          owner && (
           <>
             {d.status === 'active' && (
               <Button variant="secondary" icon={<ShieldBan />} onClick={() => setConfirm('blocked')}>
@@ -590,6 +600,7 @@ export function TenantDetailPage() {
               </Button>
             )}
           </>
+          )
         }
       />
       <div className="grid-3" style={{ alignItems: 'start' }}>
@@ -629,6 +640,7 @@ export function TenantDetailPage() {
                 </>
               )}
             </dl>
+            {owner && (
             <form className="row" onSubmit={aliasForm.handleSubmit((v) => saveAlias.mutate(v))}>
               <Input wrapClassName="grow" label={t('tenants.alias')} {...aliasForm.register('alias')} />
               <Button
@@ -640,6 +652,7 @@ export function TenantDetailPage() {
                 {t('common.save')}
               </Button>
             </form>
+            )}
           </div>
         </section>
         <section className="card">
@@ -677,15 +690,17 @@ export function TenantDetailPage() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <Button
-                    icon={<Link2 />}
-                    loading={issueInvite.isPending}
-                    onClick={() => issueInvite.mutate()}
-                  >
-                    {t('tenants.invite_new')}
-                  </Button>
-                </div>
+                {owner && (
+                  <div>
+                    <Button
+                      icon={<Link2 />}
+                      loading={issueInvite.isPending}
+                      onClick={() => issueInvite.mutate()}
+                    >
+                      {t('tenants.invite_new')}
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -693,9 +708,11 @@ export function TenantDetailPage() {
         <section className="card">
           <div className="card-header">
             <h3>{t('tenants.plan')}</h3>
-            <Button size="sm" variant="secondary" onClick={() => setPlanModal(true)}>
-              {t('tenants.set_plan')}
-            </Button>
+            {owner && (
+              <Button size="sm" variant="secondary" onClick={() => setPlanModal(true)}>
+                {t('tenants.set_plan')}
+              </Button>
+            )}
           </div>
           <div className="card-pad">
             {d.subscription ? (
@@ -727,17 +744,19 @@ export function TenantDetailPage() {
       <section>
         <div className="row-between" style={{ marginBottom: 10 }}>
           <h2>{t('tenants.invoices')}</h2>
-          <Button
-            icon={<Plus />}
-            variant="secondary"
-            disabled={!d.subscription}
-            onClick={() => setInvoiceModal(true)}
-          >
-            {t('tenants.new_invoice')}
-          </Button>
+          {owner && (
+            <Button
+              icon={<Plus />}
+              variant="secondary"
+              disabled={!d.subscription}
+              onClick={() => setInvoiceModal(true)}
+            >
+              {t('tenants.new_invoice')}
+            </Button>
+          )}
         </div>
         <DataTable
-          columns={invoiceCols}
+          columns={owner ? invoiceCols : invoiceCols.filter((c) => c.key !== 'act')}
           rows={d.invoices}
           rowKey={(r) => r.id}
           empty={{ title: t('common.empty') }}
@@ -1066,6 +1085,8 @@ function BillingEntryModal({
 /* ---------------- Plans ---------------- */
 export function PlansPage() {
   const { t, lang } = useT();
+  const { me } = useAuth();
+  const owner = isPlatformOwner(me?.role);
   const toast = useToast();
   const onError = useApiError();
   const queryClient = useQueryClient();
@@ -1194,13 +1215,15 @@ export function PlansPage() {
         title={t('plans.title')}
         description={t('plans.sub')}
         actions={
-          <Button icon={<Plus />} onClick={openNew}>
-            {t('plans.new')}
-          </Button>
+          owner && (
+            <Button icon={<Plus />} onClick={openNew}>
+              {t('plans.new')}
+            </Button>
+          )
         }
       />
       <DataTable
-        columns={columns}
+        columns={owner ? columns : columns.filter((c) => c.key !== 'actions')}
         rows={query.data?.items}
         rowKey={(r) => r.id}
         loading={query.isLoading}
@@ -1208,7 +1231,7 @@ export function PlansPage() {
         onRetry={query.refetch}
         empty={{
           title: t('common.empty'),
-          action: (
+          action: owner && (
             <Button icon={<Plus />} onClick={openNew}>
               {t('plans.new')}
             </Button>
@@ -1562,6 +1585,7 @@ export function SupportPage() {
 function ResetLinkButton({ userId }: { userId: string }) {
   const { t } = useT();
   const onError = useApiError();
+  const { me } = useAuth();
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const m = useMutation({
@@ -1572,6 +1596,7 @@ function ResetLinkButton({ userId }: { userId: string }) {
     },
     onError,
   });
+  if (!(isPlatformOwner(me?.role) || canManageStaff(me?.role))) return null;
   return (
     <>
       <Button size="sm" variant="secondary" icon={<KeyRound />} loading={m.isPending} onClick={() => m.mutate()}>
@@ -1622,6 +1647,7 @@ type Staff = {
   active: boolean;
   must_change_password: boolean;
   created_at: string;
+  telegram_linked: boolean;
 };
 export function StaffPage() {
   const { t, lang } = useT();
@@ -1634,6 +1660,7 @@ export function StaffPage() {
     queryFn: () => api<ListResponse<Staff>>('/v1/platform/staff'),
   });
   const [open, setOpen] = useState(false);
+  const [toggle, setToggle] = useState<Staff | null>(null);
   const schema = z.object({
     login: z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/, t('auth.login_name')),
     display_name: z.string().trim().min(2).max(120),
@@ -1658,6 +1685,19 @@ export function StaffPage() {
       setOpen(false);
     },
     onError,
+  });
+  const update = useMutation({
+    mutationFn: (v: { id: string; active: boolean; role: Staff['role'] }) =>
+      api(`/v1/platform/staff/${v.id}`, { method: 'PATCH', body: { active: v.active, role: v.role } }),
+    onSuccess: async (_, v) => {
+      await queryClient.invalidateQueries({ queryKey: ['platform-staff'] });
+      toast.success(toggle ? t('common.saved') : t('staff.role_changed'));
+      if (toggle?.id === v.id) setToggle(null);
+    },
+    onError: (e: ApiError) => {
+      setToggle(null);
+      onError(e);
+    },
   });
   const columns: Column<Staff>[] = [
     {
@@ -1686,6 +1726,18 @@ export function StaffPage() {
       ),
     },
     {
+      key: 'tg',
+      header: t('staff.col_2fa'),
+      render: (r) =>
+        r.telegram_linked ? (
+          <Badge tone="success">{t('staff.tg_2fa_on')}</Badge>
+        ) : r.role === 'support' ? (
+          <Badge tone="neutral">{t('staff.tg_off')}</Badge>
+        ) : (
+          <Badge tone="warning">{t('staff.tg_2fa_off')}</Badge>
+        ),
+    },
+    {
       key: 'created',
       header: t('common.created_at'),
       render: (r) => formatDate(r.created_at, lang),
@@ -1696,7 +1748,24 @@ export function StaffPage() {
       align: 'right',
       // O'z parolini profilda almashtiradi; platforma egasining parolini faqat egasi tiklaydi (server ham tekshiradi).
       render: (r) =>
-        r.active && r.id !== me?.id && r.role !== 'platform_owner' ? <ResetLinkButton userId={r.id} /> : null,
+        r.id !== me?.id && r.role !== 'platform_owner' ? (
+          <span className="row wrap" style={{ justifyContent: 'flex-end' }}>
+            <Select
+              aria-label={t('common.role')}
+              style={{ minWidth: 140 }}
+              value={r.role}
+              disabled={update.isPending}
+              onChange={(e) => update.mutate({ id: r.id, active: r.active, role: e.target.value as Staff['role'] })}
+            >
+              <option value="super_admin">{t('role.super_admin')}</option>
+              <option value="support">{t('role.support')}</option>
+            </Select>
+            <Button size="sm" variant="secondary" onClick={() => setToggle(r)}>
+              {r.active ? t('employees.deactivate') : t('employees.activate')}
+            </Button>
+            {r.active && <ResetLinkButton userId={r.id} />}
+          </span>
+        ) : null,
     },
   ];
   return (
@@ -1717,6 +1786,15 @@ export function StaffPage() {
         loading={query.isLoading}
         error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
         onRetry={query.refetch}
+      />
+      <ConfirmDialog
+        open={toggle !== null}
+        onClose={() => setToggle(null)}
+        onConfirm={() => toggle && update.mutate({ id: toggle.id, active: !toggle.active, role: toggle.role })}
+        title={toggle?.active ? t('employees.deactivate') : t('employees.activate')}
+        danger={Boolean(toggle?.active)}
+        loading={update.isPending}
+        message={toggle?.active ? t('staff.confirm_deactivate') : t('staff.confirm_activate')}
       />
       <Modal
         open={open}
@@ -1792,7 +1870,11 @@ type Diagnostics = {
     }[];
   };
   sessions_active: number;
-  telegram: { configured: boolean; linked_accounts: number };
+  telegram: {
+    configured: boolean;
+    linked_accounts: number;
+    bot: { polling_ok: boolean; conflict: boolean; last_ok_at: string | null; last_error: string | null; last_error_at: string | null } | null;
+  };
   tenants: { active: number; pending: number; blocked: number; archived: number };
   break_glass_enabled: boolean;
   integrations_release_ready: boolean;
@@ -1852,6 +1934,19 @@ export function DiagnosticsPage() {
               }
             />
           </div>
+          {/* Qizil — bot umuman xabar olmayapti; sariq — ishlayapti, lekin navbatma-navbat konflikt (ikkinchi nusxa tirik). */}
+          {d.telegram.bot?.conflict && (
+            <Alert tone={d.telegram.bot.polling_ok ? 'warning' : 'danger'}>
+              {t(d.telegram.bot.polling_ok ? 'diag.telegram_conflict_partial' : 'diag.telegram_conflict')}
+              {d.telegram.bot.last_error_at && ` · ${formatDateTime(d.telegram.bot.last_error_at, lang)}`}
+            </Alert>
+          )}
+          {d.telegram.bot && !d.telegram.bot.conflict && !d.telegram.bot.polling_ok && (
+            <Alert tone="warning">
+              {t('diag.telegram_down')}
+              {d.telegram.bot.last_error && `: ${d.telegram.bot.last_error}`}
+            </Alert>
+          )}
           <div className="grid-4">
             <Stat label={`${t('diag.tenants')} · ${t('tenants.state.pending')}`} value={d.tenants.pending} />
             <Stat label={`${t('diag.tenants')} · ${t('common.active')}`} value={d.tenants.active} />

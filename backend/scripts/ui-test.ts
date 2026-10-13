@@ -967,8 +967,17 @@ try {
   );
   const techPage = await newPage();
   await login(techPage, 'ui_tech', password);
-  // D12: super_admin platforma egasi kabi bosh sahifaga tushadi; Murojaatlar alohida ochiladi.
+  // D15: super_admin bosh sahifaga tushadi, o'qiydi, lekin biznes tugmalari yo'q; Audit va Texnik xodimlar sahifalari bor.
   await techPage.getByRole('heading', { name: 'Platforma ko‘rsatkichlari' }).waitFor();
+  await techPage.goto(webURL + '/admin/plans');
+  await techPage.getByRole('heading', { name: 'Tariflar' }).waitFor();
+  assert.equal(await techPage.getByRole('button', { name: 'Yangi tarif versiyasi' }).count(), 0);
+  await techPage.goto(webURL + '/admin/audit');
+  await techPage.getByRole('heading', { name: 'Platforma auditi' }).waitFor();
+  await techPage.getByText('plan.create', { exact: true }).first().waitFor();
+  await techPage.goto(webURL + '/admin/staff');
+  await techPage.getByRole('heading', { name: 'Texnik xodimlar' }).waitFor();
+  await techPage.getByText('2FA yo‘q — Telegram ulanmagan').first().waitFor();
   await techPage.goto(webURL + '/admin/support');
   await techPage.getByRole('heading', { name: 'Murojaatlar' }).waitFor();
   await techPage.goto(webURL + '/admin/diagnostics');
@@ -1103,10 +1112,15 @@ try {
   );
   const supportPage = await newPage();
   await login(supportPage, 'ui_support', password);
-  await supportPage.getByRole('heading', { name: 'Murojaatlar' }).waitFor();
+  // D15: support faqat o'qiydi — Mijozlar ro'yxatiga tushadi; bosh sahifa, tariflar, to'lovlar, qarzdorlar, murojaatlar, diagnostika ochiq (7 havola).
+  await supportPage.getByRole('heading', { name: 'Mijoz kompaniyalar' }).waitFor();
   await supportPage.goto(webURL + '/admin/diagnostics');
   await supportPage.getByText('Worker navbati', { exact: true }).waitFor();
-  assert.equal(await supportPage.locator('.sidebar nav a.nav-link').count(), 2);
+  assert.equal(await supportPage.locator('.sidebar nav a.nav-link').count(), 7);
+  // Mijoz kartasi o'qiladi, lekin biznes tugmalari yo'q
+  await supportPage.goto(webURL + '/admin/tenants');
+  await supportPage.getByRole('heading', { name: 'Mijoz kompaniyalar' }).waitFor();
+  assert.equal(await supportPage.getByRole('button', { name: 'Yangi kompaniya' }).count(), 0);
   checks.push(
     'Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions and every allowed page renders without errors',
   );

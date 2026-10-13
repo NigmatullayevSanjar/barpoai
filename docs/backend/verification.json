@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-13T08:45:00.386Z",
+  "executed_at": "2026-10-13T11:07:46.118Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -68,7 +68,11 @@
     "Finance summary amounts always have two decimals, also for a project without entries",
     "Estimate import reads openpyxl workbooks (absolute rels, table, merged title and total rows), finds the header row, maps m³/m²/kompl. units and reports unreadable files as INVALID_XLSX",
     "Plan edit changes price and limits for future invoices only, is audited, owner-only, and plans still cannot be deleted",
-    "super_admin opens every platform-owner page; support does not; nobody resets their own or the owner’s password through a reset link",
+    "D15: super_admin and support read tenants/plans/billing; business actions, staff and audit stay with the owner/super_admin; nobody resets their own or the owner’s password",
+    "Staff: role change and deactivation revoke sessions and block login; a super_admin cannot change itself or the owner",
+    "Platform audit lists platform-staff actions with actor role and filters by action prefix",
+    "A new support request notifies every active platform staff member",
+    "2FA: a Telegram-linked super_admin gets a 6-digit code instead of a session, wrong codes are limited to 5, a used or expired challenge is rejected, support logs in without a code",
     "Block card stores area, plan/fact dates, image and responsibles; status is derived from dates; estimate total comes from block zone lines and is hidden without price permission; an old-style edit keeps card fields",
     "Premise plan image is set by version and cleared when the file is archived; premises filter by rooms with group counts; cost comes from the latest price list only with pricing permission",
     "super_admin issues a reset link to a company admin; the new password needs 6+ characters; old sessions are revoked",

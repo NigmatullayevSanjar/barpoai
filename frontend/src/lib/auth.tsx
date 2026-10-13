@@ -13,13 +13,17 @@ export type Me = {
   must_change_password: boolean;
 };
 export type SessionIssue = 'TENANT_BLOCKED' | 'TENANT_ARCHIVED' | null;
+/** Telegram ulangan egasi/super admin uchun parol to'g'ri bo'lgandan keyin ikkinchi qadam. */
+export type TwoFactorChallenge = { two_factor: true; challenge: string; expires_in: number };
+export const isChallenge = (r: Me | TwoFactorChallenge): r is TwoFactorChallenge => 'two_factor' in r;
 
 type AuthState = {
   /** undefined — hali tekshirilmagan; null — kirilmagan */
   me: Me | null | undefined;
   permissions: PermissionSnapshot | null;
   issue: SessionIssue;
-  login: (login: string, password: string) => Promise<Me>;
+  login: (login: string, password: string) => Promise<Me | TwoFactorChallenge>;
+  verifyCode: (challenge: string, code: string) => Promise<Me>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   can: (page: Page, action?: CrudAction) => boolean;
@@ -87,15 +91,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (loginValue: string, password: string) => {
-      const data = await api<{ user: Me }>('/v1/auth/login', {
+      const data = await api<{ user: Me } | TwoFactorChallenge>('/v1/auth/login', {
         method: 'POST',
         body: { login: loginValue, password },
       });
+      if ('two_factor' in data) return data;
       const user = await api<Me>('/v1/auth/me');
       setMe(user);
       await loadPermissions(user);
       queryClient.clear();
       return user ?? data.user;
+    },
+    [loadPermissions, queryClient],
+  );
+  const verifyCode = useCallback(
+    async (challenge: string, code: string) => {
+      await api('/v1/auth/login/verify', { method: 'POST', body: { challenge, code } });
+      const user = await api<Me>('/v1/auth/me');
+      setMe(user);
+      await loadPermissions(user);
+      queryClient.clear();
+      return user;
     },
     [loadPermissions, queryClient],
   );
@@ -128,12 +144,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       permissions,
       issue,
       login,
+      verifyCode,
       logout,
       refresh,
       can,
       isPlatform: Boolean(me && platformRoles.includes(me.role)),
     }),
-    [me, permissions, issue, login, logout, refresh, can],
+    [me, permissions, issue, login, verifyCode, logout, refresh, can],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

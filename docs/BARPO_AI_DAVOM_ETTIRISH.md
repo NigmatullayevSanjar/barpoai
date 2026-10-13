@@ -21,7 +21,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 **Qat’iy qoidalar (CLAUDE.md dan):**
 - Pul va miqdor — oxirigacha decimal string. Saqlash va kiritish faqat UZS. USD faqat ko‘rsatish uchun: konvertatsiya faqat `formatMoney` ichida, server bergan CBU kursi bilan, decimal arifmetika (Number emas). Frontend yig‘indi hisoblamaydi, jamlar serverdan.
 - Ruxsat serverda (UI faqat yashiradi). Har yangi matn `uz` va `ru` lokallarga. Statik demo raqam yo‘q — bo‘sh/xato holatlari.
-- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `019_block_profile.sql`, keyingisi **020**.
+- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `021_telegram_bot_health.sql`, keyingisi **022**.
 - AI funksiya qo‘shilmaydi. CRM, sotuv, bron, mijoz, shartnoma yo‘q (D1).
 - Sirlar `backend/.env` da (gitignore). Token yoki parol yaratmang, so‘ramang, faylga yozmang. Lokal hisob parollari hech qayerda yozilmagan — kerak bo‘lsa foydalanuvchi o‘zi kiradi.
 
@@ -51,7 +51,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - `backend/` da `docker compose up --build -d` (migratsiyalar avtomatik), API `127.0.0.1:3001`, DB `127.0.0.1:5433`, frontend `pnpm dev` → `localhost:5173` (strictPort).
 - `COMPOSE_PROJECT_NAME=barpo`; boshqa loyihaning `backend_postgres_data` volume’iga tegmang.
 - Eski kompyuter bazasida “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; yangi kompyuterga va bulutga ko‘chmaydi.
-- `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
+- `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti). 2026-10-13: shunday konflikt topildi — boshqa nusxa (eski kompyuter yoki bulut) polling qilib, ulash havolasi va 2FA kodlarini “yutgan”. Endi worker so‘nggi xatoni `telegram_bot_state` ga yozadi (migratsiya 021), Diagnostika va Profil “bot boshqa joyda ishlayapti” deb ko‘rsatadi; `docker logs barpo-worker-1` da `Conflict: terminated by other getUpdates request`.
 - Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
 - Kompyuter vaqt zonasi UTC+5: Docker testlarini `TZ=UTC` bilan yurgizing (Git Bash: `TZ=UTC npm run test:integration`), aks holda `integration.ts` eski O17 xatosi bilan yiqiladi (toza `main` da ham). 2026-10-12 da shu rejimda: integration 71, roles 5, UI 47.
 

@@ -123,6 +123,25 @@ export async function consumeLinkToken(db: Db, raw: string, from: TelegramUser) 
   });
   return user;
 }
+/** Bot polling holati (worker yozadi): so'nggi muvaffaqiyat va xato; 409 Conflict — boshqa nusxa ishlayapti. */
+export async function botHealth(db: Db) {
+  const s = (
+    await db.query('SELECT last_ok_at,last_error,last_error_at FROM telegram_bot_state WHERE id')
+  ).rows[0];
+  const errorIsNewer =
+    s?.last_error && (!s.last_ok_at || new Date(s.last_error_at) > new Date(s.last_ok_at));
+  // So'nggi 5 daqiqada muvaffaqiyat bo'lsa polling ishlayapti (konflikt navbatma-navbat bo'lishi mumkin);
+  // umuman bo'lmasa — bot xabar olmayapti. Konflikt bayrog'i faqat so'nggi xato Conflict bo'lganda.
+  const recentOk =
+    Boolean(s?.last_ok_at) && Date.now() - new Date(s.last_ok_at).getTime() < 5 * 60_000;
+  return {
+    polling_ok: recentOk || (Boolean(s?.last_ok_at) && !errorIsNewer),
+    conflict: Boolean(errorIsNewer && /Conflict/i.test(s.last_error)),
+    last_ok_at: s?.last_ok_at ?? null,
+    last_error: errorIsNewer ? (s.last_error as string) : null,
+    last_error_at: errorIsNewer ? s.last_error_at : null,
+  };
+}
 export async function telegramStatus(db: Db, actor: Row) {
   const row = (
     await db.query(
@@ -133,6 +152,7 @@ export async function telegramStatus(db: Db, actor: Row) {
   return {
     configured: telegramConfigured(),
     bot_username: botUsername(),
+    bot: telegramConfigured() ? await botHealth(db) : null,
     linked: Boolean(row),
     username: row?.telegram_username ?? null,
     first_name: row?.telegram_first_name ?? null,
@@ -652,11 +672,21 @@ async function runAction(db: Db, user: Row, action: string, lang: Lang): Promise
 export async function pollOnce(pool: pg.Pool) {
   if (!telegramConfigured()) return 0;
   const state = (await pool.query('SELECT update_offset FROM telegram_bot_state WHERE id')).rows[0];
-  const updates = await tg<Update[]>(
-    'getUpdates',
-    { offset: Number(state?.update_offset ?? 0), timeout: 20, allowed_updates: ['message'] },
-    30000,
-  );
+  let updates: Update[];
+  try {
+    updates = await tg<Update[]>(
+      'getUpdates',
+      { offset: Number(state?.update_offset ?? 0), timeout: 20, allowed_updates: ['message'] },
+      30000,
+    );
+  } catch (error: any) {
+    // Holat bazaga: diagnostika va profil "bot boshqa joyda ishlayapti" (409 Conflict) kabi sabablarni ko'rsatadi.
+    await pool.query('UPDATE telegram_bot_state SET last_error=$1,last_error_at=now() WHERE id', [
+      String(error?.message ?? error?.code ?? 'unknown').slice(0, 300),
+    ]);
+    throw error;
+  }
+  await pool.query('UPDATE telegram_bot_state SET last_ok_at=now(),last_error=NULL WHERE id');
   for (const update of updates) {
     try {
       await handleUpdate(pool, update);

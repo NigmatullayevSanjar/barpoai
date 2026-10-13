@@ -21,9 +21,12 @@ import { invariant } from './errors.js';
 import { dec } from './money.js';
 import { accessState } from './auth.js';
 import { issueInvoice, applyCredit, recomputeCoverage, periodEnd } from './billing.js';
-import { telegramConfigured } from './telegram.js';
-// super_admin platforma egasining barcha huquqlariga ega (egasi qarori, 2026-10-12).
-const owner = ['platform_owner', 'super_admin'];
+import { telegramConfigured, botHealth } from './telegram.js';
+// Rollar (egasi qarori, 2026-10-13, D15): egasi — biznes amallari (tarif, obuna, invoys, to'lov, bloklash);
+// super_admin — texnik rol: o'qish, parol tiklash, xodimlar, diagnostika, audit; support — faqat o'qish va murojaatlar.
+const owner = ['platform_owner'];
+const readers = ['platform_owner', 'super_admin', 'support'];
+const technical = ['platform_owner', 'super_admin'];
 export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -63,7 +66,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/tenants',
     summary:
       'Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q); q — nom, kalit, alias; state — access_state filtri',
-    platform: owner,
+    platform: readers,
     query: searchQuery.extend({
       state: z.enum(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived']).optional(),
     }),
@@ -204,7 +207,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/plans',
     summary: 'Tarif versiyalari',
-    platform: owner,
+    platform: readers,
     handler: async ({ db }) => ({
       items: (await db.query('SELECT * FROM plan_versions ORDER BY code,version')).rows,
     }),
@@ -242,7 +245,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/users/:id/reset',
     summary:
       'Istalgan foydalanuvchiga (kompaniya admini ham) bir martalik 30 daqiqalik reset havolasi; platforma egasini faqat egasi tiklaydi',
-    platform: owner,
+    platform: technical,
     params: idParams,
     handler: async ({ db, actor, params }) => {
       const user = await one(db, 'SELECT id,role FROM users WHERE id=$1 AND active', [params.id]);
@@ -379,7 +382,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/billing/summary',
     summary: 'Invoys, pul tushumi, qarz (invoys kesimida) va kompaniyalar kredit qoldig‘i alohida',
-    platform: owner,
+    platform: readers,
     handler: async ({ db }) =>
       one(
         db,
@@ -484,7 +487,11 @@ export function platformRoutes(add: (r: Endpoint) => void) {
         worker: { ...worker, failed_jobs: deadJobs.slice(0, 20) },
         errors: { ...errors, items: recentErrors },
         sessions_active: sessions.active,
-        telegram: { configured: telegramConfigured(), linked_accounts: telegram.linked },
+        telegram: {
+          configured: telegramConfigured(),
+          linked_accounts: telegram.linked,
+          bot: telegramConfigured() ? await botHealth(db) : null,
+        },
         tenants: {
           active: byStatus('active'),
           pending: byStatus('pending'),

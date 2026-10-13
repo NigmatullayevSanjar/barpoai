@@ -3299,9 +3299,15 @@ try {
   );
   const superToken = (await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass }))
     .access_token;
-  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/support'])
-    await call('GET', path, undefined, superToken);
-  await call('GET', '/v1/platform/tenants', undefined, supportToken, undefined, 403);
+  // D15 (2026-10-13): super_admin va support o'qiydi; biznes amallari (tarif, obuna, invoys, bloklash) faqat egasida;
+  // xodimlar va platforma auditi — super_admin; parol tiklash — egasi va super_admin.
+  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/billing/invoices', '/v1/platform/support', `/v1/platform/tenants/${t.id}`])
+    for (const tok of [superToken, supportToken]) await call('GET', path, undefined, tok);
+  await call('POST', '/v1/platform/plans', { code: 'tech', version: 1, monthly_price: '1.00' }, superToken, undefined, 403);
+  await call('PATCH', `/v1/platform/tenants/${t.id}`, { status: 'blocked', version: 1, reason: 'Texnik sinov' }, superToken, undefined, 403);
+  await call('POST', '/v1/platform/tenants', { legal_name: 'Support yaratmaydi', registration_key: 'SUP-1' }, supportToken, undefined, 403);
+  await call('GET', '/v1/platform/staff', undefined, supportToken, undefined, 403);
+  await call('GET', '/v1/platform/audit', undefined, supportToken, undefined, 403);
   const tenantAdminId = (await admin.query("SELECT id FROM users WHERE tenant_id=$1 AND role='tenant_admin'", [t.id]))
     .rows[0].id;
   const ownerId = (await admin.query("SELECT id FROM users WHERE login='owner'")).rows[0].id;
@@ -3309,7 +3315,75 @@ try {
   await call('POST', `/v1/platform/users/${ownerId}/reset`, undefined, superToken, undefined, 403);
   await call('POST', `/v1/platform/users/${superId}/reset`, undefined, superToken, undefined, 403);
   await call('POST', `/v1/platform/users/${tenantAdminId}/reset`, undefined, supportToken, undefined, 403);
-  passed.push('super_admin opens every platform-owner page; support does not; nobody resets their own or the owner’s password through a reset link');
+  passed.push('D15: super_admin and support read tenants/plans/billing; business actions, staff and audit stay with the owner/super_admin; nobody resets their own or the owner’s password');
+  // ---- Xodimlar: super_admin faolsizlantiradi va rolini o'zgartiradi (sessiya bekor), o'zini va egasini emas
+  const helper = await call('POST', '/v1/platform/staff', { login: 'helper2', password: pass, display_name: 'Yordamchi', role: 'support' }, superToken);
+  const staffList = await call('GET', '/v1/platform/staff', undefined, superToken);
+  assert.equal(staffList.items.find((s: any) => s.id === helper.id).telegram_linked, false);
+  // Yangi xodim birinchi kirishda parolni almashtiradi (must_change_password), keyin ishlaydi.
+  const helperFirst = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass })).access_token;
+  await call('POST', '/v1/auth/password', { current_password: pass, new_password: pass + '2' }, helperFirst);
+  const helperToken = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' })).access_token;
+  await call('GET', '/v1/platform/support', undefined, helperToken);
+  await call('PATCH', `/v1/platform/staff/${helper.id}`, { active: true, role: 'super_admin' }, superToken);
+  await call('GET', '/v1/platform/support', undefined, helperToken, undefined, 401);
+  const helperToken2 = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' })).access_token;
+  await call('GET', '/v1/platform/staff', undefined, helperToken2);
+  await call('PATCH', `/v1/platform/staff/${helper.id}`, { active: false, role: 'super_admin' }, superToken);
+  await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' }, undefined, undefined, 401);
+  await call('PATCH', `/v1/platform/staff/${superId}`, { active: false, role: 'support' }, superToken, undefined, 403);
+  await call('PATCH', `/v1/platform/staff/${ownerId}`, { active: false, role: 'support' }, superToken, undefined, 403);
+  passed.push('Staff: role change and deactivation revoke sessions and block login; a super_admin cannot change itself or the owner');
+  // ---- Platforma auditi: egasi va super_admin ko'radi, action filtri ishlaydi
+  const pAudit = await call('GET', '/v1/platform/audit?action=platform.staff', undefined, superToken);
+  assert(pAudit.items.length >= 3 && pAudit.items.every((a: any) => a.action.startsWith('platform.staff')));
+  assert(pAudit.items.every((a: any) => a.actor_role === 'super_admin'));
+  assert.equal(typeof pAudit.total, 'number');
+  await call('GET', '/v1/platform/audit?limit=1', undefined, ownerToken);
+  passed.push('Platform audit lists platform-staff actions with actor role and filters by action prefix');
+  // ---- Yangi murojaat → platforma xodimlariga bildirishnoma (super_admin, support, egasi)
+  const srNew = await call('POST', '/v1/support-requests', { kind: 'plan_change', message: 'Tarifni kattaroqqa almashtiring' }, adminAgain);
+  for (const tok of [superToken, supportToken, ownerToken]) {
+    const n = await call('GET', '/v1/me/notifications?unread=true', undefined, tok);
+    assert(n.items.some((x: any) => x.kind === 'support.request' && x.payload.support_request_id === srNew.id), 'support.request notification missing');
+  }
+  passed.push('A new support request notifies every active platform staff member');
+  // ---- 2FA: Telegram ulangan super_admin uchun kirish kod bilan; kod botga global fetch orqali ketadi (bu yerda ushlanadi)
+  const saLink = await transaction(appPool!, null, (db) => createLinkToken(db, { id: superId, tenant_id: null, role: 'super_admin' }));
+  await transaction(appPool!, null, (db) => consumeLinkToken(db, saLink.url.split('start=')[1]!, { id: '777001', first_name: 'SA' } as any));
+  const realFetch = globalThis.fetch;
+  const sent: string[] = [];
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.includes('api.telegram.org')) {
+      sent.push(JSON.parse(init.body).text);
+      return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const challengeRes = await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass });
+    assert.equal(challengeRes.two_factor, true);
+    assert(!challengeRes.access_token && challengeRes.challenge.length >= 32);
+    const code = /kirish kodi: (\d{6})/.exec(sent.at(-1) ?? '')![1]!;
+    assert.equal((await call('POST', '/v1/auth/login/verify', { challenge: challengeRes.challenge, code: '000000' }, undefined, undefined, 401)).error.code, 'LOGIN_CODE_INVALID');
+    const session2fa = await call('POST', '/v1/auth/login/verify', { challenge: challengeRes.challenge, code });
+    assert(session2fa.access_token);
+    await call('GET', '/v1/platform/staff', undefined, session2fa.access_token);
+    assert.equal((await call('POST', '/v1/auth/login/verify', { challenge: challengeRes.challenge, code }, undefined, undefined, 410)).error.code, 'LOGIN_CODE_EXPIRED');
+    // 5 ta xato urinish — challenge bekor
+    const c2 = await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass });
+    for (let i = 0; i < 4; i++) await call('POST', '/v1/auth/login/verify', { challenge: c2.challenge, code: '111111' }, undefined, undefined, 401);
+    await call('POST', '/v1/auth/login/verify', { challenge: c2.challenge, code: '111111' }, undefined, undefined, 410);
+    // support uchun 2FA yo'q (Telegram ulangan bo'lsa ham oddiy kirish)
+    const techId = (await admin.query("SELECT id FROM users WHERE login='tech'")).rows[0].id;
+    const supLink = await transaction(appPool!, null, (db) => createLinkToken(db, { id: techId, tenant_id: null, role: 'support' }));
+    await transaction(appPool!, null, (db) => consumeLinkToken(db, supLink.url.split('start=')[1]!, { id: '777002', first_name: 'Sup' } as any));
+    assert((await call('POST', '/v1/auth/login', { login: 'tech', password: pass })).access_token);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  passed.push('2FA: a Telegram-linked super_admin gets a 6-digit code instead of a session, wrong codes are limited to 5, a used or expired challenge is rejected, support logs in without a code');
   // ---- Blok kartasi: maydon, sanalar, mas'ullar, rasm; holat sanalardan; smeta jami blok zonalaridan
   const blockImage = await call(
     'POST',

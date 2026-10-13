@@ -24,6 +24,9 @@ export type Role =
   | 'manager';
 
 export const platformRoles: Role[] = ['super_admin', 'platform_owner', 'support'];
+/** Biznes amallari faqat platforma egasida; texnik xodimlarni super admin boshqaradi (server ham tekshiradi). */
+export const isPlatformOwner = (role?: Role) => role === 'platform_owner';
+export const canManageStaff = (role?: Role) => role === 'super_admin';
 export const tenantRoles: Role[] = [
   'tenant_admin',
   'foreman',
@@ -169,31 +172,31 @@ export const platformNav: PlatformNavItem[] = [
     key: 'dashboard',
     to: '/admin',
     icon: 'LayoutDashboard',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'tenants',
     to: '/admin/tenants',
     icon: 'Building2',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'plans',
     to: '/admin/plans',
     icon: 'Package',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'billing',
     to: '/admin/billing',
     icon: 'CreditCard',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'debtors',
     to: '/admin/debtors',
     icon: 'AlertTriangle',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'support',
@@ -202,6 +205,7 @@ export const platformNav: PlatformNavItem[] = [
     roles: ['platform_owner', 'support', 'super_admin'],
   },
   { key: 'staff', to: '/admin/staff', icon: 'UserCog', roles: ['super_admin'] },
+  { key: 'audit', to: '/admin/audit', icon: 'ScrollText', roles: ['super_admin', 'platform_owner'] },
   {
     key: 'diagnostics',
     to: '/admin/diagnostics',
@@ -216,5 +220,5 @@ export const homeFor = (role: Role, mustChange: boolean) =>
     : platformRoles.includes(role)
       ? role === 'platform_owner' || role === 'super_admin'
         ? '/admin'
-        : '/admin/support'
+        : '/admin/tenants'
       : '/app';

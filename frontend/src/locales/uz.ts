@@ -101,6 +101,7 @@ export const uz: Record<string, string> = {
   'nav.debtors': 'Qarzdorlar',
   'nav.support': 'Murojaatlar',
   'nav.staff': 'Texnik xodimlar',
+  'nav.audit': 'Audit',
   'nav.diagnostics': 'Diagnostika',
   'nav.dashboard': 'Bosh sahifa',
   'nav.logout': 'Chiqish',
@@ -124,6 +125,12 @@ export const uz: Record<string, string> = {
   'auth.identifier_placeholder': 'masalan: ali.valiyev yoki +998 90 123 45 67',
   'auth.password': 'Parol',
   'auth.sign_in': 'Kirish',
+  'auth.code_title': 'Telegram kodini kiriting',
+  'auth.code_sub': 'Botga 6 xonali kod yubordik. Kod 5 daqiqa amal qiladi.',
+  'auth.code': 'Kod',
+  'auth.verify': 'Tasdiqlash',
+  'auth.code_back': 'Boshqa hisob bilan kirish',
+  'auth.code_expired': 'Kod muddati tugadi. Qaytadan kiring.',
   'auth.forgot': 'Parolni unutdingizmi?',
   'auth.have_invite': 'Taklif havolangiz bormi?',
   'auth.register': 'Ro‘yxatdan o‘tish',
@@ -173,7 +180,14 @@ export const uz: Record<string, string> = {
   'telegram.not_configured': 'Telegram bot hali sozlanmagan. Administrator bilan bog‘laning.',
   'telegram.linked': 'Ulangan',
   'telegram.not_linked': 'Ulanmagan',
+  'telegram.bot_conflict':
+    'Bot boshqa joyda ham ishlayapti (Telegram: Conflict). Ulash havolasi va kodlar o‘sha nusxaga ketadi — boshqa kompyuter yoki serverdagi worker’ni to‘xtating.',
+  'telegram.bot_down':
+    'Bot hozir Telegram’dan xabar ololmayapti; worker holatini Diagnostika sahifasida tekshiring.',
   'telegram.connect': 'Telegramni ulash',
+  'telegram.two_factor_required':
+    'Ikki bosqichli kirish uchun Telegramni ulang: platforma egasi va super admin kirganda botga kod keladi.',
+  'telegram.two_factor_on': 'Ikki bosqichli kirish yoqilgan',
   'telegram.open': 'Telegramda ochish',
   'telegram.disconnect': 'Telegramni uzish',
   'telegram.linked_at': 'Ulangan sana',
@@ -301,6 +315,16 @@ export const uz: Record<string, string> = {
   'staff.sub': 'Super admin va texnik yordam hisoblari',
   'staff.new': 'Xodim qo‘shish',
   'staff.created': 'Xodim yaratildi. Birinchi kirishda parolni almashtiradi.',
+  'staff.tg_2fa_on': '2FA yoqilgan',
+  'staff.tg_2fa_off': '2FA yo‘q — Telegram ulanmagan',
+  'staff.tg_off': 'Telegram ulanmagan',
+  'staff.col_2fa': 'Telegram / 2FA',
+  'staff.role_changed': 'Rol o‘zgartirildi',
+  'staff.confirm_deactivate': 'Xodimni faolsizlantirasizmi? U tizimga kira olmaydi.',
+  'staff.confirm_activate': 'Xodimni qayta faollashtirasizmi?',
+  'platform_audit.title': 'Platforma auditi',
+  'platform_audit.sub':
+    'Platforma xodimlari amallari: tarif, obuna, bloklash, xodimlar, parol tiklash, kirish',
   'diag.title': 'Diagnostika',
   'diag.sub': 'Baza ulanishi va integratsiya holati',
   'diag.database': 'Ma’lumotlar bazasi',
@@ -308,6 +332,11 @@ export const uz: Record<string, string> = {
   'diag.integrations': 'Integratsiyalar chiqarishga tayyor',
   'diag.ok': 'Ishlayapti',
   'diag.off': 'O‘chirilgan',
+  'diag.telegram_conflict':
+    'Telegram bot boshqa joyda ham ishlayapti (Conflict: terminated by other getUpdates request). Bitta token bilan faqat bitta worker ishlashi kerak — boshqa kompyuter/serverdagi nusxani to‘xtating; ungacha ulash havolalari va kirish kodlari u yerga ketadi.',
+  'diag.telegram_down': 'Telegram bot xabar ololmayapti',
+  'diag.telegram_conflict_partial':
+    'Telegram bot ishlayapti, lekin shu token bilan boshqa joyda ham worker bor (navbatma-navbat Conflict). Ulash havolalari va kirish kodlari ba’zan o‘sha nusxaga ketadi — boshqa kompyuter/serverdagi nusxani to‘xtating yoki BotFather’da tokenni yangilang.',
 
   // kompaniya billing/recovery
   'billing.tenant_title': 'Obuna va to‘lovlar',
@@ -333,6 +362,8 @@ export const uz: Record<string, string> = {
   'error.VERSION_CONFLICT': 'Ma’lumot boshqa oynada o‘zgargan. Sahifani yangilang.',
   'error.IDEMPOTENCY_CONFLICT': 'Bu amal boshqa ma’lumot bilan takrorlanmoqda.',
   'error.TENANT_BLOCKED': 'Kompaniya hisobi bloklangan.',
+  'error.LOGIN_CODE_INVALID': 'Kod noto‘g‘ri.',
+  'error.LOGIN_CODE_EXPIRED': 'Kod muddati tugagan yoki urinishlar tugadi. Qaytadan kiring.',
   'error.TENANT_ARCHIVED': 'Kompaniya arxivlangan.',
   'error.PASSWORD_CHANGE_REQUIRED': 'Avval boshlang‘ich parolni almashtiring.',
   'error.INVITE_UNAVAILABLE': 'Taklif havolasi ishlatilgan, bekor qilingan yoki muddati o‘tgan.',

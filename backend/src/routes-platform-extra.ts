@@ -1,20 +1,22 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { uuid, idParams, searchQuery, likePattern, queryBool } from './schemas.js';
+import { uuid, date, idParams, pageQuery, searchQuery, likePattern, queryBool } from './schemas.js';
 import { accessState } from './auth.js';
+import { invariant } from './errors.js';
 import { notify } from './notify.js';
 import { creditBalance } from './billing.js';
 import { money } from './money.js';
-// super_admin platforma egasining barcha huquqlariga ega (egasi qarori, 2026-10-12).
-const owner = ['platform_owner', 'super_admin'];
+// Rollar (D15, 2026-10-13): egasi — biznes amallari; super_admin va support — o'qish (readers); xodimlar va audit — super_admin.
+const owner = ['platform_owner'];
+const readers = ['platform_owner', 'super_admin', 'support'];
 /** Platforma egasi va texnik xodimlar uchun o'qish/ko'rish endpointlari (frontend kartalari uchun). */
 export function platformExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/tenants/:id',
     summary: 'Kompaniya kartasi: holat, admin, tarif, invoyslar va to‘lovlar',
-    platform: owner,
+    platform: readers,
     params: idParams,
     handler: async ({ db, actor, params }) => {
       const tenant = await one(
@@ -83,7 +85,7 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/billing/invoices',
     summary: 'Barcha SaaS invoyslar, qoplanish va kompaniya nomi bilan; q — kompaniya nomi',
-    platform: owner,
+    platform: readers,
     query: searchQuery.extend({ tenant_id: uuid.optional(), unpaid: queryBool.optional() }),
     handler: async ({ db, query }) => ({
       items: (
@@ -108,15 +110,83 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/staff',
-    summary: 'Platforma xodimlari ro‘yxati',
+    summary: 'Platforma xodimlari ro‘yxati (Telegram ulanganligi bilan — 2FA holati)',
     platform: ['super_admin'],
     handler: async ({ db }) => ({
       items: (
         await db.query(
-          'SELECT id,login,display_name,role,active,must_change_password,created_at FROM users WHERE tenant_id IS NULL ORDER BY role,display_name',
+          `SELECT u.id,u.login,u.display_name,u.role,u.active,u.must_change_password,u.created_at,
+                  (a.user_id IS NOT NULL) telegram_linked
+           FROM users u LEFT JOIN telegram_accounts a ON a.user_id=u.id
+           WHERE u.tenant_id IS NULL ORDER BY u.role,u.display_name`,
         )
       ).rows,
     }),
+  });
+  add({
+    method: 'PATCH',
+    path: '/v1/platform/staff/:id',
+    summary:
+      'Platforma xodimini faolsizlantirish/faollashtirish yoki rolini o‘zgartirish (super_admin ↔ support); sessiyalari bekor qilinadi; o‘zini va platforma egasini o‘zgartirib bo‘lmaydi',
+    platform: ['super_admin'],
+    params: idParams,
+    body: z.strictObject({ active: z.boolean(), role: z.enum(['super_admin', 'support']) }),
+    handler: async ({ db, actor, params, body }) => {
+      const user = await one(
+        db,
+        'SELECT * FROM users WHERE id=$1 AND tenant_id IS NULL FOR UPDATE',
+        [params.id],
+      );
+      invariant(user.id !== actor.id && user.role !== 'platform_owner', 'FORBIDDEN', 403);
+      const row = await one(
+        db,
+        'UPDATE users SET active=$2,role=$3,version=version+1 WHERE id=$1 RETURNING id,login,display_name,role,active,must_change_password,created_at',
+        [user.id, body.active, body.role],
+      );
+      if (!body.active || body.role !== user.role)
+        await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
+      await audit(db, actor, 'platform.staff.update', user.id, {
+        before: { active: user.active, role: user.role },
+        after: { active: row.active, role: row.role },
+      });
+      return row;
+    },
+  });
+  add({
+    method: 'GET',
+    path: '/v1/platform/audit',
+    summary:
+      'Platforma auditi: platforma xodimlari amallari (tarif, obuna, bloklash, xodimlar, parol tiklash, kirish) — action, actor_id, sana filtrlari',
+    platform: ['super_admin', 'platform_owner'],
+    query: pageQuery.extend({
+      action: z.string().trim().max(60).optional(),
+      actor_id: uuid.optional(),
+      from: date.optional(),
+      to: date.optional(),
+    }),
+    handler: async ({ db, query }) => {
+      const where = `a.tenant_id IS NULL AND ($1::text IS NULL OR a.action ILIKE $1||'%') AND ($2::uuid IS NULL OR a.actor_id=$2)
+        AND ($3::date IS NULL OR a.created_at>=$3) AND ($4::date IS NULL OR a.created_at<($4::date+1))`;
+      const params = [
+        query.action || null,
+        query.actor_id ?? null,
+        query.from ?? null,
+        query.to ?? null,
+      ];
+      const items = (
+        await db.query(
+          `SELECT a.id,a.actor_id,u.display_name actor_name,u.role actor_role,a.action,a.resource_id,a.details,a.created_at
+           FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE ${where} ORDER BY a.created_at DESC,a.id LIMIT $5 OFFSET $6`,
+          [...params, query.limit, query.offset],
+        )
+      ).rows;
+      const total = await one(
+        db,
+        `SELECT count(*)::int total FROM audit_events a WHERE ${where}`,
+        params,
+      );
+      return { items, total: total.total };
+    },
   });
   add({
     method: 'PATCH',

@@ -31,6 +31,7 @@ import { creditBalance } from './billing.js';
 import { money } from './money.js';
 import { accessState } from './auth.js';
 import { lockProjectPremises } from './premises.js';
+import { notify } from './notify.js';
 export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
@@ -696,11 +697,34 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     summary: 'Bloklangan admin uchun support yoki tarif almashtirish so‘rovi',
     recovery: true,
     body: z.strictObject({ kind: z.enum(['support', 'plan_change']), message: reason }),
-    handler: async ({ db, actor, body }) =>
-      one(
+    handler: async ({ db, actor, body }) => {
+      const row = await one(
         db,
         'INSERT INTO support_requests(tenant_id,user_id,kind,message) VALUES($1,$2,$3,$4) RETURNING id,status,created_at',
         [actor.tenant_id, actor.id, body.kind, body.message],
-      ),
+      );
+      // Platforma xodimlariga (super admin, support, egasi) bildirishnoma: ilova ichida + Telegram (ulangan bo'lsa).
+      const tenant = await one(db, 'SELECT legal_name FROM tenants WHERE id=$1', [actor.tenant_id]);
+      const staff = (
+        await db.query(
+          "SELECT id FROM users WHERE tenant_id IS NULL AND active AND role IN ('super_admin','support','platform_owner')",
+        )
+      ).rows;
+      const title =
+        body.kind === 'plan_change'
+          ? `Tarif almashtirish so‘rovi: ${tenant.legal_name}`
+          : `Yangi murojaat: ${tenant.legal_name}`;
+      for (const s of staff)
+        await notify(db, {
+          tenant_id: null,
+          user_id: s.id,
+          kind: 'support.request',
+          title,
+          body: `${actor.display_name}: ${body.message.slice(0, 300)}${body.message.length > 300 ? '…' : ''}`,
+          payload: { support_request_id: row.id, tenant_id: actor.tenant_id, kind: body.kind },
+          dedup_key: `support.request:${row.id}:${s.id}`,
+        });
+      return row;
+    },
   });
 }

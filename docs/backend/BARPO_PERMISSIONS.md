@@ -84,7 +84,7 @@ Forma va tafsilotlar o‘z biznes sahifasining huquqini oladi: masalan smeta yar
 
 ## Platforma chegaralari
 
-Platform owner: kompaniya/invite/alias/tarif/invoys/manual payment/support. Super admin: texnik diagnostika va texnik staff. Support: support so‘rovlari. Hech biri tenant APIga avtomatik kira olmaydi; break-glass o‘chirilgan. Super admin PostgreSQL SUPERUSER emas.
+Platform owner: kompaniya/invite/alias/tarif/obuna/invoys/manual payment/support/audit/parol tiklash. Super admin (D15): o‘qish (kompaniyalar, tariflar, to‘lovlar), murojaatlar, diagnostika, texnik staff (yaratish, faolsizlantirish, rol), platforma auditi, parol tiklash; biznes amallari yo‘q. Support: o‘qish, murojaatlar, diagnostika. Egasi va super admin Telegram ulangan bo‘lsa 2FA (D16). Hech biri tenant APIga avtomatik kira olmaydi; break-glass o‘chirilgan. Super admin PostgreSQL SUPERUSER emas.
 
 ## Sezgir maydonlar
 

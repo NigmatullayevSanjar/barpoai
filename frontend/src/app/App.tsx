@@ -133,6 +133,7 @@ const Platform = {
     })),
   ),
   Staff: lazy(() => import('@/features/platform/pages').then((m) => ({ default: m.StaffPage }))),
+  Audit: lazy(() => import('@/features/platform/AuditPage').then((m) => ({ default: m.PlatformAuditPage }))),
   Diagnostics: lazy(() =>
     import('@/features/platform/pages').then((m) => ({
       default: m.DiagnosticsPage,
@@ -249,6 +250,7 @@ export function App() {
                         <Route path="/admin/debtors" element={<Platform.Debtors />} />
                         <Route path="/admin/support" element={<Platform.Support />} />
                         <Route path="/admin/staff" element={<Platform.Staff />} />
+                        <Route path="/admin/audit" element={<Platform.Audit />} />
                         <Route path="/admin/diagnostics" element={<Platform.Diagnostics />} />
                       </Route>
                     </Route>
