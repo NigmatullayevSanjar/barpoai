@@ -11,6 +11,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { createPool, transaction, one } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
@@ -3152,6 +3153,268 @@ try {
       if (key in row) assert.match(row[key], twoDecimals, `${key}=${row[key]}`);
   assert(fullSummary.top_debt.length > 0 && fullSummary.monthly.length > 0);
   passed.push('Finance summary amounts always have two decimals, also for a project without entries');
+  // ---- Egasi fikri (2026-10-12): openpyxl uslubidagi Excel smeta (mutlaq rels yo'li, jadval, tepada nom va izoh,
+  // pastda birlashtirilgan JAMI qatori, "m³" va "kompl." birliklari) import qilinadi.
+  const smetaBook = new ExcelJS.Workbook();
+  const smetaSheet = smetaBook.addWorksheet('Test smeta');
+  smetaSheet.addRow(['QURILISH SMETASI (TEST)']);
+  smetaSheet.mergeCells('A1:F1');
+  smetaSheet.addRow(['DIQQAT: shartli qiymatlar']);
+  smetaSheet.mergeCells('A2:F2');
+  smetaSheet.addRow([]);
+  smetaSheet.addTable({
+    name: 'TestSmeta',
+    ref: 'A4',
+    headerRow: true,
+    columns: ['Bo‘lim', 'Ish nomi', 'O‘lchov birligi', 'Miqdor', 'Birlik narxi (so‘m)', 'Jami summa (so‘m)'].map(
+      (name) => ({ name }),
+    ),
+    rows: [
+      ['Poydevor', 'Beton quyish', 'm³', 2, 1000, { formula: 'D5*E5' }],
+      ['Tayyorgarlik', 'Geodezik belgilash', 'kompl.', 1, 500, { formula: 'D6*E6' }],
+      ['Poydevor', 'Gidroizolyatsiya', 'm²', 3, 10, { formula: 'D7*E7' }],
+    ],
+  });
+  smetaSheet.addRow([]);
+  smetaSheet.addRow(['UMUMIY JAMI', null, null, null, null, { formula: 'SUM(F5:F7)' }]);
+  smetaSheet.mergeCells('A9:E9');
+  const smetaZip = await JSZip.loadAsync(Buffer.from(await smetaBook.xlsx.writeBuffer()));
+  for (const relName of Object.keys(smetaZip.files).filter((n) => n.endsWith('.rels'))) {
+    const xml = await smetaZip.file(relName)!.async('string');
+    smetaZip.file(relName, xml.replace(/Target="\.\.\/tables\//g, 'Target="/xl/tables/'));
+  }
+  const smetaRels = await smetaZip.file('xl/worksheets/_rels/sheet1.xml.rels')!.async('string');
+  assert.match(smetaRels, /Target="\/xl\/tables\/table1\.xml"/);
+  const smetaB64 = (await smetaZip.generateAsync({ type: 'nodebuffer' })).toString('base64');
+  const smetaInspect = await call(
+    'POST',
+    '/v1/estimate-imports/inspect',
+    { file_base64: smetaB64 },
+    adminAgain,
+  );
+  assert.equal(smetaInspect.header_row, 4);
+  assert.deepEqual(smetaInspect.headers, [
+    'Bo‘lim',
+    'Ish nomi',
+    'O‘lchov birligi',
+    'Miqdor',
+    'Birlik narxi (so‘m)',
+    'Jami summa (so‘m)',
+  ]);
+  assert.deepEqual(smetaInspect.sample[0].slice(0, 5), ['Poydevor', 'Beton quyish', 'm³', '2', '1000']);
+  const smetaPreview = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Openpyxl smeta',
+      file_base64: smetaB64,
+      mapping: {
+        category: 'Bo‘lim',
+        description: 'Ish nomi',
+        unit_id: 'O‘lchov birligi',
+        quantity: 'Miqdor',
+        unit_price: 'Birlik narxi (so‘m)',
+      },
+      defaults: { kind: 'labor' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual(
+    smetaPreview.preview.lines.map((l: any) => [l.description, l.unit_id, l.quantity]),
+    [
+      ['Beton quyish', 'm3', '2'],
+      ['Geodezik belgilash', 'set', '1'],
+      ['Gidroizolyatsiya', 'm2', '3'],
+    ],
+  );
+  // Formula ustuni (Jami) xaritalansa rad etiladi; o'qib bo'lmaydigan ZIP 500 emas, INVALID_XLSX
+  await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Formula',
+      file_base64: smetaB64,
+      mapping: { description: 'Ish nomi', quantity: 'Miqdor', unit_price: 'Jami summa (so‘m)' },
+      defaults: { kind: 'labor', unit_id: 'm2' },
+    },
+    adminAgain,
+    undefined,
+    400,
+  );
+  const brokenZip = new JSZip();
+  brokenZip.file('xl/workbook.xml', '<workbook');
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/estimate-imports/inspect',
+        { file_base64: (await brokenZip.generateAsync({ type: 'nodebuffer' })).toString('base64') },
+        adminAgain,
+        undefined,
+        400,
+      )
+    ).error.code,
+    'INVALID_XLSX',
+  );
+  passed.push(
+    'Estimate import reads openpyxl workbooks (absolute rels, table, merged title and total rows), finds the header row, maps m³/m²/kompl. units and reports unreadable files as INVALID_XLSX',
+  );
+  // ---- Tarif tahriri: narx va limit o'zgaradi, chiqarilgan invoyslar summasi o'zgarmaydi, o'chirish taqiq
+  const invoicesBefore = (
+    await admin.query('SELECT id,amount::text FROM billing_invoices WHERE plan_version_id=$1 ORDER BY id', [plan.id])
+  ).rows;
+  assert(invoicesBefore.length > 0);
+  const editedPlan = await call(
+    'PATCH',
+    `/v1/platform/plans/${plan.id}`,
+    { code: 'standard', monthly_price: '1200000.00', limits: { users: 25, projects: 20 } },
+    ownerToken,
+  );
+  assert.equal(editedPlan.monthly_price, '1200000.00');
+  assert.deepEqual(editedPlan.limits, { users: 25, projects: 20 });
+  assert.deepEqual(
+    (
+      await admin.query('SELECT id,amount::text FROM billing_invoices WHERE plan_version_id=$1 ORDER BY id', [plan.id])
+    ).rows,
+    invoicesBefore,
+  );
+  await assert.rejects(admin.query('DELETE FROM plan_versions WHERE id=$1', [plan.id]), /IMMUTABLE_LEDGER/);
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='plan.update' AND resource_id=$1", [plan.id]))
+      .rows[0].n,
+    1,
+  );
+  await call('PATCH', `/v1/platform/plans/${plan.id}`, { code: 'standard', monthly_price: '1.00' }, supportToken, undefined, 403);
+  passed.push('Plan edit changes price and limits for future invoices only, is audited, owner-only, and plans still cannot be deleted');
+  // ---- super_admin: platforma egasining barcha sahifalari + parol tiklash (kompaniya admini ham), 6 belgili parol
+  await admin.query(
+    "INSERT INTO users(login,display_name,password_hash,role) VALUES('superadmin','Super admin',$1,'super_admin')",
+    [await hashPassword(pass)],
+  );
+  const superToken = (await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass }))
+    .access_token;
+  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/support'])
+    await call('GET', path, undefined, superToken);
+  await call('GET', '/v1/platform/tenants', undefined, supportToken, undefined, 403);
+  const tenantAdminId = (await admin.query("SELECT id FROM users WHERE tenant_id=$1 AND role='tenant_admin'", [t.id]))
+    .rows[0].id;
+  const ownerId = (await admin.query("SELECT id FROM users WHERE login='owner'")).rows[0].id;
+  const superId = (await admin.query("SELECT id FROM users WHERE login='superadmin'")).rows[0].id;
+  await call('POST', `/v1/platform/users/${ownerId}/reset`, undefined, superToken, undefined, 403);
+  await call('POST', `/v1/platform/users/${superId}/reset`, undefined, superToken, undefined, 403);
+  await call('POST', `/v1/platform/users/${tenantAdminId}/reset`, undefined, supportToken, undefined, 403);
+  passed.push('super_admin opens every platform-owner page; support does not; nobody resets their own or the owner’s password through a reset link');
+  // ---- Blok kartasi: maydon, sanalar, mas'ullar, rasm; holat sanalardan; smeta jami blok zonalaridan
+  const blockImage = await call(
+    'POST',
+    '/v1/files',
+    { project_id: projectQ.id, name: 'blok.png', mime_type: 'image/png', base64: png1x1 },
+    adminAgain,
+  );
+  const qBlockNow = (await call('GET', `/v1/projects/${projectQ.id}`, undefined, adminAgain)).zones.find(
+    (z: any) => z.id === qBlock.id,
+  );
+  assert.equal(qBlockNow.status, 'waiting');
+  assert.equal(qBlockNow.estimate_total, '100.00');
+  await call(
+    'PATCH',
+    `/v1/projects/${projectQ.id}/zones/${qBlock.id}`,
+    { version: qBlockNow.version, name: 'Blok Q', kind: 'block', floors_count: 12, planned_start: '2026-01-10', planned_end: '2026-01-01' },
+    adminAgain,
+    undefined,
+    400,
+  );
+  const qBlockEdited = await call(
+    'PATCH',
+    `/v1/projects/${projectQ.id}/zones/${qBlock.id}`,
+    {
+      version: qBlockNow.version,
+      name: 'Blok Q',
+      kind: 'block',
+      floors_count: 12,
+      area_m2: '1000',
+      planned_start: '2020-01-01',
+      planned_end: '2020-12-31',
+      actual_start: '2020-02-01',
+      image_file_id: blockImage.id,
+      responsible_ids: [brigadier.id],
+    },
+    adminAgain,
+  );
+  assert.equal(qBlockEdited.area_m2, '1000.00');
+  // Faqat nom/tur yuborilgan eski tahrir karta maydonlarini o'chirmaydi
+  const qBlockRenamed = await call(
+    'PATCH',
+    `/v1/projects/${projectQ.id}/zones/${qBlock.id}`,
+    { version: qBlockEdited.version, name: 'Blok Q', kind: 'block', floors_count: 12 },
+    adminAgain,
+  );
+  assert.equal(qBlockRenamed.planned_end, qBlockEdited.planned_end);
+  assert.equal(qBlockRenamed.image_file_id, blockImage.id);
+  const blockOf = async (token: string) =>
+    (await call('GET', `/v1/projects/${projectQ.id}`, undefined, token)).zones.find((z: any) => z.id === qBlock.id);
+  const delayed = await blockOf(adminAgain);
+  assert.equal(delayed.status, 'delayed');
+  assert.deepEqual(delayed.responsibles.map((r: any) => r.id), [brigadier.id]);
+  assert.equal((await blockOf(brigP)).estimate_total, null);
+  await call(
+    'PATCH',
+    `/v1/projects/${projectQ.id}/zones/${qBlock.id}`,
+    { version: qBlockRenamed.version, name: 'Blok Q', kind: 'block', floors_count: 12, actual_end: '2020-11-30', responsible_ids: [] },
+    adminAgain,
+  );
+  const completed = await blockOf(adminAgain);
+  assert.equal(completed.status, 'completed');
+  assert.deepEqual(completed.responsibles, []);
+  passed.push(
+    'Block card stores area, plan/fact dates, image and responsibles; status is derived from dates; estimate total comes from block zone lines and is hidden without price permission; an old-style edit keeps card fields',
+  );
+  // ---- Xonadon reja rasmi, xonalar soni bo'yicha guruh, oxirgi narx varaqasidagi tannarx
+  const qPremise = (await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}`, undefined, adminAgain))
+    .items[0];
+  const planImage = await call(
+    'POST',
+    '/v1/files',
+    { project_id: projectQ.id, name: 'reja.png', mime_type: 'image/png', base64: png1x1 },
+    adminAgain,
+  );
+  const planned = await call(
+    'PATCH',
+    `/v1/projects/${projectQ.id}/premises/${qPremise.id}/plan`,
+    { version: qPremise.version, plan_file_id: planImage.id },
+    adminAgain,
+  );
+  assert.equal(planned.plan_file_id, planImage.id);
+  const blockList = await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}&rooms=none`, undefined, adminAgain);
+  assert.equal(blockList.items[0].cost, '100.00');
+  assert.deepEqual(blockList.by_rooms, [{ rooms: null, count: 1 }]);
+  assert.equal(
+    (await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}&rooms=2`, undefined, adminAgain)).total_count,
+    0,
+  );
+  assert.equal(
+    (await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}`, undefined, brigP)).items[0].cost,
+    null,
+  );
+  await call('DELETE', `/v1/files/${planImage.id}`, { reason: 'Reja rasmi almashtiriladi' }, adminAgain);
+  assert.equal(
+    (await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}`, undefined, adminAgain)).items[0]
+      .plan_file_id,
+    null,
+  );
+  passed.push(
+    'Premise plan image is set by version and cleared when the file is archived; premises filter by rooms with group counts; cost comes from the latest price list only with pricing permission',
+  );
+  // Oxirida: super_admin kompaniya adminiga reset havolasi beradi, admin 6 belgili yangi parol qo'yadi (sessiyalar bekor)
+  const adminReset = await call('POST', `/v1/platform/users/${tenantAdminId}/reset`, undefined, superToken);
+  await call('POST', '/v1/auth/reset', { token: adminReset.token, new_password: 'qisqa' }, undefined, undefined, 400);
+  await call('POST', '/v1/auth/reset', { token: adminReset.token, new_password: 'olti66' });
+  await call('GET', '/v1/projects', undefined, adminAgain, undefined, 401);
+  const adminLoginRow = (await admin.query('SELECT login FROM users WHERE id=$1', [tenantAdminId])).rows[0];
+  await call('POST', '/v1/auth/login', { login: adminLoginRow.login, password: 'olti66' });
+  passed.push('super_admin issues a reset link to a company admin; the new password needs 6+ characters; old sessions are revoked');
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

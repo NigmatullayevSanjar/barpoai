@@ -6,7 +6,8 @@ import { accessState } from './auth.js';
 import { notify } from './notify.js';
 import { creditBalance } from './billing.js';
 import { money } from './money.js';
-const owner = ['platform_owner'];
+// super_admin platforma egasining barcha huquqlariga ega (egasi qarori, 2026-10-12).
+const owner = ['platform_owner', 'super_admin'];
 /** Platforma egasi va texnik xodimlar uchun o'qish/ko'rish endpointlari (frontend kartalari uchun). */
 export function platformExtraRoutes(add: (r: Endpoint) => void) {
   add({

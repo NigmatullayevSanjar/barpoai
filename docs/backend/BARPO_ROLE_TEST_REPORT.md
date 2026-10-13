@@ -1,6 +1,6 @@
 # BARPO AI — 11-bosqich: rol bo‘yicha to‘liq sinov hisoboti
 
-Bajarildi: 2026-10-12T03:52:34.928Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
+Bajarildi: 2026-10-12T12:35:05.567Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
 
 ## Natija
 
@@ -26,7 +26,7 @@ Har rol uchun 70 ta GET endpoint chaqirildi; kutilgan natija `/v1/me/permissions
 | manager | 21 | 49 | 0 |
 | tenant_admin | 62 | 8 | 0 |
 | platform_owner | 10 | 60 | 0 |
-| super_admin | 7 | 63 | 0 |
+| super_admin | 12 | 58 | 0 |
 | support | 6 | 64 | 0 |
 
 Parametri to‘ldirilmagan (matritsadan tashqari) endpointlar: yo‘q.

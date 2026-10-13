@@ -1,8 +1,9 @@
+import { posix } from 'node:path';
 import ExcelJS from 'exceljs';
 import { type Db, type Row, one, audit } from './db.js';
 import { permit, projectScope } from './permissions.js';
 import { estimateInput } from './schemas.js';
-import { invariant } from './errors.js';
+import { DomainError, invariant } from './errors.js';
 import { dec, money, plannedQuantity } from './money.js';
 export async function validateEstimate(db: Db, actor: Row, input: Row) {
   estimateInput.parse(input);
@@ -141,67 +142,157 @@ export async function loadWorkbook(base64: string) {
       400,
     );
   }
+  // openpyxl va boshqalar bog'lanishni mutlaq yo'l bilan yozadi (Target="/xl/tables/table1.xml");
+  // exceljs faqat nisbiy yo'lni topadi va jadvalli varaqda TypeError beradi. Yo'llarni nisbiyga keltiramiz.
+  let rewritten = false;
+  for (const name of Object.keys(zip.files).filter((n) => n.endsWith('.rels'))) {
+    const xml = await zip.file(name)!.async('string');
+    const base = posix.dirname(posix.dirname(name)); // xl/worksheets/_rels/x.rels -> xl/worksheets
+    const fixed = xml.replace(
+      /(<Relationship\b[^>]*?\bTarget=")\/([^"]+)"/g,
+      (match, head, target) =>
+        /TargetMode="External"/.test(match) ? match : `${head}${posix.relative(base, target)}"`,
+    );
+    if (fixed !== xml) {
+      zip.file(name, fixed);
+      rewritten = true;
+    }
+  }
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as any);
+  try {
+    await workbook.xlsx.load(
+      (rewritten ? await zip.generateAsync({ type: 'nodebuffer' }) : buffer) as any,
+    );
+  } catch {
+    throw new DomainError('INVALID_XLSX', 400);
+  }
   const sheet = workbook.worksheets[0];
   invariant(sheet && sheet.rowCount <= 2001 && sheet.columnCount <= 50, 'WORKBOOK_LIMIT', 400);
   return sheet;
 }
+type Sheet = Awaited<ReturnType<typeof loadWorkbook>>;
+/**
+ * Katak qiymati: birlashtirilgan katakning faqat asosiy (chap-yuqori) katagi o'qiladi, qolganlari bo'sh;
+ * rich text matnga aylanadi; formula obyekt bo'lib qoladi (chaqiruvchi rad etadi).
+ */
+function cellValue(sheet: Sheet, row: number, col: number): unknown {
+  const cell = sheet.getRow(row).getCell(col);
+  if (cell.isMerged && cell.master.address !== cell.address) return null;
+  const value = cell.value as any;
+  if (value && typeof value === 'object' && Array.isArray(value.richText))
+    return value.richText.map((r: { text: string }) => r.text).join('');
+  return value ?? null;
+}
+/**
+ * Sarlavha qatori: dastlabki 20 qatordan kamida ikkita matnli katak bo'lgan va son/formula
+ * bo'lmagan birinchi qator. Tepadagi birlashtirilgan nom va izoh qatorlari shunday o'tkazib yuboriladi.
+ */
+function headerRow(sheet: Sheet) {
+  for (let r = 1; r <= Math.min(sheet.rowCount, 20); r++) {
+    const values: unknown[] = [];
+    for (let c = 1; c <= sheet.columnCount; c++) {
+      const v = cellValue(sheet, r, c);
+      if (v !== null && v !== '') values.push(v);
+    }
+    if (values.length >= 2 && values.every((v) => typeof v === 'string' && v.trim())) return r;
+  }
+  return 1;
+}
+function headerMap(sheet: Sheet, row: number) {
+  const headers = new Map<string, number>();
+  for (let c = 1; c <= sheet.columnCount; c++) {
+    const v = String(cellValue(sheet, row, c) ?? '').trim();
+    if (v && !headers.has(v)) headers.set(v, c);
+  }
+  return headers;
+}
+/** Har qator Excel'dagi haqiqiy raqami bilan (`_row`), xatolarda shu raqam ko'rsatiladi. */
 export async function parseWorkbook(base64: string, mapping: Record<string, string>) {
   const sheet = await loadWorkbook(base64);
-  const headers = new Map<string, number>();
-  sheet.getRow(1).eachCell((cell, n) => headers.set(String(cell.value ?? '').trim(), n));
+  const first = headerRow(sheet);
+  const headers = headerMap(sheet, first);
+  for (const header of Object.values(mapping))
+    invariant(headers.has(header), 'MAPPING_HEADER_NOT_FOUND', 400);
   const lines: Row[] = [];
-  for (let i = 2; i <= sheet.rowCount; i++) {
-    const row = sheet.getRow(i);
-    if (row.actualCellCount === 0) continue;
+  for (let i = first + 1; i <= sheet.rowCount; i++) {
     const line: Row = {};
     for (const [field, header] of Object.entries(mapping)) {
-      invariant(headers.has(header), 'MAPPING_HEADER_NOT_FOUND', 400);
-      const value = row.getCell(headers.get(header)!).value;
+      const value = cellValue(sheet, i, headers.get(header)!);
       invariant(
         value === null || ['string', 'number'].includes(typeof value),
         'FORMULAS_NOT_ALLOWED',
         400,
       );
-      if (value !== null && value !== '') line[field] = String(value);
+      if (value !== null && String(value).trim() !== '') line[field] = String(value).trim();
     }
-    lines.push(line);
+    // Bo'sh, bo'lim nomi yoki "JAMI" kabi birlashtirilgan qatorlar: nom, miqdor va narx yo'q.
+    if (
+      line.description === undefined &&
+      line.quantity === undefined &&
+      line.unit_price === undefined
+    )
+      continue;
+    lines.push({ ...line, _row: i });
   }
   return lines;
 }
 /** Excel faylning sarlavhalari va dastlabki qatorlari; hech narsa saqlanmaydi (mapping tanlash uchun). */
 export async function inspectWorkbook(base64: string) {
-  const buffer = Buffer.from(base64, 'base64');
-  invariant(
-    buffer.length <= 2 * 1024 * 1024 && buffer.subarray(0, 2).toString() === 'PK',
-    'INVALID_XLSX',
-    400,
-  );
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as any);
-  const sheet = workbook.worksheets[0];
-  invariant(sheet && sheet.rowCount <= 2001 && sheet.columnCount <= 50, 'WORKBOOK_LIMIT', 400);
-  const headers: string[] = [];
-  sheet.getRow(1).eachCell((cell, n) => {
-    headers[n - 1] = String(cell.value ?? '').trim();
-  });
+  const sheet = await loadWorkbook(base64);
+  const first = headerRow(sheet);
+  const columns = [...headerMap(sheet, first)];
   const sample: string[][] = [];
-  for (let i = 2; i <= Math.min(sheet.rowCount, 6); i++) {
-    const row = sheet.getRow(i);
-    sample.push(
-      headers.map((_, idx) => {
-        const value = row.getCell(idx + 1).value;
-        return value === null || value === undefined
-          ? ''
-          : typeof value === 'object'
-            ? '[formula]'
-            : String(value);
-      }),
-    );
+  let rows = 0;
+  for (let i = first + 1; i <= sheet.rowCount; i++) {
+    const values = columns.map(([, c]) => cellValue(sheet, i, c));
+    if (values.every((v) => v === null || v === '')) continue;
+    rows++;
+    if (sample.length < 5)
+      sample.push(
+        values.map((v) => (v === null ? '' : typeof v === 'object' ? '[formula]' : String(v))),
+      );
   }
-  return { sheet: sheet.name, headers: headers.filter(Boolean), rows: sheet.rowCount - 1, sample };
+  return {
+    sheet: sheet.name,
+    header_row: first,
+    headers: columns.map(([h]) => h),
+    rows,
+    sample,
+  };
 }
+/** Excel'dagi odatiy birlik yozuvlari → `units.id` (kichik harf, oxiridagi nuqtasiz). */
+const unitAliases: Record<string, string> = {
+  'm²': 'm2',
+  'м²': 'm2',
+  м2: 'm2',
+  'kv.m': 'm2',
+  'кв.м': 'm2',
+  'm³': 'm3',
+  'м³': 'm3',
+  м3: 'm3',
+  'kub.m': 'm3',
+  'куб.м': 'm3',
+  м: 'm',
+  metr: 'm',
+  метр: 'm',
+  'p.m': 'm',
+  'п.м': 'm',
+  кг: 'kg',
+  т: 't',
+  tn: 't',
+  тн: 't',
+  tonna: 't',
+  тонна: 't',
+  dona: 'pcs',
+  шт: 'pcs',
+  soat: 'hour',
+  час: 'hour',
+  ч: 'hour',
+  kompl: 'set',
+  komplekt: 'set',
+  компл: 'set',
+  комплект: 'set',
+};
 /**
  * Importda material va zona nomlarini identifikatorlarga aylantiradi.
  * Topilmagan nomlar xato sifatida qaytadi; yashirincha yangi yozuv yaratilmaydi.
@@ -237,14 +328,15 @@ export async function resolveImportNames(db: Db, actor: Row, projectId: string, 
   };
   const errors: { row: number; field: string; message: string }[] = [];
   const out = lines.map((line, index) => {
-    const next: Row = { ...line };
+    const { _row, ...next }: Row = { ...line };
+    const row = (_row as number | undefined) ?? index + 2;
     if (next.kind) next.kind = kinds[String(next.kind).trim().toLowerCase()] ?? next.kind;
     if (next.material_name !== undefined) {
       const name = String(next.material_name).trim().toLowerCase();
       const found = materials.find((m) => m.name.toLowerCase() === name);
       if (!found)
         errors.push({
-          row: index + 2,
+          row,
           field: 'material_name',
           message: String(next.material_name),
         });
@@ -257,12 +349,14 @@ export async function resolveImportNames(db: Db, actor: Row, projectId: string, 
     if (next.zone_name !== undefined) {
       const name = String(next.zone_name).trim().toLowerCase();
       const found = zones.find((z) => z.name.toLowerCase() === name);
-      if (!found)
-        errors.push({ row: index + 2, field: 'zone_name', message: String(next.zone_name) });
+      if (!found) errors.push({ row, field: 'zone_name', message: String(next.zone_name) });
       else next.zone_id = found.id;
       delete next.zone_name;
     }
-    if (next.unit_id) next.unit_id = String(next.unit_id).trim().toLowerCase();
+    if (next.unit_id) {
+      const unit = String(next.unit_id).trim().toLowerCase().replace(/\.$/, '');
+      next.unit_id = unitAliases[unit] ?? unit;
+    }
     for (const key of ['quantity', 'unit_price', 'norm', 'work_quantity', 'loss_percent'])
       if (typeof next[key] === 'string') next[key] = next[key].replace(/\s/g, '').replace(',', '.');
     next.position = index;

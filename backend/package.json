@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "migrate": "tsx src/migrate.ts",
     "bootstrap": "tsx src/bootstrap.ts",
+    "seed:dev": "tsx scripts/seed-dev.ts",
     "worker": "tsx src/worker.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:integration": "tsx scripts/integration.ts",

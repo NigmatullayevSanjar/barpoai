@@ -14,10 +14,27 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
     params: idParams,
     handler: async ({ db, actor, params }) => {
       const project = await projectScope(db, actor, params.id);
+      // Holat sanalardan: fakt tugagan → completed; reja tugash o'tgan → delayed; fakt boshlangan → active; aks holda waiting.
+      // Smeta jami: arxivlanmagan smetalarning joriy qatorlari, zonasi shu blok yoki uning ichidagi zona (eng yaqin blok).
+      const prices = await allowed(db, actor, 'prices.read');
       const zones = (
         await db.query(
-          'SELECT * FROM zones WHERE tenant_id=$1 AND project_id=$2 ORDER BY name,id',
-          [actor.tenant_id, params.id],
+          `SELECT z.*,
+             CASE WHEN z.actual_end IS NOT NULL THEN 'completed'
+                  WHEN z.planned_end < current_date THEN 'delayed'
+                  WHEN z.actual_start IS NOT NULL THEN 'active'
+                  ELSE 'waiting' END status,
+             coalesce((SELECT json_agg(json_build_object('id',u.id,'display_name',u.display_name) ORDER BY u.display_name)
+               FROM zone_responsibles r JOIN users u ON u.tenant_id=r.tenant_id AND u.id=r.user_id
+               WHERE r.tenant_id=z.tenant_id AND r.zone_id=z.id),'[]') responsibles,
+             CASE WHEN $3 AND z.kind='block' THEN coalesce(t.total,0)::text END estimate_total
+           FROM zones z
+           LEFT JOIN (SELECT premise_block(l.tenant_id,l.zone_id) block_id,sum(l.total) total
+                      FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id
+                      WHERE l.tenant_id=$1 AND e.project_id=$2 AND e.archived_at IS NULL AND l.archived_at IS NULL AND l.zone_id IS NOT NULL
+                      GROUP BY 1) t ON t.block_id=z.id
+           WHERE z.tenant_id=$1 AND z.project_id=$2 ORDER BY z.name,z.id`,
+          [actor.tenant_id, params.id, prices],
         )
       ).rows;
       const members = (

@@ -20,6 +20,9 @@ export type Project = {
 };
 export type ZoneKind = 'block' | 'entrance' | 'floor' | 'other';
 export const zoneKinds: ZoneKind[] = ['block', 'entrance', 'floor', 'other'];
+/** Blok holati serverda sanalardan hisoblanadi (qo'lda o'zgartirilmaydi). */
+export type ZoneStatus = 'waiting' | 'active' | 'delayed' | 'completed';
+export const zoneStatuses: ZoneStatus[] = ['waiting', 'active', 'delayed', 'completed'];
 export type Zone = {
   id: string;
   project_id: string;
@@ -28,6 +31,16 @@ export type Zone = {
   kind: ZoneKind;
   floors_count: number | null;
   version: number;
+  area_m2: string | null;
+  planned_start: string | null;
+  planned_end: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  image_file_id: string | null;
+  status: ZoneStatus;
+  responsibles: { id: string; display_name: string }[];
+  /** Faqat blok uchun va narxlarni ko'rish huquqi bo'lsa; aks holda null. */
+  estimate_total: string | null;
 };
 export type Member = {
   id: string;
@@ -95,10 +108,19 @@ export type Premise = {
   zone_name: string | null;
   zone_kind: ZoneKind | null;
   block_name: string | null;
+  plan_file_id: string | null;
+  /** Oxirgi narx varaqasidagi qiymat; huquq yo'q yoki varaqada yo'q bo'lsa null. */
+  cost: string | null;
   created_at: string;
   updated_at: string;
 };
-export type PremiseList = { items: Premise[]; total_count: number; total_area_m2: string };
+export type PremiseList = {
+  items: Premise[];
+  total_count: number;
+  total_area_m2: string;
+  /** Xonalar soni filtriga e'tibor bermaydi: blok sahifasidagi guruhlar shundan quriladi. */
+  by_rooms: { rooms: number | null; count: number }[];
+};
 export type PremiseImportAction = 'create' | 'update' | 'unchanged' | 'error';
 export type PremiseImportSummary = Record<PremiseImportAction, number>;
 export type PremiseImportRow = {

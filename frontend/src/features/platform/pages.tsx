@@ -4,9 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Check, Copy, Link2, Plus, ShieldBan, ShieldCheck, Archive, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, Link2, Pencil, Plus, ShieldBan, ShieldCheck, Archive, UserPlus } from 'lucide-react';
 import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { DetailError } from '@/app/guards';
+import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { displayCurrency } from '@/lib/currency-store';
@@ -112,7 +113,12 @@ export function PlatformDashboard() {
     <div className="stack" style={{ gap: 18 }}>
       <PageHeader title={t('platform.dashboard_title')} description={t('platform.dashboard_sub')} />
       <div className="grid-4">
-        <Stat accent label={t('platform.tenants_total')} value={tenants.data?.items.length ?? '—'} />
+        <Stat
+          accent
+          to="/admin/tenants"
+          label={t('platform.tenants_total')}
+          value={tenants.data?.items.length ?? '—'}
+        />
         <Stat label={t('platform.tenants_trial')} value={count('trial')} />
         <Stat label={t('platform.tenants_paid')} value={count('paid')} />
         <Stat
@@ -598,6 +604,11 @@ export function TenantDetailPage() {
                 {d.admin
                   ? `${d.admin.display_name} (${d.admin.login}${d.admin.phone ? `, ${d.admin.phone}` : ''})`
                   : '—'}
+                {d.admin && (
+                  <div style={{ marginTop: 6 }}>
+                    <ResetLinkButton userId={d.admin.id} />
+                  </div>
+                )}
               </dd>
               <dt>{t('tenants.users')}</dt>
               <dd>
@@ -1063,6 +1074,8 @@ export function PlansPage() {
     queryFn: () => api<ListResponse<Plan>>('/v1/platform/plans'),
   });
   const [open, setOpen] = useState(false);
+  // Tahrirlanayotgan tarif (null — yangi versiya yaratish); versiya raqami tahrirda o'zgarmaydi.
+  const [editing, setEditing] = useState<Plan | null>(null);
   const schema = z.object({
     code: z.string().trim().min(2).max(40),
     version: z.coerce.number().int().positive(),
@@ -1083,20 +1096,22 @@ export function PlansPage() {
     },
   });
   const m = useMutation({
-    mutationFn: (v: z.infer<typeof schema>) =>
-      api('/v1/platform/plans', {
-        method: 'POST',
-        body: {
-          code: v.code,
-          version: v.version,
-          monthly_price: v.monthly_price,
-          limits: {
-            users: v.users,
-            projects: v.projects,
-            storage_mb: v.storage_mb,
-          },
-        },
-      }),
+    mutationFn: (v: z.infer<typeof schema>) => {
+      const limits = { users: v.users, projects: v.projects, storage_mb: v.storage_mb };
+      return editing
+        ? api(`/v1/platform/plans/${editing.id}`, {
+            method: 'PATCH',
+            body: {
+              code: v.code,
+              monthly_price: v.monthly_price,
+              limits: { ...editing.limits, ...limits },
+            },
+          })
+        : api('/v1/platform/plans', {
+            method: 'POST',
+            body: { code: v.code, version: v.version, monthly_price: v.monthly_price, limits },
+          });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['platform-plans'] });
       toast.success(t('common.saved'));
@@ -1104,6 +1119,23 @@ export function PlansPage() {
     },
     onError,
   });
+  const openNew = () => {
+    setEditing(null);
+    form.reset({ code: 'standard', version: 1, monthly_price: '', users: 20, projects: 10, storage_mb: 2048 });
+    setOpen(true);
+  };
+  const openEdit = (plan: Plan) => {
+    setEditing(plan);
+    form.reset({
+      code: plan.code,
+      version: plan.version,
+      monthly_price: plan.monthly_price,
+      users: plan.limits.users ?? 0,
+      projects: plan.limits.projects ?? 0,
+      storage_mb: plan.limits.storage_mb ?? 0,
+    });
+    setOpen(true);
+  };
   const columns: Column<Plan>[] = [
     {
       key: 'code',
@@ -1140,6 +1172,21 @@ export function PlansPage() {
       header: t('common.created_at'),
       render: (r) => formatDate(r.created_at, lang),
     },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (r) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Pencil />}
+          aria-label={t('plans.edit')}
+          title={t('plans.edit')}
+          onClick={() => openEdit(r)}
+        />
+      ),
+    },
   ];
   return (
     <div className="stack" style={{ gap: 14 }}>
@@ -1147,7 +1194,7 @@ export function PlansPage() {
         title={t('plans.title')}
         description={t('plans.sub')}
         actions={
-          <Button icon={<Plus />} onClick={() => setOpen(true)}>
+          <Button icon={<Plus />} onClick={openNew}>
             {t('plans.new')}
           </Button>
         }
@@ -1162,7 +1209,7 @@ export function PlansPage() {
         empty={{
           title: t('common.empty'),
           action: (
-            <Button icon={<Plus />} onClick={() => setOpen(true)}>
+            <Button icon={<Plus />} onClick={openNew}>
               {t('plans.new')}
             </Button>
           ),
@@ -1171,19 +1218,20 @@ export function PlansPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={t('plans.new')}
+        title={editing ? t('plans.edit') : t('plans.new')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)}>
               {t('common.cancel')}
             </Button>
             <Button onClick={form.handleSubmit((v) => m.mutate(v))} loading={m.isPending}>
-              {t('common.create')}
+              {editing ? t('common.save') : t('common.create')}
             </Button>
           </>
         }
       >
         <form className="form-grid" noValidate onSubmit={form.handleSubmit((v) => m.mutate(v))}>
+          {editing && <Alert tone="info">{t('plans.edit_note')}</Alert>}
           <Input
             label={t('plans.code')}
             placeholder="standard / max"
@@ -1194,6 +1242,7 @@ export function PlansPage() {
             label={t('plans.version')}
             type="number"
             min={1}
+            disabled={Boolean(editing)}
             error={form.formState.errors.version?.message}
             {...form.register('version')}
           />
@@ -1508,6 +1557,62 @@ export function SupportPage() {
   );
 }
 
+/* ---------------- Parolni tiklash havolasi (egasi va super admin) ---------------- */
+/** Foydalanuvchiga 30 daqiqalik bir martalik havola; parol ko'rsatilmaydi, sessiyalar bekor qilinadi. */
+function ResetLinkButton({ userId }: { userId: string }) {
+  const { t } = useT();
+  const onError = useApiError();
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const m = useMutation({
+    mutationFn: () => api<{ token: string }>(`/v1/platform/users/${userId}/reset`, { method: 'POST' }),
+    onSuccess: (r) => {
+      setCopied(false);
+      setLink(`${location.origin}/reset-password#token=${r.token}`);
+    },
+    onError,
+  });
+  return (
+    <>
+      <Button size="sm" variant="secondary" icon={<KeyRound />} loading={m.isPending} onClick={() => m.mutate()}>
+        {t('employees.reset_create')}
+      </Button>
+      <Modal
+        open={Boolean(link)}
+        onClose={() => setLink(null)}
+        title={t('employees.reset')}
+        footer={
+          <Button variant="secondary" onClick={() => setLink(null)}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        <div className="stack">
+          <p className="muted text-sm">{t('employees.reset_hint')}</p>
+          {link && (
+            <div className="row">
+              <code className="text-xs grow" style={{ wordBreak: 'break-all' }}>
+                {link}
+              </code>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={copied ? <Check /> : <Copy />}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(link).catch(() => undefined);
+                  setCopied(true);
+                }}
+              >
+                {copied ? t('common.copied') : t('common.copy')}
+              </Button>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 /* ---------------- Staff (super admin) ---------------- */
 type Staff = {
   id: string;
@@ -1520,6 +1625,7 @@ type Staff = {
 };
 export function StaffPage() {
   const { t, lang } = useT();
+  const { me } = useAuth();
   const toast = useToast();
   const onError = useApiError();
   const queryClient = useQueryClient();
@@ -1531,7 +1637,7 @@ export function StaffPage() {
   const schema = z.object({
     login: z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/, t('auth.login_name')),
     display_name: z.string().trim().min(2).max(120),
-    password: z.string().min(12, t('auth.password_rules')).max(128),
+    password: z.string().min(6, t('auth.password_rules')).max(128),
     role: z.enum(['super_admin', 'support']),
   });
   const form = useForm<z.infer<typeof schema>>({
@@ -1583,6 +1689,14 @@ export function StaffPage() {
       key: 'created',
       header: t('common.created_at'),
       render: (r) => formatDate(r.created_at, lang),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      // O'z parolini profilda almashtiradi; platforma egasining parolini faqat egasi tiklaydi (server ham tekshiradi).
+      render: (r) =>
+        r.active && r.id !== me?.id && r.role !== 'platform_owner' ? <ResetLinkButton userId={r.id} /> : null,
     },
   ];
   return (

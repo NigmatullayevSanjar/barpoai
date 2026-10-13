@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDateTime } from '@/lib/format';
 import { Alert, Button, EmptyState, PageHeader, Pagination, Segmented } from '@/components/ui';
+import { useOpenNotification } from './target';
 
 type Notification = {
   id: string;
@@ -23,6 +24,7 @@ export function NotificationsPage() {
   const { t, lang } = useT();
   const { isPlatform } = useAuth();
   const queryClient = useQueryClient();
+  const openNotification = useOpenNotification();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [offset, setOffset] = useState(0);
   const query = useQuery({
@@ -92,10 +94,14 @@ export function NotificationsPage() {
                 }}
               >
                 <div className="grow">
-                  <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>{n.title}</div>
-                  <div className="text-sm" style={{ whiteSpace: 'pre-line' }}>
-                    {n.body}
-                  </div>
+                  <button type="button" className="notif-open" onClick={() => openNotification(n)}>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--fs-sm)' }}>
+                      {n.title}
+                    </span>
+                    <span className="text-sm" style={{ display: 'block', whiteSpace: 'pre-line' }}>
+                      {n.body}
+                    </span>
+                  </button>
                   <small className="muted">
                     {formatDateTime(n.created_at, lang)}
                     {n.project_id && !isPlatform && (

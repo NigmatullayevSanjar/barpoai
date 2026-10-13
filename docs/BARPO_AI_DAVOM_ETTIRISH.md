@@ -21,7 +21,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 **Qat’iy qoidalar (CLAUDE.md dan):**
 - Pul va miqdor — oxirigacha decimal string. Saqlash va kiritish faqat UZS. USD faqat ko‘rsatish uchun: konvertatsiya faqat `formatMoney` ichida, server bergan CBU kursi bilan, decimal arifmetika (Number emas). Frontend yig‘indi hisoblamaydi, jamlar serverdan.
 - Ruxsat serverda (UI faqat yashiradi). Har yangi matn `uz` va `ru` lokallarga. Statik demo raqam yo‘q — bo‘sh/xato holatlari.
-- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `017_price_lists.sql`, keyingisi **018**.
+- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `019_block_profile.sql`, keyingisi **020**.
 - AI funksiya qo‘shilmaydi. CRM, sotuv, bron, mijoz, shartnoma yo‘q (D1).
 - Sirlar `backend/.env` da (gitignore). Token yoki parol yaratmang, so‘ramang, faylga yozmang. Lokal hisob parollari hech qayerda yozilmagan — kerak bo‘lsa foydalanuvchi o‘zi kiradi.
 
@@ -53,6 +53,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - Eski kompyuter bazasida “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; yangi kompyuterga va bulutga ko‘chmaydi.
 - `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
 - Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
+- Kompyuter vaqt zonasi UTC+5: Docker testlarini `TZ=UTC` bilan yurgizing (Git Bash: `TZ=UTC npm run test:integration`), aks holda `integration.ts` eski O15 xatosi bilan yiqiladi (toza `main` da ham). 2026-10-12 da shu rejimda: integration 71, roles 5, UI 47.
 
 ## 5. Bajarilgan ishlar (holat 2026-10-12)
 
@@ -65,7 +66,8 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 | 4 | narx varaqasi, migratsiya 017 | `main` (PR #2, `a1ba70c`) |
 | 1.4 | dashboard grafiklari, obyekt va davr filtri | `main` (PR #3, `16b2d43`) |
 | Hujjat | shu holat fayli va `CLAUDE.md` ko‘rsatkichi | `main` (PR #4, `6a9d200`) |
-| Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chiriladi), reja 9.1 yangilanishi | **boshqa thread’da jarayonda**, reja tasdiqlangan, push qilinmagan |
+| Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chiriladi), reja 9.1 yangilanishi | `main` (PR #5, #6) |
+| Egasi fikri 2026-10-12 | D11–D14: tarif tahriri (018), super_admin huquqlari va parol tiklash havolasi, parol 6 belgi, blok kartasi va blok sahifasi (019, xonadon reja rasmi, narx varaqasidagi tannarx), Excel import tuzatishi (openpyxl fayllari, sarlavha qatorini topish, birlik sinonimlari), login sahifasi ru tili, bildirishnomadan sahifaga o‘tish, “Obuna to‘lovlari”, overscroll, Windows Chrome kursori, logo, kalendar va select komponentlari, smeta muharriri joylashuvi; `scripts/seed-dev.ts` (dev hisoblar, parol faqat `SEED_PASSWORD`) | branch `claude/feedback-2026-10-12`, PR egasi ruxsati bilan |
 
 ### Bosqich 3 — xonadonlar (asosiy qarorlar)
 - Jadval `premises`: zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar 0…50, maydon numeric(12,2) > 0, arxiv, version; RLS, kompozit FK.

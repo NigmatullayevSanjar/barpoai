@@ -25,7 +25,36 @@ const fields = [
 ] as const;
 type Field = (typeof fields)[number];
 const required: Field[] = ['description', 'quantity', 'unit_price'];
-type Inspect = { sheet: string; headers: string[]; rows: number; sample: string[][] };
+type Inspect = { sheet: string; header_row: number; headers: string[]; rows: number; sample: string[][] };
+/**
+ * Sarlavhalarni avtomatik taxmin qilish (uz/ru/en): [maydon, mos keladigan, mos kelmaydigan] — tartib muhim,
+ * bitta sarlavha faqat bitta maydonga tegadi (birinchi kelgan oladi). "Jami/Итого" ustunlari hech qachon moslanmaydi.
+ */
+const guessOrder: [Field, RegExp, RegExp?][] = [
+  ['unit_price', /narx|цена|price/i],
+  ['unit_id', /o.lchov|birlik(?!.*narx)|ед|unit/i],
+  ['quantity', /miqdor|кол|qty|quantity/i],
+  ['description', /nom|наимен|descr/i, /material|материал|zon|зон|blok|блок/i],
+  ['category', /bo.lim|kateg|раздел|катег|category/i],
+  ['kind', /tur|тип|kind/i],
+  ['material_name', /material|материал/i],
+  ['zone_name', /zona|блок|зона|zone|blok/i],
+  ['note', /izoh|примеч|note/i],
+  ['norm', /norma|норма|norm/i],
+  ['work_quantity', /hajm|объ[её]м|work/i],
+  ['loss_percent', /yo.qot|потер|loss/i],
+];
+const totalHeader = /jami|итого|всего|total/i;
+function guessMapping(headers: string[]) {
+  const guess: Partial<Record<Field, string>> = {};
+  for (const [field, match, skip] of guessOrder) {
+    const h = headers.find(
+      (x) => match.test(x) && !skip?.test(x) && !totalHeader.test(x) && !Object.values(guess).includes(x),
+    );
+    if (h) guess[field] = h;
+  }
+  return guess;
+}
 type Preview = {
   id: string;
   digest: string;
@@ -71,27 +100,10 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
       setFile({ name: fileName, base64 });
       setInspect(result);
       if (!name) setName(fileName.replace(/\.xlsx$/i, ''));
-      // Sarlavhalarni avtomatik taxmin qilish (uz/ru/en)
-      const guess: Partial<Record<Field, string>> = {};
-      const patterns: Record<Field, RegExp> = {
-        description: /nom|наимен|descr|ish/i,
-        kind: /tur|тип|kind/i,
-        unit_id: /birlik|ед|unit/i,
-        quantity: /miqdor|кол|qty|quantity/i,
-        unit_price: /narx|цена|price/i,
-        material_name: /material|материал/i,
-        zone_name: /zona|блок|зона|zone|blok/i,
-        category: /kateg|катег|category/i,
-        note: /izoh|примеч|note/i,
-        norm: /norma|норма|norm/i,
-        work_quantity: /hajm|объ[её]м|work/i,
-        loss_percent: /yo.qot|потер|loss/i,
-      };
-      for (const f of fields) {
-        const h = result.headers.find((x) => patterns[f].test(x) && !Object.values(guess).includes(x));
-        if (h) guess[f] = h;
-      }
+      const guess = guessMapping(result.headers);
       setMapping(guess);
+      // «Turi» ustuni topilmasa hamma qator uchun tur oldindan tanlanadi (o'zgartirish mumkin).
+      setDefaultKind(guess.kind ? '' : 'labor');
       setStep(2);
       setError('');
     },
@@ -224,7 +236,8 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
         {step === 2 && inspect && (
           <div className="stack">
             <p className="muted text-sm">
-              {t('est.import_rows', { n: inspect.rows })} · {t('est.import_map_hint')}
+              {t('est.import_rows', { n: inspect.rows })} ·{' '}
+              {t('est.import_header_row', { row: inspect.header_row })} · {t('est.import_map_hint')}
             </p>
             <div className="form-grid">
               {fields.map((f) => (

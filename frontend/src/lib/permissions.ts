@@ -169,31 +169,31 @@ export const platformNav: PlatformNavItem[] = [
     key: 'dashboard',
     to: '/admin',
     icon: 'LayoutDashboard',
-    roles: ['platform_owner'],
+    roles: ['platform_owner', 'super_admin'],
   },
   {
     key: 'tenants',
     to: '/admin/tenants',
     icon: 'Building2',
-    roles: ['platform_owner'],
+    roles: ['platform_owner', 'super_admin'],
   },
   {
     key: 'plans',
     to: '/admin/plans',
     icon: 'Package',
-    roles: ['platform_owner'],
+    roles: ['platform_owner', 'super_admin'],
   },
   {
     key: 'billing',
     to: '/admin/billing',
     icon: 'CreditCard',
-    roles: ['platform_owner'],
+    roles: ['platform_owner', 'super_admin'],
   },
   {
     key: 'debtors',
     to: '/admin/debtors',
     icon: 'AlertTriangle',
-    roles: ['platform_owner'],
+    roles: ['platform_owner', 'super_admin'],
   },
   {
     key: 'support',
@@ -214,7 +214,7 @@ export const homeFor = (role: Role, mustChange: boolean) =>
   mustChange
     ? '/change-password'
     : platformRoles.includes(role)
-      ? role === 'platform_owner'
+      ? role === 'platform_owner' || role === 'super_admin'
         ? '/admin'
         : '/admin/support'
       : '/app';

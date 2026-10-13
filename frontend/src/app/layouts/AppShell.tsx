@@ -10,6 +10,8 @@ import { api } from '@/lib/api';
 import { pageRoutes, platformNav, tenantNav, type Page } from '@/lib/permissions';
 import { formatDate, formatMoney, formatRelative } from '@/lib/format';
 import { Avatar, Button } from '@/components/ui';
+import { Logo } from '@/components/ui/Logo';
+import { useOpenNotification } from '@/features/notifications/target';
 import type { Currency } from '@/lib/currency-store';
 
 export function LanguageSwitch() {
@@ -68,11 +70,13 @@ type Notification = {
   kind: string;
   title: string;
   body: string;
+  project_id: string | null;
   read_at: string | null;
   created_at: string;
 };
 function NotificationsBell() {
   const { t, lang } = useT();
+  const openNotification = useOpenNotification();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -91,13 +95,6 @@ function NotificationsBell() {
     await api('/v1/me/notifications/read', {
       method: 'POST',
       body: { ids: [] },
-    });
-    await queryClient.invalidateQueries({ queryKey: ['notifications'] });
-  };
-  const markOne = async (id: string) => {
-    await api('/v1/me/notifications/read', {
-      method: 'POST',
-      body: { ids: [id] },
     });
     await queryClient.invalidateQueries({ queryKey: ['notifications'] });
   };
@@ -134,7 +131,10 @@ function NotificationsBell() {
                 <button
                   key={n.id}
                   className={`notif-item ${n.read_at ? '' : 'unread'}`}
-                  onClick={() => !n.read_at && markOne(n.id)}
+                  onClick={() => {
+                    setOpen(false);
+                    openNotification(n);
+                  }}
                 >
                   <b>{n.title}</b>
                   <p>{n.body}</p>
@@ -223,8 +223,7 @@ export function AppShell({ title }: { title?: ReactNode }) {
     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
       <aside className="sidebar">
         <Link className="sidebar-brand" to={isPlatform ? '/admin' : '/app'}>
-          <span className="logo">B</span>
-          {t('app.name')}
+          <Logo height={48} />
         </Link>
         <div className="sidebar-tenant">{isPlatform ? t('nav.group.platform') : me.tenant_name}</div>
         <nav aria-label="Main">

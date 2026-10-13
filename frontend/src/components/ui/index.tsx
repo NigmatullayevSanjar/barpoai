@@ -6,12 +6,14 @@ import {
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
-  type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, Inbox, Search, X } from 'lucide-react';
 import { useT } from '@/lib/i18n';
+import { DateInput } from './DateInput';
+import { SelectControl, type SelectControlProps } from './SelectControl';
 
 /* ---------------- Button ---------------- */
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -89,15 +91,29 @@ type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   wrapClassName?: string;
 };
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, hint, icon, suffix, required, wrapClassName, className = '', id, ...rest },
+  { label, error, hint, icon, suffix, required, wrapClassName, className = '', id, type, ...rest },
   ref,
 ) {
   const auto = useId();
   const inputId = id ?? auto;
-  const control = (
+  // type="date" ichki sana tanlagichga o'tadi: qiymat baribir ISO "YYYY-MM-DD" (yoki '').
+  const isDate = type === 'date';
+  const control = isDate ? (
+    <DateInput
+      ref={ref}
+      id={inputId}
+      className={className}
+      aria-invalid={error ? 'true' : undefined}
+      required={required}
+      {...rest}
+      min={rest.min === undefined ? undefined : String(rest.min)}
+      max={rest.max === undefined ? undefined : String(rest.max)}
+    />
+  ) : (
     <input
       ref={ref}
       id={inputId}
+      type={type}
       className={`input ${className}`}
       aria-invalid={error ? 'true' : undefined}
       required={required}
@@ -106,7 +122,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   );
   return (
     <Field label={label} error={error} hint={hint} required={required} id={inputId} className={wrapClassName}>
-      {icon || suffix ? (
+      {!isDate && (icon || suffix) ? (
         <div className="input-wrap">
           {icon}
           {control}
@@ -118,7 +134,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     </Field>
   );
 });
-type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+type SelectProps = SelectControlProps & {
   label?: ReactNode;
   error?: string;
   hint?: ReactNode;
@@ -139,16 +155,16 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       id={selectId}
       className={wrapClassName}
     >
-      <select
+      <SelectControl
         ref={ref}
         id={selectId}
-        className={`select ${className}`}
+        className={className}
         aria-invalid={error ? 'true' : undefined}
         required={required}
         {...rest}
       >
         {children}
-      </select>
+      </SelectControl>
     </Field>
   );
 });
@@ -433,18 +449,28 @@ export function Stat({
   value,
   sub,
   accent,
+  to,
 }: {
   label: ReactNode;
   value: ReactNode;
   sub?: ReactNode;
   accent?: boolean;
+  to?: string;
 }) {
-  return (
-    <div className={`card stat ${accent ? 'accent' : ''}`}>
+  const body = (
+    <>
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
       {sub && <div className="stat-sub">{sub}</div>}
-    </div>
+    </>
+  );
+  const cls = `card stat ${accent ? 'accent' : ''}`;
+  return to ? (
+    <Link to={to} className={`${cls} stat-link`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 export function Tabs<T extends string>({
@@ -520,19 +546,19 @@ export function Pagination({
         {onLimitChange && (
           <label className="row" style={{ gap: 6 }}>
             <span>{t('common.per_page')}</span>
-            <select
-              className="select"
+            <Select
+              size="sm"
               aria-label={t('common.per_page')}
               value={limit}
               onChange={(e) => onLimitChange(Number(e.target.value))}
-              style={{ width: 'auto', padding: '4px 28px 4px 8px' }}
+              style={{ width: 'auto' }}
             >
               {sizes.map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
       </span>

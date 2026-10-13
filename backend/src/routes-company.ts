@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
-import { one, audit } from './db.js';
+import { type Db, type Row, one, audit } from './db.js';
 import {
   uuid,
   text,
@@ -178,11 +178,68 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     path: ['floors_count'],
     message: 'Qavatlar soni faqat blok uchun',
   };
+  // Blok kartasi maydonlari (019): berilmasa PATCH'da joriy qiymat qoladi, null — tozalash.
+  const zoneProfile = {
+    area_m2: area.nullable().optional(),
+    planned_start: date.nullable().optional(),
+    planned_end: date.nullable().optional(),
+    actual_start: date.nullable().optional(),
+    actual_end: date.nullable().optional(),
+    image_file_id: uuid.nullable().optional(),
+    responsible_ids: z.array(uuid).max(20).optional(),
+  };
+  type ZoneProfile = { [K in keyof typeof zoneProfile]?: z.infer<(typeof zoneProfile)[K]> };
+  /** Sanalar tartibi, rasm (shu obyekt fayli) va mas'ullar (kompaniyaning faol xodimi) tekshiruvi. */
+  async function checkZoneProfile(
+    db: Db,
+    actor: Row,
+    projectId: string,
+    body: ZoneProfile,
+    current?: Row,
+  ) {
+    const pick = <K extends keyof ZoneProfile>(k: K) =>
+      body[k] === undefined ? (current?.[k] ?? null) : body[k];
+    dateOrder(pick('planned_start'), pick('planned_end'));
+    dateOrder(pick('actual_start'), pick('actual_end'));
+    if (body.image_file_id && body.image_file_id !== current?.image_file_id)
+      await one(
+        db,
+        'SELECT id FROM files WHERE tenant_id=$1 AND id=$2 AND project_id=$3 AND report_id IS NULL AND task_id IS NULL AND archived_at IS NULL FOR SHARE',
+        [actor.tenant_id, body.image_file_id, projectId],
+      );
+    if (body.responsible_ids?.length) {
+      const ids = [...new Set(body.responsible_ids)];
+      const found = await db.query(
+        'SELECT id FROM users WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND active',
+        [actor.tenant_id, ids],
+      );
+      invariant(found.rowCount === ids.length, 'NOT_FOUND', 404);
+    }
+    return pick;
+  }
+  async function setZoneResponsibles(
+    db: Db,
+    actor: Row,
+    projectId: string,
+    zoneId: string,
+    ids?: string[],
+  ) {
+    if (ids === undefined) return;
+    await db.query('DELETE FROM zone_responsibles WHERE tenant_id=$1 AND zone_id=$2', [
+      actor.tenant_id,
+      zoneId,
+    ]);
+    if (ids.length)
+      await db.query(
+        'INSERT INTO zone_responsibles(tenant_id,project_id,zone_id,user_id) SELECT $1,$2,$3,unnest($4::uuid[]) ON CONFLICT DO NOTHING',
+        [actor.tenant_id, projectId, zoneId, ids],
+      );
+  }
   add({
     method: 'POST',
     path: '/v1/projects/:id/zones',
     summary:
-      'O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun (aks holda 400)',
+      'O‘zgarmas parent bilan zona yaratish; floors_count faqat kind=block uchun (aks holda 400); blok kartasi: maydon, reja/fakt sanalari, rasm, mas’ullar',
     permission: 'projects.write',
     params: idParams,
     body: z
@@ -191,15 +248,18 @@ export function companyRoutes(add: (r: Endpoint) => void) {
         parent_id: uuid.optional(),
         kind: zoneKind.optional(),
         floors_count: zoneFloors,
+        ...zoneProfile,
       })
       .refine(floorsOnlyForBlock, floorsOnlyForBlockError),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
       const kind = body.kind ?? 'other';
+      const pick = await checkZoneProfile(db, actor, params.id, body);
       const row = await one(
         db,
-        'INSERT INTO zones(tenant_id,project_id,name,parent_id,kind,floors_count) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+        `INSERT INTO zones(tenant_id,project_id,name,parent_id,kind,floors_count,area_m2,planned_start,planned_end,actual_start,actual_end,image_file_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
         [
           actor.tenant_id,
           params.id,
@@ -207,8 +267,15 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.parent_id ?? null,
           kind,
           body.floors_count ?? null,
+          pick('area_m2'),
+          pick('planned_start'),
+          pick('planned_end'),
+          pick('actual_start'),
+          pick('actual_end'),
+          pick('image_file_id'),
         ],
       );
+      await setZoneResponsibles(db, actor, params.id, row.id, body.responsible_ids);
       await audit(db, actor, 'zone.create', row.id, { project_id: params.id });
       return row;
     },
@@ -216,28 +283,52 @@ export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'PATCH',
     path: '/v1/projects/:id/zones/:zone_id',
-    summary: 'Zona nomi, turi va qavatlar sonini tahrirlash (version bilan); parent o‘zgarmaydi',
+    summary:
+      'Zona nomi, turi, qavatlar soni va blok kartasini tahrirlash (version bilan); parent o‘zgarmaydi; berilmagan karta maydoni o‘zgarmaydi',
     permission: 'projects.write',
     params: z.strictObject({ id: uuid, zone_id: uuid }),
     body: z
-      .strictObject({ version, name: text, kind: zoneKind, floors_count: zoneFloors })
+      .strictObject({
+        version,
+        name: text,
+        kind: zoneKind,
+        floors_count: zoneFloors,
+        ...zoneProfile,
+      })
       .refine(floorsOnlyForBlock, floorsOnlyForBlockError),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
       await projectScope(db, actor, params.id);
       // Turi o'zgarsa xonadonlar bloki qayta hisoblanadi: qulf tartibi xonadon yozuvlari bilan bir xil.
       await lockProjectPremises(db, params.id);
+      // Sanalar matn sifatida: berilmagan maydon joriy qiymatini saqlaydi va yangisi bilan satr bo'yicha solishtiriladi.
       const zone = await one(
         db,
-        'SELECT * FROM zones WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',
+        `SELECT id,version,area_m2,image_file_id,planned_start::text,planned_end::text,actual_start::text,actual_end::text
+           FROM zones WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE`,
         [actor.tenant_id, params.id, params.zone_id],
       );
       invariant(zone.version === body.version, 'VERSION_CONFLICT');
+      const pick = await checkZoneProfile(db, actor, params.id, body, zone);
       const row = await one(
         db,
-        'UPDATE zones SET name=$2,kind=$3,floors_count=$4,version=version+1 WHERE tenant_id=$5 AND id=$1 RETURNING *',
-        [zone.id, body.name, body.kind, body.floors_count ?? null, actor.tenant_id],
+        `UPDATE zones SET name=$2,kind=$3,floors_count=$4,area_m2=$6,planned_start=$7,planned_end=$8,actual_start=$9,actual_end=$10,
+           image_file_id=$11,version=version+1 WHERE tenant_id=$5 AND id=$1 RETURNING *`,
+        [
+          zone.id,
+          body.name,
+          body.kind,
+          body.floors_count ?? null,
+          actor.tenant_id,
+          pick('area_m2'),
+          pick('planned_start'),
+          pick('planned_end'),
+          pick('actual_start'),
+          pick('actual_end'),
+          pick('image_file_id'),
+        ],
       );
+      await setZoneResponsibles(db, actor, params.id, row.id, body.responsible_ids);
       await audit(db, actor, 'zone.update', row.id, { project_id: params.id });
       return row;
     },
