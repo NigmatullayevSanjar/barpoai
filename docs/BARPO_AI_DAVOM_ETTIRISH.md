@@ -53,7 +53,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - Eski kompyuter bazasida “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; yangi kompyuterga va bulutga ko‘chmaydi.
 - `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
 - Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
-- Kompyuter vaqt zonasi UTC+5: Docker testlarini `TZ=UTC` bilan yurgizing (Git Bash: `TZ=UTC npm run test:integration`), aks holda `integration.ts` eski O15 xatosi bilan yiqiladi (toza `main` da ham). 2026-10-12 da shu rejimda: integration 71, roles 5, UI 47.
+- Kompyuter vaqt zonasi UTC+5: Docker testlarini `TZ=UTC` bilan yurgizing (Git Bash: `TZ=UTC npm run test:integration`), aks holda `integration.ts` eski O17 xatosi bilan yiqiladi (toza `main` da ham). 2026-10-12 da shu rejimda: integration 71, roles 5, UI 47.
 
 ## 5. Bajarilgan ishlar (holat 2026-10-12)
 
