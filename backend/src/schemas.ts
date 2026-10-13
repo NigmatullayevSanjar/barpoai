@@ -12,7 +12,7 @@ export const area = z
   .string()
   .regex(/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/)
   .refine((s) => /[1-9]/.test(s), 'Musbat maydon kerak');
-export const password = z.string().min(12).max(128);
+export const password = z.string().min(6).max(128);
 export const loginName = z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/);
 // Telefon: +998 va 9 raqam; bo'sh joy, qavs va chiziqlar normalizatsiyada olib tashlanadi.
 export const phone = z

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -33,6 +33,7 @@ import {
   type ProjectForm,
 } from './ProjectsPage';
 import { PremisesTab } from './PremisesTab';
+import { BlocksSection } from './BlocksSection';
 import { zoneKinds, type Employee, type Member, type ProjectDetail, type Zone, type ZoneKind } from './types';
 
 type Tab = 'overview' | 'zones' | 'premises' | 'members' | 'warehouses';
@@ -43,7 +44,9 @@ export function ProjectDetailPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [params] = useSearchParams();
+  const startTab = params.get('tab');
+  const [tab, setTab] = useState<Tab>(startTab === 'zones' || startTab === 'premises' ? startTab : 'overview');
   const [edit, setEdit] = useState(false);
   const [archive, setArchive] = useState(false);
   const [reason, setReason] = useState('');
@@ -152,7 +155,12 @@ export function ProjectDetailPage() {
         ]}
       />
       {tab === 'overview' && <Overview d={d} />}
-      {tab === 'zones' && <ZonesTab d={d} canEdit={canEdit} onChange={refresh} />}
+      {tab === 'zones' && (
+        <>
+          <BlocksSection d={d} canEdit={canEdit} onChange={refresh} />
+          <ZonesTab d={d} canEdit={canEdit} onChange={refresh} />
+        </>
+      )}
       {tab === 'premises' && <PremisesTab d={d} />}
       {tab === 'members' && <MembersTab d={d} canEdit={canManageMembers} onChange={refresh} />}
       {tab === 'warehouses' && <WarehousesTab d={d} canEdit={canEdit} onChange={refresh} />}

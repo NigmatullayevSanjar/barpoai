@@ -164,6 +164,15 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
         'UPDATE projects SET image_file_id=NULL,version=version+1 WHERE tenant_id=$1 AND image_file_id=$2',
         [actor.tenant_id, params.id],
       );
+      // Blok rasmi va xonadon reja rasmi ham xuddi shunday.
+      await db.query(
+        'UPDATE zones SET image_file_id=NULL,version=version+1 WHERE tenant_id=$1 AND image_file_id=$2',
+        [actor.tenant_id, params.id],
+      );
+      await db.query(
+        'UPDATE premises SET plan_file_id=NULL,version=version+1,updated_at=now() WHERE tenant_id=$1 AND plan_file_id=$2',
+        [actor.tenant_id, params.id],
+      );
       await audit(db, actor, 'file.archive', params.id, { reason: body.reason });
       return { ok: true };
     },

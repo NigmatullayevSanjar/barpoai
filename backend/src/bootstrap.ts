@@ -6,7 +6,7 @@ const login = process.env.BOOTSTRAP_LOGIN?.toLowerCase(),
 const role = process.env.BOOTSTRAP_ROLE ?? 'platform_owner';
 invariant(['platform_owner', 'super_admin'].includes(role), 'INVALID_BOOTSTRAP_ROLE', 400);
 invariant(
-  login && password && password.length >= 12,
+  login && password && password.length >= 6,
   'BOOTSTRAP_LOGIN_AND_STRONG_PASSWORD_REQUIRED',
   400,
 );

@@ -122,7 +122,7 @@ d:\Ismoil\VScode\Frontend\Frontend\
 | `auth.ts` | 135 | sessiya (12 soat, `barpo_session`), login (login yoki telefon), invite signup, `accessState`, `tenantAccess` |
 | `security.ts` | 50 | scrypt hash, token, SHA-256 digest, Telegram Login Widget imzosi |
 | `permissions.ts` | 398 | rollar, 29 domen ruxsati, 29 sahifa, bazaviy siyosat, `allowed`, `pageAllowed`, scope, `redactPrices` |
-| `schemas.ts` | 91 | umumiy zod: `amount`, `qty`, `password` (12–128), `phone`, smeta/ombor/moliya DTO |
+| `schemas.ts` | 91 | umumiy zod: `amount`, `qty`, `password` (6–128), `phone`, smeta/ombor/moliya DTO |
 | `money.ts` | 25 | `dec`, `money` (2 xona), `quantity` (6 xona), `plannedQuantity`, `variance` (ROUND_HALF_UP, precision 40) |
 | `errors.ts` | 18 | `DomainError`, `invariant(cond, CODE, status=409)` |
 | `estimates.ts` | 267 | smeta yaratish/reviziya, Excel parse va xavfsizlik chegaralari |
@@ -214,11 +214,11 @@ docker compose down             # backend papkasida; ma’lumot volume’da qola
 
 ### 4.3. Birinchi platforma egasini yaratish (bo‘sh bazada)
 
-Default hisob **yo‘q**. Bootstrap har rol uchun bir marta ishlaydi (`BOOTSTRAP_ROLE_ALREADY_EXISTS`), parol kamida 12 belgi.
+Default hisob **yo‘q**. Bootstrap har rol uchun bir marta ishlaydi (`BOOTSTRAP_ROLE_ALREADY_EXISTS`), parol kamida 6 belgi.
 
 ```bash
 cd backend
-BOOTSTRAP_LOGIN=platform.owner BOOTSTRAP_PASSWORD='<kamida 12 belgi>' \
+BOOTSTRAP_LOGIN=platform.owner BOOTSTRAP_PASSWORD='<kamida 6 belgi>' \
   node --env-file=.env --import tsx src/bootstrap.ts
 # texnik admin uchun: BOOTSTRAP_ROLE=super_admin qo‘shing
 ```

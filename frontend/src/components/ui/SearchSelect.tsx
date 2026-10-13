@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { api, qs, type ListResponse } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Field, useDebounced } from './index';
@@ -143,8 +143,8 @@ export function SearchSelect<T>({
     <Field label={label} error={error} hint={hint} required={required} id={id} className={wrapClassName}>
       <div className={`combobox ${className}`}>
         <div className="row" style={{ gap: 4 }}>
-          <div ref={anchor} className="input-wrap grow">
-            <Search />
+          <div ref={anchor} className="combobox-anchor grow" data-open={open || undefined}>
+            <ChevronDown />
             <input
               id={id}
               type="text"
@@ -209,6 +209,7 @@ export function SearchSelect<T>({
                       <span className="cell-main">{getLabel(item)}</span>
                       {getSub && <span className="cell-sub">{getSub(item)}</span>}
                     </span>
+                    {getId(item) === value && <Check />}
                   </button>
                 ))
               )}

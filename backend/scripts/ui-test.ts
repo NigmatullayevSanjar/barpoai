@@ -270,7 +270,8 @@ try {
     .getByRole('dialog')
     .getByRole('button', { name: 'Qo‘shish', exact: true })
     .click();
-  await adminPage.getByText('A blok').waitFor();
+  // Blok ham karta ("Blok: A blok"), ham zona daraxtida chiqadi — birinchisi yetarli.
+  await adminPage.getByText('A blok').first().waitFor();
   await adminPage.getByText('9 qavat').waitFor();
   await adminPage.getByRole('button', { name: 'Zonani tahrirlash' }).click();
   await adminPage.getByRole('dialog').getByLabel('Qavatlar soni').fill('12');
@@ -966,6 +967,9 @@ try {
   );
   const techPage = await newPage();
   await login(techPage, 'ui_tech', password);
+  // D12: super_admin platforma egasi kabi bosh sahifaga tushadi; Murojaatlar alohida ochiladi.
+  await techPage.getByRole('heading', { name: 'Platforma ko‘rsatkichlari' }).waitFor();
+  await techPage.goto(webURL + '/admin/support');
   await techPage.getByRole('heading', { name: 'Murojaatlar' }).waitFor();
   await techPage.goto(webURL + '/admin/diagnostics');
   await techPage.getByText('Worker navbati', { exact: true }).waitFor();
@@ -998,7 +1002,9 @@ try {
   await ownerPage.getByRole('button', { name: 'Tarif biriktirish' }).click();
   await ownerPage.getByLabel('Tarif versiyasi').selectOption({ index: 1 });
   await ownerPage.getByRole('dialog').getByRole('button', { name: 'Saqlash', exact: true }).click();
-  await ownerPage.getByText('standard v1').waitFor();
+  // Dialog yopilgach karta tarifni ko'rsatadi (ochiq dialogda select ham shu matnni ko'rsatadi).
+  await ownerPage.getByRole('dialog').waitFor({ state: 'detached' });
+  await ownerPage.getByText('standard v1').first().waitFor();
   await ownerPage.getByRole('button', { name: 'Invoys chiqarish' }).click();
   await ownerPage
     .getByRole('dialog')

@@ -32,7 +32,7 @@ PowerShell bilan Node orqali bootstrap (Docker DB ishga tushganidan keyin):
 npm.cmd ci
 $env:MIGRATION_DATABASE_URL = 'postgresql://barpo_owner:YOUR_OWNER_PASSWORD@127.0.0.1:5433/barpo'
 $env:BOOTSTRAP_LOGIN = Read-Host 'Platforma egasi login'
-$securePassword = Read-Host 'Yangi parol (kamida 12 belgi)' -AsSecureString
+$securePassword = Read-Host 'Yangi parol (kamida 6 belgi)' -AsSecureString
 $env:BOOTSTRAP_PASSWORD = [System.Net.NetworkCredential]::new('', $securePassword).Password
 npm.cmd run bootstrap
 Remove-Item Env:BOOTSTRAP_PASSWORD

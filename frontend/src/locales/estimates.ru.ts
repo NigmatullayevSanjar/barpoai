@@ -88,6 +88,7 @@ export const estimatesRu: Record<string, string> = {
   'est.import_file': 'Файл XLSX (до 2 МБ, без формул)',
   'est.import_choose': 'Выберите файл',
   'est.import_rows': 'Найдено строк: {n}',
+  'est.import_header_row': 'Заголовки найдены в строке {row}',
   'est.import_map_hint':
     'Выберите колонку Excel для каждого поля. Названия материалов и зон должны совпадать с существующими записями.',
   'est.import_field.kind': 'Тип (material/labor/equipment/service)',

@@ -22,7 +22,8 @@ import { dec } from './money.js';
 import { accessState } from './auth.js';
 import { issueInvoice, applyCredit, recomputeCoverage, periodEnd } from './billing.js';
 import { telegramConfigured } from './telegram.js';
-const owner = ['platform_owner'];
+// super_admin platforma egasining barcha huquqlariga ega (egasi qarori, 2026-10-12).
+const owner = ['platform_owner', 'super_admin'];
 export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -207,6 +208,63 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db }) => ({
       items: (await db.query('SELECT * FROM plan_versions ORDER BY code,version')).rows,
     }),
+  });
+  add({
+    method: 'PATCH',
+    path: '/v1/platform/plans/:id',
+    summary:
+      'Tarifni tahrirlash: kod, oylik narx va limitlar; yangi narx keyingi invoysdan, chiqarilgan invoyslar o‘zgarmaydi',
+    platform: owner,
+    params: idParams,
+    body: z.strictObject({
+      code: text,
+      monthly_price: amount,
+      limits: z.record(z.string(), z.number().int().nonnegative()).default({}),
+    }),
+    handler: async ({ db, body, actor, params }) => {
+      const before = await one(db, 'SELECT * FROM plan_versions WHERE id=$1 FOR UPDATE', [
+        params.id,
+      ]);
+      const row = await one(
+        db,
+        'UPDATE plan_versions SET code=$2,monthly_price=$3,limits=$4 WHERE id=$1 RETURNING *',
+        [params.id, body.code, body.monthly_price, body.limits],
+      );
+      await audit(db, actor, 'plan.update', row.id, {
+        before: { code: before.code, monthly_price: before.monthly_price, limits: before.limits },
+        after: { code: row.code, monthly_price: row.monthly_price, limits: row.limits },
+      });
+      return row;
+    },
+  });
+  add({
+    method: 'POST',
+    path: '/v1/platform/users/:id/reset',
+    summary:
+      'Istalgan foydalanuvchiga (kompaniya admini ham) bir martalik 30 daqiqalik reset havolasi; platforma egasini faqat egasi tiklaydi',
+    platform: owner,
+    params: idParams,
+    handler: async ({ db, actor, params }) => {
+      const user = await one(db, 'SELECT id,role FROM users WHERE id=$1 AND active', [params.id]);
+      invariant(user.id !== actor.id, 'FORBIDDEN', 403);
+      invariant(
+        user.role !== 'platform_owner' || actor.role === 'platform_owner',
+        'FORBIDDEN',
+        403,
+      );
+      await db.query(
+        'UPDATE password_resets SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
+        [user.id],
+      );
+      const raw = token();
+      await db.query("INSERT INTO password_resets VALUES($1,$2,now()+interval '30 minutes',NULL)", [
+        digest(raw),
+        user.id,
+      ]);
+      await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
+      await audit(db, actor, 'platform.user_reset', user.id);
+      return { token: raw, expires_in: 1800 };
+    },
   });
   add({
     method: 'POST',

@@ -88,6 +88,7 @@ export const estimatesUz: Record<string, string> = {
   'est.import_file': 'XLSX fayl (2 MB gacha, formulalarsiz)',
   'est.import_choose': 'Faylni tanlang',
   'est.import_rows': '{n} ta qator topildi',
+  'est.import_header_row': 'Sarlavha {row}-qatorda topildi',
   'est.import_map_hint':
     'Har bir maydon uchun Excel ustunini tanlang. Material va zona nomlari mavjud yozuvlarga mos kelishi kerak.',
   'est.import_field.kind': 'Turi (material/labor/equipment/service)',

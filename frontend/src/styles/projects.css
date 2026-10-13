@@ -1,0 +1,376 @@
+/* ---------- Bloklar: obyekt sahifasidagi kartalar va blok sahifasi (Figma "obyekt ko'rish", "blok ko'rish") ---------- */
+
+/* Holat: Figma'dagidek kontur; rang yolg'iz belgi emas (matn doim bor). */
+.zone-status {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.zone-status-waiting {
+  color: var(--info);
+}
+.zone-status-active {
+  color: var(--warning);
+}
+.zone-status-delayed {
+  color: var(--danger);
+}
+.zone-status-completed {
+  color: var(--success);
+}
+
+.blocks-toolbar,
+.block-toolbar {
+  margin-bottom: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.blocks-toolbar .segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.blocks-toolbar .segmented button {
+  white-space: nowrap;
+}
+.block-toolbar .block-filter {
+  min-width: 200px;
+}
+
+.block-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.block-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.block-card:hover {
+  border-color: var(--brand-500);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+}
+.block-card-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 7 / 6;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--brand-50);
+}
+.block-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.block-card-media svg {
+  width: 40px;
+  height: 40px;
+  color: var(--muted);
+}
+.block-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.block-card-head h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-lg);
+  font-weight: 400;
+  color: var(--brand-700);
+}
+.block-card-head h3 b {
+  font-weight: 700;
+}
+.block-card p {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* Blok sahifasi */
+.block-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-size: var(--fs-sm);
+}
+.block-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 24px 16px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, var(--brand-900), var(--brand-600));
+  color: #fff;
+  text-align: center;
+}
+.block-banner img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.block-banner:has(img)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(rgba(51, 8, 28, 0.45), rgba(51, 8, 28, 0.7));
+}
+.block-banner-text {
+  position: relative;
+  z-index: 2;
+  max-width: 100%;
+}
+.block-banner h1 {
+  font-size: var(--fs-2xl);
+  overflow-wrap: anywhere;
+}
+.block-banner p {
+  margin-top: 6px;
+  font-size: var(--fs-md);
+  opacity: 0.9;
+}
+.block-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.block-facts {
+  flex: 1 1 520px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px 20px;
+  margin: 0;
+}
+.block-facts dt {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.block-facts dd {
+  margin: 4px 0 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Xonalar soni bo'yicha akkordeon */
+.rooms-group + .rooms-group {
+  border-top: 1px solid var(--border);
+}
+.rooms-group h3 {
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+.rooms-group h3 button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.rooms-group h3 button:hover {
+  background: var(--surface-2);
+}
+.rooms-group .chevron {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.15s;
+}
+.rooms-group h3 button[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+.rooms-group-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rooms-group-count {
+  flex: none;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+/* Reja rasmi (planirovka) */
+.plan-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.plan-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.plan-thumb:enabled:hover {
+  border-color: var(--brand-500);
+}
+.plan-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.plan-thumb svg {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+.plan-large {
+  max-height: 70vh;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+/* Blok oynasi: rasm va ko'p tanlov */
+.image-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.image-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.multi-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.multi-select:hover {
+  border-color: var(--muted);
+}
+.multi-select:focus-visible,
+.multi-select[aria-expanded='true'] {
+  outline: none;
+  border-color: var(--brand-600);
+  box-shadow: 0 0 0 3px rgba(104, 27, 51, 0.12);
+}
+.multi-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.multi-select-value.placeholder {
+  color: var(--muted);
+}
+.multi-select svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.15s;
+}
+.multi-select[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.multi-select-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.multi-select-option {
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+}
+.multi-select-option:hover {
+  background: var(--surface-2);
+}
+
+@media (max-width: 720px) {
+  .block-banner {
+    min-height: 140px;
+  }
+  .block-banner h1 {
+    font-size: var(--fs-xl);
+  }
+  .block-toolbar .block-filter {
+    flex: 1 1 100%;
+  }
+  .block-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Xonalar jadvali: ustunlar guruhlar orasida bir xil kenglikda; raqamlar o'ngga (umumiy `.table td` matnni chapga majburlaydi) */
+.rooms-group .table {
+  table-layout: fixed;
+  min-width: 900px;
+}
+.rooms-group .table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.modal .input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-2);
+}

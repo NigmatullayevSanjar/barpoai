@@ -21,7 +21,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 **Qat’iy qoidalar (CLAUDE.md dan):**
 - Pul va miqdor — oxirigacha decimal string. Saqlash va kiritish faqat UZS. USD faqat ko‘rsatish uchun: konvertatsiya faqat `formatMoney` ichida, server bergan CBU kursi bilan, decimal arifmetika (Number emas). Frontend yig‘indi hisoblamaydi, jamlar serverdan.
 - Ruxsat serverda (UI faqat yashiradi). Har yangi matn `uz` va `ru` lokallarga. Statik demo raqam yo‘q — bo‘sh/xato holatlari.
-- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `017_price_lists.sql`, keyingisi **018**.
+- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `019_block_profile.sql`, keyingisi **020**.
 - AI funksiya qo‘shilmaydi. CRM, sotuv, bron, mijoz, shartnoma yo‘q (D1).
 - Sirlar `backend/.env` da (gitignore). Token yoki parol yaratmang, so‘ramang, faylga yozmang. Lokal hisob parollari hech qayerda yozilmagan — kerak bo‘lsa foydalanuvchi o‘zi kiradi.
 
@@ -53,6 +53,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - Eski kompyuter bazasida “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; yangi kompyuterga va bulutga ko‘chmaydi.
 - `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
 - Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
+- Kompyuter vaqt zonasi UTC+5: Docker testlarini `TZ=UTC` bilan yurgizing (Git Bash: `TZ=UTC npm run test:integration`), aks holda `integration.ts` eski O17 xatosi bilan yiqiladi (toza `main` da ham). 2026-10-12 da shu rejimda: integration 71, roles 5, UI 47.
 
 ## 5. Bajarilgan ishlar (holat 2026-10-12)
 
@@ -67,6 +68,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 | Hujjat | shu holat fayli va `CLAUDE.md` ko‘rsatkichi | `main` (PR #4, `6a9d200`) |
 | Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chirildi), reja 9.1/9.4; yangi O13 | `main` (PR #6, `ec9a706`) |
 | Hujjat | TZ’dan kelishilgan farqlar (8-bo‘lim), bosqichlar holati | `main` (PR #5, `0542d87`) |
+| Egasi fikri 2026-10-12 | D11–D14: tarif tahriri (018), super_admin huquqlari va parol tiklash havolasi, parol 6 belgi, blok kartasi va blok sahifasi (019, xonadon reja rasmi, narx varaqasidagi tannarx), Excel import tuzatishi (openpyxl fayllari, sarlavha qatorini topish, birlik sinonimlari), login sahifasi ru tili, bildirishnomadan sahifaga o‘tish, “Obuna to‘lovlari”, overscroll, Windows Chrome kursori, logo, kalendar va select komponentlari, smeta muharriri joylashuvi; `scripts/seed-dev.ts` (dev hisoblar, parol faqat `SEED_PASSWORD`) | branch `claude/feedback-2026-10-12`, PR egasi ruxsati bilan |
 
 ### Bosqich 3 — xonadonlar (asosiy qarorlar)
 - Jadval `premises`: zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar 0…50, maydon numeric(12,2) > 0, arxiv, version; RLS, kompozit FK.
@@ -75,7 +77,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - Ma’lum cheklovlar: blok qavatlari keyin kamaytirilsa mavjud xonadonlar qayta tekshirilmaydi; JS va PostgreSQL katta-kichik harf farqi kamdan-kam holatda commit paytida 409 beradi.
 
 ### Bosqich 2 — valyuta (asosiy qarorlar)
-- `exchange_rates` umumiy jadval (RLS yo‘q, kurs > 0). Worker `refreshRates` (`backend/src/rates.ts`): 12 soat yangi bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi, keyingi urinish 1 soatdan keyin; boshqa worker ishlaridan alohida `try`.
+- `exchange_rates` umumiy jadval (RLS yo‘q, kurs > 0). Worker `refreshRates` (`backend/src/rates.ts`): bugungi sanali kurs bo‘lsa o‘tkaziladi, xatoda oxirgi kurs qoladi, keyingi urinish 10 daqiqadan keyin; boshqa worker ishlaridan alohida `try`.
 - `GET /v1/exchange-rates/latest` — har bir kirgan foydalanuvchi, platforma xodimlari ham (`passwordChange: true` bilan tenant tekshiruvisiz; kurs ochiq ma’lumot).
 - Frontend: `CurrencyProvider` (`lib/currency.tsx`, `localStorage['barpo.currency']`), sof hisob `lib/currency-math.ts` (decimal.js, precision 40, HALF_UP, 2 xona), `formatMoney(value, lang, withCurrency, pin?)` — `pin='UZS'` formalarda, `pin='USD'` narx varaqasida (server bergan USD qiymat). USD “20 947,30 $”. Jadval sarlavhalari `displayCurrency()`. Formalar va eksportlar UZS (narx varaqasi bundan mustasno).
 

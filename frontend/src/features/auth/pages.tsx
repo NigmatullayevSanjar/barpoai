@@ -144,7 +144,7 @@ export function RegisterPage() {
       display_name: z.string().trim().min(2, t('common.required')).max(120),
       login: z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/, t('auth.login_name')),
       phone: z.string().trim().optional(),
-      password: z.string().min(12, t('auth.password_rules')).max(128),
+      password: z.string().min(6, t('auth.password_rules')).max(128),
       repeat: z.string(),
     })
     .refine((v) => v.password === v.repeat, {
@@ -245,7 +245,7 @@ export function ChangePasswordPage() {
   const schema = z
     .object({
       current_password: z.string().min(1, t('common.required')),
-      new_password: z.string().min(12, t('auth.password_rules')).max(128),
+      new_password: z.string().min(6, t('auth.password_rules')).max(128),
       repeat: z.string(),
     })
     .refine((v) => v.new_password === v.repeat, {
@@ -315,7 +315,7 @@ export function ResetPasswordPage() {
   const token = hashParam('token') ?? '';
   const schema = z
     .object({
-      new_password: z.string().min(12, t('auth.password_rules')).max(128),
+      new_password: z.string().min(6, t('auth.password_rules')).max(128),
       repeat: z.string(),
     })
     .refine((v) => v.new_password === v.repeat, {

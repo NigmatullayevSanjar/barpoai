@@ -223,7 +223,7 @@ function CreateEmployeeModal({ open, onClose }: { open: boolean; onClose: () => 
     role: z.enum(['foreman', 'brigadier', 'warehouse_manager', 'financier', 'accountant', 'manager']),
     position: z.string().trim().max(120),
     hired_at: z.string(),
-    password: z.string().min(12, t('auth.password_rules')).max(128),
+    password: z.string().min(6, t('auth.password_rules')).max(128),
     project_ids: z.array(z.string()),
   });
   type Form = z.infer<typeof schema>;
@@ -730,9 +730,8 @@ function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                               </Badge>
                             </td>
                             <td style={{ width: 150 }}>
-                              <select
-                                className="select"
-                                style={{ height: 30 }}
+                              <Select
+                                size="sm"
                                 value={current}
                                 onChange={(e) =>
                                   override.mutate({
@@ -744,7 +743,7 @@ function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                                 <option value="inherit">{t('employees.override.inherit')}</option>
                                 <option value="grant">{t('employees.override.grant')}</option>
                                 <option value="deny">{t('employees.override.deny')}</option>
-                              </select>
+                              </Select>
                             </td>
                           </tr>
                         );

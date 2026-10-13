@@ -42,6 +42,9 @@ const ProjectsPage = lazy(() =>
 const ProjectDetailPage = lazy(() =>
   import('@/features/projects/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })),
 );
+const BlockPage = lazy(() =>
+  import('@/features/projects/BlockPage').then((m) => ({ default: m.BlockPage })),
+);
 const EstimatesPage = lazy(() =>
   import('@/features/estimates/EstimatesPage').then((m) => ({ default: m.EstimatesPage })),
 );
@@ -223,6 +226,7 @@ export function App() {
                         ))}
                         <Route element={<RequirePage page="projects" />}>
                           <Route path="/app/projects/:id" element={<ProjectDetailPage />} />
+                          <Route path="/app/projects/:id/blocks/:blockId" element={<BlockPage />} />
                         </Route>
                         <Route element={<RequirePage page="estimates" />}>
                           <Route path="/app/estimates/:id" element={<EstimateDetailPage />} />

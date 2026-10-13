@@ -166,20 +166,28 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
         <table className="table grid-editor">
           <thead>
             <tr>
-              <th style={{ width: 36 }}>{t('est.col.n')}</th>
-              <th style={{ width: 110 }}>{t('est.col.kind')}</th>
-              <th style={{ width: 130 }}>{t('est.col.category')}</th>
-              <th style={{ minWidth: 220 }}>{t('est.col.description')}</th>
-              <th style={{ width: 190 }}>{t('est.col.material')}</th>
-              <th style={{ width: 130 }}>{t('est.col.zone')}</th>
-              <th style={{ width: 90 }}>{t('est.col.unit')}</th>
-              <th style={{ width: 230 }}>{t('est.col.quantity')}</th>
-              <th style={{ width: 80 }}>{t('est.col.loss')}</th>
-              <th style={{ width: 110 }}>{t('est.col.effective')}</th>
-              <th style={{ width: 120 }}>{t('est.col.unit_price')} (UZS)</th>
-              <th style={{ width: 130 }}>{t('est.col.total')}</th>
+              <th style={{ width: 44 }}>{t('est.col.n')}</th>
+              <th style={{ width: 130 }}>{t('est.col.kind')}</th>
+              <th style={{ width: 140 }}>{t('est.col.category')}</th>
+              <th style={{ width: 240 }}>{t('est.col.description')}</th>
+              <th style={{ width: 280 }}>{t('est.col.material')}</th>
+              <th style={{ width: 140 }}>{t('est.col.zone')}</th>
+              <th style={{ width: 100 }}>{t('est.col.unit')}</th>
+              <th style={{ width: 340 }}>{t('est.col.quantity')}</th>
+              <th className="num" style={{ width: 100 }}>
+                {t('est.col.loss')}
+              </th>
+              <th className="num" style={{ width: 150 }}>
+                {t('est.col.effective')}
+              </th>
+              <th className="num" style={{ width: 160 }}>
+                {t('est.col.unit_price')} (UZS)
+              </th>
+              <th className="num" style={{ width: 150 }}>
+                {t('est.col.total')}
+              </th>
               <th style={{ width: 160 }}>{t('est.col.note')}</th>
-              <th style={{ width: 110 }} />
+              <th style={{ width: 120 }} />
             </tr>
           </thead>
           <tbody>
@@ -198,8 +206,8 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                     {i + 1}
                   </td>
                   <td>
-                    <select
-                      className="select"
+                    <Select
+                      size="sm"
                       value={l.kind}
                       aria-label={t('est.col.kind')}
                       onChange={(ev) =>
@@ -211,7 +219,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           {t(`est.kind.${k}`)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td>
                     <input
@@ -261,8 +269,8 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                     )}
                   </td>
                   <td>
-                    <select
-                      className="select"
+                    <Select
+                      size="sm"
                       value={l.zone_id}
                       aria-label={t('est.col.zone')}
                       onChange={(ev) => update(l.key, { zone_id: ev.target.value })}
@@ -273,11 +281,11 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           {z.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td>
-                    <select
-                      className="select"
+                    <Select
+                      size="sm"
                       value={l.unit_id}
                       disabled={l.kind === 'material' && Boolean(l.material_id)}
                       aria-label={t('est.col.unit')}
@@ -290,7 +298,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           {u.id}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     {e.unit_id && <span className="cell-error">{e.unit_id}</span>}
                   </td>
                   <td>
@@ -324,7 +332,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                         <>
                           <input
                             className="input num"
-                            style={{ width: 64 }}
+                            style={{ width: 68 }}
                             inputMode="decimal"
                             placeholder={t('est.col.norm')}
                             value={l.norm}
@@ -335,7 +343,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           <span className="muted">×</span>
                           <input
                             className="input num"
-                            style={{ width: 72 }}
+                            style={{ width: 104 }}
                             inputMode="decimal"
                             placeholder={t('est.col.work_quantity')}
                             value={l.work_quantity}
