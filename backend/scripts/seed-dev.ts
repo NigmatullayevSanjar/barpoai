@@ -25,6 +25,7 @@ invariant(
 // Platformadan tashqari (tenant'siz) hisoblar.
 const platform: { login: string; name: string; role: string }[] = [
   { login: 'owner', name: 'Platforma egasi', role: 'platform_owner' },
+  { login: 'superadmin', name: 'Super admin', role: 'super_admin' },
   { login: 'support', name: 'Qo‘llab-quvvatlash', role: 'support' },
 ];
 
