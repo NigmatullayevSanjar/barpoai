@@ -1655,3 +1655,7 @@
   color: #ea7a0c;
   font-weight: 600;
 }
+.status-text-danger {
+  color: var(--danger);
+  font-weight: 600;
+}

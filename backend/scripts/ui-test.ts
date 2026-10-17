@@ -11,7 +11,7 @@ import { hashPassword } from '../src/security.js';
 import { chromium, type Browser, type Locator } from 'playwright';
 import ExcelJS from 'exceljs';
 import { tmpdir } from 'node:os';
-import { navFor, pageRoutes, type Role } from '../../frontend/src/lib/permissions.ts';
+import { navFor, navHref, type Role } from '../../frontend/src/lib/permissions.ts';
 
 /**
  * Haqiqiy brauzer sinovi: vaqtinchalik PostgreSQL + API + Vite.
@@ -1146,7 +1146,7 @@ try {
         navFor(role as Role)
           .flatMap((g) => g.items)
           .filter((it) => readable.includes(it.page))
-          .map((it) => pageRoutes[it.page]),
+          .map((it) => navHref(it)),
       ),
     ].sort();
     const hrefs = await rolePage
@@ -1154,8 +1154,9 @@ try {
       .evaluateAll((els) => els.map((e) => e.getAttribute('href')));
     assert.deepEqual([...new Set(hrefs)].sort(), expectedHrefs, `${role} sidebar vs permissions`);
     for (const href of expectedHrefs) {
+      // Ombor bo'limlari so'rov parametri bilan (?tab=…): obyekt parametri & bilan qo'shiladi
       await rolePage.goto(
-        webURL + href + (href.startsWith('/app/') ? `?project=${projectId}` : ''),
+        webURL + href + (href.startsWith('/app/') ? `${href.includes('?') ? '&' : '?'}project=${projectId}` : ''),
       );
       await rolePage.locator('.page-header').first().waitFor();
       await delay(150);

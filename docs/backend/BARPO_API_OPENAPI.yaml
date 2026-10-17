@@ -3722,6 +3722,14 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - in
+              - out
       x-permission: stock.read
       x-tenant-scope: true
       responses:

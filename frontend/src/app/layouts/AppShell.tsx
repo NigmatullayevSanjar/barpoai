@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { useCurrency } from '@/lib/currency';
 import { useT, type Lang } from '@/lib/i18n';
 import { api } from '@/lib/api';
-import { navFor, pageRoutes, platformNav } from '@/lib/permissions';
+import { isNavActive, navFor, navHref, platformNav } from '@/lib/permissions';
 import { formatDate, formatMoney, formatRelative } from '@/lib/format';
 import { Avatar, Button } from '@/components/ui';
 import { Logo } from '@/components/ui/Logo';
@@ -240,10 +240,9 @@ export function AppShell() {
                   {g.group && <div className="nav-group">{t(g.group)}</div>}
                   {g.items.map((it) => (
                     <NavLink
-                      key={it.page}
-                      to={pageRoutes[it.page]}
-                      end={it.page === 'dashboard' || it.page === 'finance'}
-                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      key={navHref(it)}
+                      to={navHref(it)}
+                      className={`nav-link ${isNavActive(it, location.pathname, location.search, g.items) ? 'active' : ''}`}
                     >
                       <Icon name={it.icon} />
                       {t(it.label ?? `page.${it.page}`)}

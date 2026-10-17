@@ -111,10 +111,31 @@ export const pageRoutes: Record<Page, string> = {
   pricing: '/app/finance/pricing',
 };
 
-/** Menyu bandi; `label` berilmasa yorliq `page.<page>` kalitidan olinadi. */
-export type NavItem = { page: Page; icon: string; label?: string };
+/** Menyu bandi; `label` berilmasa yorliq `page.<page>` kalitidan, `to` berilmasa manzil `pageRoutes[page]` dan olinadi. */
+export type NavItem = { page: Page; icon: string; label?: string; to?: string };
 export type NavGroup = { group: string | null; items: NavItem[] };
-const item = (page: Page, icon: string, label?: string): NavItem => ({ page, icon, label });
+const item = (page: Page, icon: string, label?: string, to?: string): NavItem => ({ page, icon, label, to });
+/** Bitta sahifaning ichki bo'limiga (so'rov parametri bilan) olib boradigan band. */
+export const navHref = (it: NavItem) => it.to ?? pageRoutes[it.page];
+/**
+ * Band faolmi: yo'l mos kelsa va banddagi so'rov parametrlari joriy manzilda ham bo'lsa. So'rov parametrsiz band
+ * (masalan, "Ombor") faqat shu sahifaning boshqa bandlari mos kelmaganda faol — bir vaqtda bitta band yonadi.
+ */
+export const isNavActive = (it: NavItem, pathname: string, search: string, siblings: NavItem[]) => {
+  const [path, query = ''] = navHref(it).split('?');
+  if (pathname !== path && !(path !== '/app' && path !== '/app/finance' && pathname.startsWith(path + '/')))
+    return false;
+  const current = new URLSearchParams(search);
+  const matches = (q: string) => [...new URLSearchParams(q)].every(([k, v]) => current.get(k) === v);
+  const size = (q: string) => [...new URLSearchParams(q)].length;
+  const samePage = siblings.filter((s) => s !== it && navHref(s).split('?')[0] === path);
+  const queryOf = (s: NavItem) => navHref(s).split('?')[1] ?? '';
+  if (query) {
+    // "Omborlar" (tab=balances) va "Inventarizatsiya" (tab=balances&inventory=1): aniqrog'i (ko'proq parametr) yonadi
+    return matches(query) && !samePage.some((s) => size(queryOf(s)) > size(query) && matches(queryOf(s)));
+  }
+  return !samePage.some((s) => matches(queryOf(s)));
+};
 const flat = (...items: NavItem[]): NavGroup[] => [{ group: null, items }];
 const nav = {
   dashboard: item('dashboard', 'LayoutDashboard'),
@@ -159,8 +180,25 @@ export const roleNav: Partial<Record<Role, NavGroup[]>> = {
     nav.reports,
     nav.employees,
   ),
-  brigadier: flat(nav.dashboard, nav.tasks, nav.materials, nav.reports),
-  warehouse_manager: flat(nav.dashboard, item('stock', 'Boxes', 'nav.warehouse')),
+  // Figma brigadir: "Material qabul" (jo'natmalarni qabul qilish) va "Material talabnomasi" — ombor sahifasining bo'limlari.
+  brigadier: flat(
+    nav.dashboard,
+    nav.tasks,
+    item('stock', 'Boxes', 'nav.material_accept', '/app/stock?tab=movements&kind=transfer'),
+    item('stock', 'FileInput', 'nav.material_request', '/app/stock?tab=requests'),
+    nav.reports,
+  ),
+  // Figma ombor mudiri: kirim/chiqim, omborlar (qoldiqlar), talabnomalar, transferlar, inventarizatsiya, materiallar.
+  // "Buyurtma" (yetkazuvchi buyurtmasi) va "Hisobdan chiqarish" ma'lumoti yo'q (D17).
+  warehouse_manager: flat(
+    nav.dashboard,
+    item('stock', 'ArrowLeftRight', 'nav.stock_movements', '/app/stock?tab=movements'),
+    item('stock', 'Boxes', 'nav.warehouses', '/app/stock?tab=balances'),
+    item('stock', 'FileInput', 'nav.requests', '/app/stock?tab=requests'),
+    item('stock', 'GitCompare', 'nav.transfers', '/app/stock?tab=movements&kind=transfer'),
+    item('stock', 'ClipboardList', 'nav.inventory', '/app/stock?tab=balances&inventory=1'),
+    item('stock', 'Package', 'nav.materials_catalog', '/app/stock?tab=materials'),
+  ),
   financier: flat(
     nav.dashboard,
     nav.budgets,

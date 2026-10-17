@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
@@ -21,6 +22,7 @@ import {
   Modal,
   PageHeader,
   SearchInput,
+  Segmented,
   Select,
   Stat,
   Tabs,
@@ -55,12 +57,41 @@ import {
 } from './StockModals';
 
 type Tab = 'balances' | 'movements' | 'requests' | 'materials';
+const TABS: readonly Tab[] = ['balances', 'movements', 'requests', 'materials'];
+const isTab = (v: string | null): v is Tab => TABS.includes(v as Tab);
+/** Menyu bandi (?tab=…&kind=…&inventory=1) qaysi Figma bo'limini ochadi — sarlavha shu bo'yicha. */
+type Section = 'warehouses' | 'inventory' | 'movements' | 'transfers' | 'accept' | 'requests' | 'materials';
 export function StockPage() {
   const { t } = useT();
   const { me, permissions } = useAuth();
   const sel = useProjectSelection();
   const overview = useOverview(sel.projectId);
-  const [tab, setTab] = useState<Tab>('balances');
+  // Brigadir va ombor mudiri menyusi sahifaning ichki bo'limiga so'rov parametri bilan keladi (F4, D17).
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab');
+  const tab: Tab = isTab(tabParam) ? tabParam : 'balances';
+  const kindParam = params.get('kind') ?? '';
+  const inventory = params.get('inventory') === '1';
+  const setTab = (next: Tab) => {
+    const n = new URLSearchParams(params);
+    n.set('tab', next);
+    n.delete('kind');
+    n.delete('inventory');
+    setParams(n, { replace: true });
+  };
+  const section: Section | null = !tabParam
+    ? null
+    : tab === 'balances'
+      ? inventory
+        ? 'inventory'
+        : 'warehouses'
+      : tab === 'movements'
+        ? kindParam === 'transfer'
+          ? me?.role === 'brigadier'
+            ? 'accept'
+            : 'transfers'
+          : 'movements'
+        : tab;
   const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const [modal, setModal] = useState<null | {
     kind: Exclude<CommandKind, 'adjustment' | 'reversal'>;
@@ -72,7 +103,10 @@ export function StockPage() {
   // Figma "Ombor va xomashyo nazorati": KPI kartalar, bitta toolbar kartasida obyekt tanlovi va amallar.
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <PageHeader title={t('stock.title')} description={t('stock.sub')} />
+      <PageHeader
+        title={section ? t(`stock.tab_title.${section}`) : t('stock.title')}
+        description={section ? t(`stock.tab_sub.${section}`) : t('stock.sub')}
+      />
       {d && (
         <div className="grid-4">
           <Stat label={t('stock.kpi.kinds')} value={d.balances.length} sub={t('stock.kpi.kinds_sub')} />
@@ -156,12 +190,16 @@ export function StockPage() {
       />
       {tab === 'balances' && d && (
         <BalancesTab
+          key={`${sel.projectId}:${inventory}`}
           d={d}
           projectId={sel.projectId}
+          inventory={inventory}
           onCommand={(kind, preset) => setModal({ kind, preset })}
         />
       )}
-      {tab === 'movements' && sel.projectId && <MovementsTab key={sel.projectId} projectId={sel.projectId} />}
+      {tab === 'movements' && sel.projectId && (
+        <MovementsTab key={`${sel.projectId}:${kindParam}`} projectId={sel.projectId} initialKind={kindParam} />
+      )}
       {tab === 'requests' && sel.projectId && d && (
         <RequestsTab key={sel.projectId} projectId={sel.projectId} accounts={d.accounts} />
       )}
@@ -180,13 +218,18 @@ export function StockPage() {
   );
 }
 
+const stateOf = (b: Balance): 'out' | 'low' | 'enough' =>
+  Number(b.available) <= 0 ? 'out' : b.low ? 'low' : 'enough';
 function BalancesTab({
   d,
   projectId,
+  inventory = false,
   onCommand,
 }: {
   d: NonNullable<ReturnType<typeof useOverview>['data']>;
   projectId: string;
+  /** Menyudagi "Inventarizatsiya" bandi: birinchi ombor hisobi tanlangan holda ochiladi, yo'riqnoma ko'rsatiladi. */
+  inventory?: boolean;
   onCommand: (
     kind: Exclude<CommandKind, 'adjustment' | 'reversal'>,
     preset: { from_account_id?: string; to_account_id?: string; material_id?: string },
@@ -195,7 +238,9 @@ function BalancesTab({
   const { t, lang } = useT();
   const { me, permissions } = useAuth();
   const has = (p: string) => Boolean(permissions?.permissions.includes(p));
-  const [account, setAccount] = useState<string>('all');
+  const [account, setAccount] = useState<string>(() =>
+    inventory ? (d.accounts.find((a) => a.kind === 'warehouse')?.id ?? 'all') : 'all',
+  );
   const [search, setSearch] = useState('');
   const [reconcile, setReconcile] = useState<StockAccount | null>(null);
   const [minimum, setMinimum] = useState<{ account: StockAccount; balance: Balance } | null>(null);
@@ -257,6 +302,20 @@ function BalancesTab({
         <b style={{ color: r.low ? 'var(--danger)' : undefined }}>{formatQuantity(r.available)}</b>
       ),
     },
+    {
+      // Figma "Holati": Tugagan (mavjud 0), Kam qoldi (minimaldan past), Yetarli
+      key: 'state',
+      header: t('stock.state'),
+      sortValue: (r) => stateOf(r),
+      render: (r) => {
+        const s = stateOf(r);
+        return (
+          <span className={`status-text-${s === 'enough' ? 'active' : s === 'low' ? 'inactive' : 'danger'}`}>
+            {t(`stock.state.${s}`)}
+          </span>
+        );
+      },
+    },
     ...(pricesVisible
       ? ([
           {
@@ -275,7 +334,6 @@ function BalancesTab({
       render: (r) => (
         <span className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
           {Number(r.minimum_quantity) ? formatQuantity(r.minimum_quantity) : <span className="muted">—</span>}
-          {r.low && <Badge tone="danger">{t('stock.low')}</Badge>}
         </span>
       ),
     },
@@ -330,6 +388,7 @@ function BalancesTab({
   ];
   return (
     <div className="stack" style={{ gap: 12 }}>
+      {inventory && has('stock.reverse') && <Alert tone="info">{t('stock.inventory_hint')}</Alert>}
       <div className="toolbar">
         <Select aria-label={t('stock.account')} value={account} onChange={(e) => setAccount(e.target.value)}>
           <option value="all">{t('stock.all_accounts')}</option>
@@ -456,18 +515,26 @@ function LedgerModal({
   );
 }
 
-function MovementsTab({ projectId }: { projectId: string }) {
+type Direction = '' | 'in' | 'out';
+function MovementsTab({ projectId, initialKind = '' }: { projectId: string; initialKind?: string }) {
   const { t, lang } = useT();
   const { me, permissions } = useAuth();
   const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const [status, setStatus] = useState<string>('open');
-  const [kind, setKind] = useState<string>('');
+  // Menyudagi "Transferlar"/"Material qabul" bandi kind=transfer bilan keladi
+  const [kind, setKind] = useState<string>(initialKind);
+  // Figma "Kirim/Chiqim" segmenti (Barchasi/Kirimlar/Chiqimlar) — serverda `direction` filtri
+  const [direction, setDirection] = useState<Direction>('');
   const [action, setAction] = useState<{
     command: StockCommand;
     action: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
   } | null>(null);
   const list = useListState();
-  const query = useCommands(projectId, { ...(status ? { status } : {}), ...(kind ? { kind } : {}) }, list);
+  const query = useCommands(
+    projectId,
+    { ...(status ? { status } : {}), ...(kind ? { kind } : {}), ...(direction ? { direction } : {}) },
+    list,
+  );
   const actionsFor = (c: StockCommand) => {
     const out: {
       key: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
@@ -585,6 +652,19 @@ function MovementsTab({ projectId }: { projectId: string }) {
   return (
     <div className="stack" style={{ gap: 12 }}>
       <div className="toolbar">
+        <Segmented<Direction>
+          value={direction}
+          onChange={(v) => {
+            setDirection(v);
+            setKind('');
+            list.setOffset(0);
+          }}
+          items={[
+            { key: '', label: t('stock.filter.all') },
+            { key: 'in', label: t('stock.filter.in') },
+            { key: 'out', label: t('stock.filter.out') },
+          ]}
+        />
         <Select aria-label={t('common.status')} value={status} onChange={(e) => {
             setStatus(e.target.value);
             list.setOffset(0);
@@ -600,6 +680,7 @@ function MovementsTab({ projectId }: { projectId: string }) {
         </Select>
         <Select aria-label={t('est.col.kind')} value={kind} onChange={(e) => {
             setKind(e.target.value);
+            setDirection('');
             list.setOffset(0);
           }}
         >
@@ -716,8 +797,25 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
         ) : null,
     },
   ];
+  const summary = query.data?.summary;
   return (
     <div className="stack" style={{ gap: 12 }}>
+      {summary && (
+        <div className="grid-4">
+          <Stat label={t('stock.kpi.req_total')} value={summary.total} />
+          <Stat
+            label={t('stock.kpi.req_pending')}
+            value={summary.pending}
+            tone={summary.pending > 0 ? 'warning' : undefined}
+          />
+          <Stat label={t('stock.kpi.req_fulfilled')} value={summary.fulfilled} tone="success" />
+          <Stat
+            label={t('stock.kpi.req_rejected')}
+            value={summary.rejected}
+            tone={summary.rejected > 0 ? 'danger' : undefined}
+          />
+        </div>
+      )}
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <Button icon={<Plus />} onClick={() => setCreate(true)}>
           {t('stock.request_new')}

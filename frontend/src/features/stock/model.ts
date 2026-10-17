@@ -93,6 +93,8 @@ export type MaterialRequest = {
   version: number;
   created_at: string;
 };
+/** GET /v1/stock/requests `summary` — Figma talabnomalar KPI (ro'yxat doirasida). */
+export type RequestsSummary = { total: number; pending: number; fulfilled: number; rejected: number };
 export const statusTone: Record<CommandStatus, Tone> = {
   pending: 'warning',
   partial: 'info',
@@ -117,7 +119,7 @@ export const useOverview = (projectId: string) =>
   });
 export const useCommands = (
   projectId: string,
-  filters: { status?: string; kind?: string; account_id?: string },
+  filters: { status?: string; kind?: string; account_id?: string; direction?: string },
   page: { offset: number; limit: number },
 ) =>
   useQuery({
@@ -132,7 +134,7 @@ export const useRequests = (projectId: string, page: { offset: number; limit: nu
   useQuery({
     queryKey: ['stock-requests', projectId, page.offset, page.limit],
     queryFn: () =>
-      api<ListResponse<MaterialRequest>>(
+      api<ListResponse<MaterialRequest> & { summary?: RequestsSummary }>(
         `/v1/stock/requests${qs({ project_id: projectId, limit: page.limit, offset: page.offset })}`,
       ),
     enabled: Boolean(projectId),
