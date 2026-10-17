@@ -297,18 +297,12 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
         request.material_id,
       ]);
       let command: Row | null = null;
+      // Egasi qarori (2026-10-16): talabnomani faqat ombor mudiri (stock.send) bajaradi yoki rad etadi,
+      // bekor qilishni faqat so'rovchi; admin faqat ko'radi.
       if (body.action === 'cancel') {
-        invariant(
-          request.requested_by === actor.id || actor.role === 'tenant_admin',
-          'FORBIDDEN',
-          403,
-        );
+        invariant(request.requested_by === actor.id, 'FORBIDDEN', 403);
       } else {
-        invariant(
-          (await allowed(db, actor, 'stock.send')) || actor.role === 'tenant_admin',
-          'FORBIDDEN',
-          403,
-        );
+        invariant(await allowed(db, actor, 'stock.send'), 'FORBIDDEN', 403);
         if (body.action === 'fulfill') {
           invariant(body.from_account_id, 'FROM_ACCOUNT_REQUIRED', 400);
           let toAccount = body.to_account_id ?? null;

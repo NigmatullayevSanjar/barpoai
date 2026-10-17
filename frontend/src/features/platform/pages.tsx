@@ -17,6 +17,7 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  EmptyState,
   Input,
   Modal,
   PageHeader,
@@ -110,39 +111,31 @@ export function PlatformDashboard() {
       }>('/v1/platform/billing/summary'),
   });
   const count = (s: AccessState) => tenants.data?.items.filter((x) => x.access_state === s).length ?? 0;
+  const employees = tenants.data?.items.reduce((s, x) => s + x.active_users, 0);
+  // Figma (D17): platforma boshqaruv paneli — kompaniyalar, xodimlar, faol obunalar, tushum va qarz; o'ngda kompaniyalar holati.
   return (
-    <div className="stack" style={{ gap: 18 }}>
+    <div className="stack" style={{ gap: 16 }}>
       <PageHeader title={t('platform.dashboard_title')} description={t('platform.dashboard_sub')} />
-      <div className="grid-4">
+      <div className="grid-3">
+        <Stat to="/admin/tenants" label={t('platform.tenants_total')} value={tenants.data?.items.length ?? '—'} />
+        <Stat label={t('platform.employees_total')} value={employees ?? '—'} />
         <Stat
-          accent
-          to="/admin/tenants"
-          label={t('platform.tenants_total')}
-          value={tenants.data?.items.length ?? '—'}
-        />
-        <Stat label={t('platform.tenants_trial')} value={count('trial')} />
-        <Stat label={t('platform.tenants_paid')} value={count('paid')} />
-        <Stat
-          label={t('platform.tenants_overdue')}
-          value={count('overdue')}
-          sub={`${t('platform.tenants_blocked')}: ${count('blocked')} · ${t('platform.tenants_pending')}: ${count('pending')}`}
+          label={t('platform.subscriptions_active')}
+          value={count('paid')}
+          sub={`${t('platform.tenants_trial')}: ${count('trial')} · ${t('platform.tenants_pending')}: ${count('pending')}`}
         />
       </div>
-      <div className="grid-4">
-        <Stat
-          label={t('platform.invoiced')}
-          value={summary.data ? formatMoney(summary.data.invoiced, lang, false) : '—'}
-          sub={displayCurrency()}
-        />
+      <div className="grid-3">
         <Stat
           label={t('platform.cash_received')}
           value={summary.data ? formatMoney(summary.data.cash_received, lang, false) : '—'}
-          sub={displayCurrency()}
+          sub={`${displayCurrency()} · ${t('platform.invoiced')}: ${summary.data ? formatMoney(summary.data.invoiced, lang, false) : '—'}`}
         />
         <Stat
           label={t('platform.debt')}
           value={summary.data ? formatMoney(summary.data.debt, lang, false) : '—'}
-          sub={displayCurrency()}
+          sub={`${t('platform.tenants_overdue')}: ${count('overdue')} · ${t('platform.tenants_blocked')}: ${count('blocked')}`}
+          tone={summary.data && Number(summary.data.debt) > 0 ? 'danger' : undefined}
         />
         <Stat
           label={t('platform.refunded')}
@@ -150,16 +143,53 @@ export function PlatformDashboard() {
           sub={`${t('platform.credit_balance')}: ${summary.data ? formatMoney(summary.data.credit_balance, lang, false) : '—'} · ${t('platform.profit_note')}`}
         />
       </div>
-      <section>
-        <h2 style={{ marginBottom: 10 }}>{t('nav.debtors')}</h2>
-        <TenantsTable
-          rows={tenants.data?.items.filter((x) => x.access_state === 'overdue')}
-          loading={tenants.isLoading}
-          error={tenants.error}
-          refetch={tenants.refetch}
-          emptyTitle={t('common.empty')}
-        />
-      </section>
+      <div className="grid-main">
+        <section className="card">
+          <div className="card-header">
+            <h3>{t('nav.debtors')}</h3>
+            <Link to="/admin/debtors">{t('common.all')}</Link>
+          </div>
+          <TenantsTable
+            rows={tenants.data?.items.filter((x) => x.access_state === 'overdue')}
+            loading={tenants.isLoading}
+            error={tenants.error}
+            refetch={tenants.refetch}
+            emptyTitle={t('common.empty')}
+          />
+        </section>
+        <section className="card">
+          <div className="card-header">
+            <h3>
+              {t('platform.tenants_state')}
+              <span className="card-sub">{t('platform.tenants_state_sub')}</span>
+            </h3>
+            <Link to="/admin/tenants">{t('common.all')}</Link>
+          </div>
+          {tenants.data && tenants.data.items.length === 0 ? (
+            <EmptyState title={t('common.empty')} />
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {(tenants.data?.items ?? []).slice(0, 8).map((x) => (
+                <li key={x.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <Link
+                    to={`/admin/tenants/${x.id}`}
+                    className="row-between"
+                    style={{ padding: '12px 20px', color: 'inherit' }}
+                  >
+                    <span className="grow">
+                      <span style={{ fontWeight: 600 }}>{x.legal_name}</span>
+                      <small className="muted" style={{ display: 'block' }}>
+                        {x.plan_code ?? t('platform.no_plan')} · {x.active_users}
+                      </small>
+                    </span>
+                    <AccessBadge row={x} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

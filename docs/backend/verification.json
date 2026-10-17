@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-13T11:07:46.118Z",
+  "executed_at": "2026-10-17T07:24:19.813Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -42,7 +42,7 @@
     "Phone or login identifier; httpOnly cookie session with origin check",
     "Telegram deep-link token is single-use, hashed, race-safe; account ownership and unlink enforced",
     "Task assignment creates in-app notification and durable Telegram outbox job",
-    "Telegram multi-step material request creates a pending request; admin resolves it via API",
+    "Telegram multi-step material request creates a pending request; the admin only reads it, the warehouse manager resolves it via API",
     "Telegram multi-step progress flow creates a daily report linked to a work line",
     "Company settings save name/phone/address with optimistic version; muted Telegram category keeps the in-app notification and closes the outbox job",
     "Dashboard blocks follow permissions: admin totals equal the project journal, brigadier sees no finance/employees/prices",

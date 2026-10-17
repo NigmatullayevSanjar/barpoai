@@ -538,11 +538,11 @@
 }
 
 /* ---------- Cards / panels ---------- */
+/* Figma: tekis oq karta, yupqa chegara, 12px burchak, soyasiz. */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 .card-pad {
   padding: 18px 20px;
@@ -552,12 +552,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
 .card-header h2,
 .card-header h3 {
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.card-header .card-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text-3);
 }
 .card-footer {
   padding: 12px 20px;
@@ -566,25 +575,37 @@
   justify-content: flex-end;
   gap: 8px;
 }
+/* Figma KPI kartasi: katta harfli yorliq, mono shriftli katta raqam, pastda izoh. */
 .stat {
-  padding: 16px 18px;
+  padding: 18px 20px;
 }
 .stat .stat-label {
   font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-3);
+  letter-spacing: 0.06em;
+  color: var(--text-2);
   font-weight: 600;
 }
 .stat .stat-value {
-  font-size: var(--fs-2xl);
-  font-weight: 650;
-  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: 8px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.stat .stat-value.is-danger {
+  color: var(--danger);
+}
+.stat .stat-value.is-success {
+  color: var(--success);
+}
+.stat .stat-value.is-warning {
+  color: var(--warning);
 }
 .stat .stat-sub {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: var(--fs-sm);
   color: var(--text-3);
 }
@@ -615,51 +636,35 @@
 }
 
 /* ---------- Badges ---------- */
+/* Figma: holat belgilari — oq fonda rangli chegara va matn (nuqtasiz). */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
   font-size: var(--fs-xs);
   font-weight: 600;
   white-space: nowrap;
-  background: var(--surface-2);
-  color: var(--text-2);
-  border: 1px solid var(--border);
-}
-.badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+  background: var(--surface);
+  color: var(--text-3);
+  border: 1px solid currentColor;
 }
 .badge-success {
-  background: var(--success-bg);
-  color: var(--success);
-  border-color: #bbf7d0;
+  color: #16a34a;
 }
 .badge-warning {
-  background: var(--warning-bg);
-  color: var(--warning);
-  border-color: #fde68a;
+  color: #ea7a0c;
 }
 .badge-danger {
-  background: var(--danger-bg);
-  color: var(--danger);
-  border-color: #fecaca;
+  color: #dc2626;
 }
 .badge-info {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: #bfdbfe;
+  color: #2563eb;
 }
 .badge-brand {
-  background: var(--brand-100);
   color: var(--brand-700);
-  border-color: #efcfda;
 }
 
 /* ---------- Table ---------- */
@@ -674,17 +679,17 @@
 }
 .table th,
 .table td {
-  padding: 10px 14px;
+  padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
 .table th {
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-3);
+  color: var(--text-2);
   background: var(--surface-2);
   white-space: nowrap;
   position: sticky;
@@ -942,26 +947,26 @@
   color: var(--brand-700);
   border-bottom-color: var(--brand-700);
 }
+/* Figma filtr tugmalari: oq konteyner, faol band bordo. */
 .segmented {
   display: inline-flex;
-  padding: 3px;
-  background: var(--surface-2);
+  padding: 4px;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 .segmented button {
   border: 0;
   background: transparent;
-  padding: 5px 12px;
-  border-radius: 4px;
+  padding: 6px 14px;
+  border-radius: 6px;
   font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--text-3);
+  font-weight: 600;
+  color: var(--text-2);
 }
 .segmented button[aria-pressed='true'] {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+  background: var(--brand-700);
+  color: #fff;
 }
 
 /* ---------- Toasts ---------- */
@@ -1002,17 +1007,24 @@
 }
 
 /* ---------- Page ---------- */
+/* Figma: sahifa sarlavhasi qalin va katta, izohi bordo rangda. */
 .page-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
+.page-header h1 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
 .page-header p {
-  color: var(--text-3);
+  color: var(--brand-600);
   margin-top: 4px;
+  font-size: var(--fs);
 }
 .page-header .actions {
   display: flex;
@@ -1421,4 +1433,121 @@
 }
 .chart-donut svg {
   width: 180px;
+}
+
+/* ---------- Smetalar (Figma "smetalar", "smeta ko'rish") ---------- */
+.est-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.est-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+}
+.est-row:last-child {
+  border-bottom: 0;
+}
+.est-row:hover {
+  background: var(--brand-50);
+  text-decoration: none;
+}
+.est-row .est-main {
+  flex: 1;
+  min-width: 0;
+}
+.est-row .est-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.est-row h3 {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.est-row .est-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.est-row .est-total {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.est-row .est-date {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* Smeta jadvali: to'liq chegarali katak, och ko'k sarlavha, yig'iladigan kategoriya qatori */
+.est-table th,
+.est-table td {
+  border: 1px solid var(--border);
+}
+.est-table thead th {
+  background: #eef2f7;
+  color: var(--text);
+}
+.est-table tr.est-category td {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+.est-table tr.est-category button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  padding: 0;
+}
+.est-table tr.est-category svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s;
+}
+.est-table tr.est-category button[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+.est-table tr.est-subtotal td {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.est-table tr.est-grand td {
+  background: var(--surface-2);
+  font-weight: 800;
+}
+.est-calc dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 20px;
+  margin: 0;
+}
+.est-calc dt {
+  color: var(--text-2);
+}
+.est-calc dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: right;
+}
+.est-calc .est-grand-total {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-weight: 800;
+}
+.est-calc .est-grand-total span:last-child {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
 }

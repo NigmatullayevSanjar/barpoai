@@ -450,17 +450,20 @@ export function Stat({
   sub,
   accent,
   to,
+  tone,
 }: {
   label: ReactNode;
   value: ReactNode;
   sub?: ReactNode;
   accent?: boolean;
   to?: string;
+  /** Qiymat rangi (Figma KPI: qizil — muammo, yashil — ijobiy, sariq — ogohlantirish). */
+  tone?: 'danger' | 'success' | 'warning';
 }) {
   const body = (
     <>
       <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
+      <div className={`stat-value${tone ? ` is-${tone}` : ''}`}>{value}</div>
       {sub && <div className="stat-sub">{sub}</div>}
     </>
   );

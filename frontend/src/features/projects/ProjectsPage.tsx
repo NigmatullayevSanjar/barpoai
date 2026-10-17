@@ -1,27 +1,32 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus } from 'lucide-react';
+import { Building2, Plus } from 'lucide-react';
 import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate } from '@/lib/format';
+import { formatMoney } from '@/lib/format';
 import {
+  Avatar,
   Badge,
   Button,
+  EmptyState,
+  ErrorState,
   Input,
   Modal,
   PageHeader,
+  Pagination,
   SearchInput,
+  Segmented,
   Select,
   Textarea,
   useListState,
 } from '@/components/ui';
-import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
+import { useImageSrc } from './blocks';
 import { statusTone, type Project, type ProjectStatus } from './types';
 
 export const projectStatuses: ProjectStatus[] = ['planning', 'active', 'paused', 'completed'];
@@ -127,10 +132,62 @@ export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
   return <Badge tone={statusTone[status]}>{t(`projects.status.${status}`)}</Badge>;
 }
 
-export function ProjectsPage() {
+/** Figma obyekt kartasi: rasm, nom va holat, manzil, progress, smeta/xarajat va mas'ul. */
+function ProjectCard({ p }: { p: Project }) {
   const { t, lang } = useT();
+  const image = useImageSrc(p.image_file_id);
+  const progress = p.progress_percent == null ? null : Math.round(Number(p.progress_percent));
+  return (
+    <Link to={`/app/projects/${p.id}`} className="project-card">
+      <div className="project-card-media">
+        {image ? <img src={image} alt="" /> : <Building2 aria-hidden />}
+      </div>
+      <div className="project-card-head">
+        <h3>{p.name}</h3>
+        <ProjectStatusBadge status={p.status} />
+      </div>
+      <div className="project-card-addr">
+        {[p.code, p.address ?? p.customer_name].filter(Boolean).join(' · ') || '—'}
+      </div>
+      <div className="project-card-progress">
+        <span className="row-between">
+          <span className="muted">{t('projects.progress')}</span>
+          <b>{progress === null ? t('projects.no_progress') : `${progress}%`}</b>
+        </span>
+        <span className="progress">
+          <span style={{ width: `${Math.min(100, progress ?? 0)}%` }} />
+        </span>
+      </div>
+      <div className="project-card-foot">
+        {p.plan_total !== undefined ? (
+          <span>
+            <span className="label">{t('projects.plan_vs_actual')}</span>
+            <div className="value">
+              {formatMoney(p.plan_total, lang, false)}{' '}
+              <small>/ {formatMoney(p.fact_total ?? '0', lang, false)}</small>
+            </div>
+          </span>
+        ) : (
+          <span />
+        )}
+        <span className="project-card-person">
+          {p.responsible_name ? (
+            <>
+              <Avatar name={p.responsible_name} size="sm" />
+              <span>{p.responsible_name}</span>
+            </>
+          ) : (
+            <span className="muted">{t('projects.no_responsible')}</span>
+          )}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+export function ProjectsPage() {
+  const { t } = useT();
   const { can } = useAuth();
-  const navigate = useNavigate();
   const list = useListState();
   const [status, setStatus] = useState<'all' | ProjectStatus>('all');
   const [open, setOpen] = useState(false);
@@ -147,102 +204,66 @@ export function ProjectsPage() {
       ),
   });
   const rows = query.data?.items;
-  const columns: Column<Project>[] = [
-    {
-      key: 'name',
-      header: t('projects.name'),
-      sortValue: (r) => r.name,
-      render: (r) => (
-        <>
-          <div className="cell-main">{r.name}</div>
-          <div className="cell-sub">{[r.code, r.customer_name].filter(Boolean).join(' · ')}</div>
-        </>
-      ),
-    },
-    {
-      key: 'status',
-      header: t('projects.status'),
-      sortValue: (r) => r.status,
-      render: (r) => <ProjectStatusBadge status={r.status} />,
-    },
-    {
-      key: 'address',
-      header: t('projects.address'),
-      render: (r) => r.address ?? <span className="muted">—</span>,
-    },
-    {
-      key: 'start',
-      header: t('projects.planned_start'),
-      sortValue: (r) => r.planned_start ?? '',
-      render: (r) => formatDate(r.planned_start, lang),
-    },
-    {
-      key: 'end',
-      header: t('projects.planned_end'),
-      sortValue: (r) => r.planned_end ?? '',
-      render: (r) => formatDate(r.planned_end, lang),
-    },
-    {
-      key: 'forecast',
-      header: t('projects.forecast_end'),
-      sortValue: (r) => r.forecast_end ?? '',
-      render: (r) =>
-        r.forecast_end ? (
-          <span
-            style={{ color: r.planned_end && r.forecast_end > r.planned_end ? 'var(--warning)' : undefined }}
-          >
-            {formatDate(r.forecast_end, lang)}
-          </span>
-        ) : (
-          <span className="muted">—</span>
-        ),
-    },
-  ];
   const createButton = can('projects', 'create') ? (
     <Button icon={<Plus />} onClick={() => setOpen(true)}>
       {t('projects.new')}
     </Button>
   ) : undefined;
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('projects.title')} description={t('projects.sub')} actions={createButton} />
-      <div className="toolbar">
-        <SearchInput value={list.search} onChange={list.setSearch} />
-        <Select
-          aria-label={t('projects.status')}
+    <div className="stack" style={{ gap: 16 }}>
+      <PageHeader title={t('projects.title')} description={t('projects.sub')} />
+      <div className="toolbar blocks-toolbar">
+        <SearchInput value={list.search} onChange={list.setSearch} placeholder={t('projects.search')} />
+        <Segmented<'all' | ProjectStatus>
           value={status}
-          onChange={(e) => {
-            setStatus(e.target.value as typeof status);
+          onChange={(s) => {
+            setStatus(s);
             list.setOffset(0);
           }}
-        >
-          <option value="all">{t('common.all')}</option>
-          {projectStatuses.map((s) => (
-            <option key={s} value={s}>
-              {t(`projects.status.${s}`)}
-            </option>
-          ))}
-        </Select>
+          items={[
+            { key: 'all', label: t('projects.filter_all') },
+            ...projectStatuses.map((s) => ({ key: s, label: t(`projects.status.${s}`) })),
+          ]}
+        />
+        <span className="spacer" />
+        {createButton}
       </div>
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.id}
-        loading={query.isLoading}
-        error={
-          query.error
-            ? errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)
-            : null
-        }
-        onRetry={query.refetch}
-        onRowClick={(r) => navigate(`/app/projects/${r.id}`)}
-        pagination={list.pagination}
-        empty={{
-          title: t('projects.empty'),
-          description: can('projects', 'create') ? t('projects.empty_desc') : t('erp.no_project_access'),
-          action: createButton,
-        }}
-      />
+      {query.isError ? (
+        <div className="card">
+          <ErrorState
+            message={errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
+            onRetry={() => void query.refetch()}
+          />
+        </div>
+      ) : !rows ? (
+        <div className="skeleton" style={{ height: 160 }} />
+      ) : rows.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon={<Building2 />}
+            title={t('projects.empty')}
+            description={can('projects', 'create') ? t('projects.empty_desc') : t('erp.no_project_access')}
+            action={createButton}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="project-grid">
+            {rows.map((p) => (
+              <ProjectCard key={p.id} p={p} />
+            ))}
+          </div>
+          <div className="card">
+            <Pagination
+              offset={list.pagination.offset}
+              limit={list.pagination.limit}
+              count={rows.length}
+              onChange={list.pagination.onChange}
+              onLimitChange={list.pagination.onLimitChange}
+            />
+          </div>
+        </>
+      )}
       <CreateProjectModal open={open} onClose={() => setOpen(false)} />
     </div>
   );
@@ -254,9 +275,7 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const form = useForm<ProjectForm>({
-    resolver: zodResolver(
-      projectSchema(t).superRefine((v, ctx) => checkDates(v, ctx, t)),
-    ),
+    resolver: zodResolver(projectSchema(t).superRefine((v, ctx) => checkDates(v, ctx, t))),
     defaultValues: {
       name: '',
       code: '',

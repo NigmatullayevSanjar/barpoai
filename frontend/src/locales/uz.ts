@@ -225,9 +225,15 @@ export const uz: Record<string, string> = {
   'perm.save': 'O‘zgarishlarni saqlash',
 
   // platforma
-  'platform.dashboard_title': 'Platforma ko‘rsatkichlari',
-  'platform.dashboard_sub': 'Mijozlar, obuna holati va obuna tushumlari real yozuvlar asosida',
-  'platform.tenants_total': 'Jami kompaniyalar',
+  'platform.dashboard_title': 'Platforma boshqaruv paneli',
+  'platform.dashboard_sub':
+    'Barcha bo‘limlar bo‘yicha umumiy ko‘rsatkichlar: kompaniyalar, obunalar va tushumlar',
+  'platform.tenants_total': 'Kompaniyalar',
+  'platform.employees_total': 'Umumiy hodimlar',
+  'platform.subscriptions_active': 'Faol obunalar',
+  'platform.tenants_state': 'Kompaniyalar holati',
+  'platform.tenants_state_sub': 'Har bir kompaniya bo‘yicha tarif va joriy holat',
+  'platform.no_plan': 'Tarif biriktirilmagan',
   'platform.tenants_trial': 'Sinov davrida',
   'platform.tenants_paid': 'To‘langan',
   'platform.tenants_overdue': 'Muddati o‘tgan',

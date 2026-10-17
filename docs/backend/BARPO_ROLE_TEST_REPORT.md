@@ -1,6 +1,6 @@
 # BARPO AI — 11-bosqich: rol bo‘yicha to‘liq sinov hisoboti
 
-Bajarildi: 2026-10-13T10:12:30.017Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
+Bajarildi: 2026-10-17T07:24:44.552Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
 
 ## Natija
 
@@ -23,11 +23,11 @@ Har rol uchun 71 ta GET endpoint chaqirildi; kutilgan natija `/v1/me/permissions
 | warehouse_manager | 29 | 42 | 0 |
 | financier | 46 | 25 | 0 |
 | accountant | 42 | 29 | 0 |
-| manager | 21 | 50 | 0 |
+| manager | 36 | 35 | 0 |
 | tenant_admin | 62 | 9 | 0 |
 | platform_owner | 11 | 60 | 0 |
-| super_admin | 11 | 60 | 0 |
-| support | 9 | 62 | 0 |
+| super_admin | 13 | 58 | 0 |
+| support | 11 | 60 | 0 |
 
 Parametri to‘ldirilmagan (matritsadan tashqari) endpointlar: yo‘q.
 
@@ -38,12 +38,12 @@ R — o‘qish, RW — o‘qish va yozish (create yoki update), — yo‘q.
 | Rol | dashboard | projects | employees | estimates | stock | finance | tasks | reports | files | integrations | camera | billing | settings | permissions | audit | accounting_documents | invoices | bank_cash | counterparties | payroll | reconciliation | financial_reports | allocations | budgets | plan_actual | forecast | payment_requests | payment_calendar | pricing |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | foreman | R | R | — | R | RW | — | RW | RW | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| brigadier | R | R | — | — | RW | — | RW | RW | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| brigadier | R | R | — | — | RW | — | RW | RW | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | RW |
 | warehouse_manager | R | R | — | — | RW | — | RW | R | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | financier | R | R | — | RW | — | RW | RW | R | RW | — | — | — | — | — | — | R | R | R | R | R | R | R | RW | RW | R | R | RW | R | RW |
-| accountant | R | R | — | R | — | RW | RW | R | RW | — | — | — | — | — | — | RW | RW | RW | RW | RW | RW | RW | R | R | RW | RW | R | RW | — |
-| manager | R | R | — | — | — | — | RW | R | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | RW |
-| tenant_admin | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW |
+| accountant | R | R | — | R | — | RW | RW | R | RW | — | — | — | — | — | — | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | — |
+| manager | R | RW | R | RW | R | — | RW | RW | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| tenant_admin | RW | RW | RW | RW | R | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW |
 
 ## Provayderga bog‘liq, bajarilmagan testlar
 

@@ -69,6 +69,8 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 | Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chirildi), reja 9.1/9.4; yangi O13 | `main` (PR #6, `ec9a706`) |
 | Hujjat | TZ’dan kelishilgan farqlar (8-bo‘lim), bosqichlar holati | `main` (PR #5, `0542d87`) |
 | Egasi fikri 2026-10-12 | D11–D14: tarif tahriri (018), super_admin huquqlari va parol tiklash havolasi, parol 6 belgi, blok kartasi va blok sahifasi (019, xonadon reja rasmi, narx varaqasidagi tannarx), Excel import tuzatishi (openpyxl fayllari, sarlavha qatorini topish, birlik sinonimlari), login sahifasi ru tili, bildirishnomadan sahifaga o‘tish, “Obuna to‘lovlari”, overscroll, Windows Chrome kursori, logo, kalendar va select komponentlari, smeta muharriri joylashuvi; `scripts/seed-dev.ts` (dev hisoblar, parol faqat `SEED_PASSWORD`) | branch `claude/feedback-2026-10-12`, PR egasi ruxsati bilan |
+| Figma F1 (2026-10-16/17) | D17–D20 (rejaning 1-bo‘limi): migratsiya 022 (“Asosiy ombor”), admin ombor/materiallarni faqat ko‘radi, rollar Figma bo‘yicha (`employees.read` yangi ruxsat), umumiy qobiq va rolga xos menyular, 6 rol bosh sahifasi, `GET /v1/dashboard` `costs`/`stock.monthly`/`stock.recent` | branch `claude/figma-stage-1` (`claude/feedback-2026-10-12` ustiga), commit egasi ruxsati bilan |
+| Figma F2 (2026-10-17) | Obyektlar kartalari (`GET /v1/projects` progress/mas’ul/smeta/xarajat), obyekt sahifasi banner va bloklar tabi, smetalar KPI va ro‘yxat (`GET /v1/estimates` `summary`), smeta ko‘rish ierarxik jadvali va hisoblash kartasi; F3–F6 navbatda | o‘sha branch, commit egasi ruxsati bilan |
 
 ### Bosqich 3 — xonadonlar (asosiy qarorlar)
 - Jadval `premises`: zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar 0…50, maydon numeric(12,2) > 0, arxiv, version; RLS, kompozit FK.
@@ -97,6 +99,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 
 **`main` = `0542d87` da to‘liq tekshiruv (2026-10-12, bulut, Docker PostgreSQL 17):** build, unit 27, integration 65, roles 5 (topilma yo‘q), UI 47; frontend typecheck va build — hammasi o‘tdi.
 
+0. **Figma bosqichlari F2–F6** (2026-10-17 dan asosiy ish): tartib va mazmun rejaning 3-bo‘limidagi “Figma bosqichlari” jadvalida; har bosqich alohida branch va PR, egasi tasdig‘i bilan. `claude/figma-stage-1` branch’i hali commit qilinmagan o‘zgarishlar bilan (egasi ruxsatini kutadi).
 1. **Yangi kompyuterda tekshiruv** (foydalanuvchi): `git pull`, `docker compose up --build -d`, platforma egasini bootstrap, brauzerda dashboard grafiklari, Xonadonlar, Narx varaqasi va UZS/USD.
 2. **O3** — frontenddagi pul yig‘indilarini serverga ko‘chirish (kassalar `finance/pages.tsx`, budjet, to‘lov kalendari `workflow.tsx`, smeta importi oldindan ko‘rish `ImportWizard.tsx`). Opus tekshiruvi qo‘shimcha joylarni ham topgan: `finance/pages.tsx` (~178, ~783, ~843) va `workflow.tsx` (~976, ~1345) da `num(a) - num(b)`. Alohida PR. Shu ro‘yxatga `finance/DocumentModal.tsx` dagi kirim summasi (`unit_cost × accepted_quantity`, `Number`) ham kiradi.
 3. **O12** — reja–fakt va budjet sahifalarini `document_date` ga o‘tkazish (dashboard “budjetdan oshgan” ro‘yxati ham birga).
@@ -109,7 +112,8 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 
 ## 7. Dizayn
 
-- Loyihada dizayner yo‘q (egasi, 2026-10-12). Figma maketi chizilmaydi; dizayn manbai — kod (mavjud komponentlar, `tokens.css`). Figma TZ faqat talablar ro‘yxati.
+- **2026-10-16 dan:** egasi Figma dizaynini PNG eksport sifatida berdi — `D:\SANCEEK\barpoai\figma` (repoda emas; 9 rol papkasi, 91 ekran). Bu endi har rol uchun dizayn va mantiq manbai (reja D17–D20, F1–F6 bosqichlari rejaning 3-bo‘limida). Backendda ma’lumoti yo‘q bo‘limlar ko‘rsatilmaydi; demo raqam yo‘q qoidasi kuchda.
+- Oldin (2026-10-12): dizayner yo‘q, dizayn manbai — kod (mavjud komponentlar, `tokens.css`). Figma TZ faqat talablar ro‘yxati.
 - TZ’dan farqlar rejaning 8-bo‘limida “kelishilgan farqlar” sifatida qayd etilgan; hech kimga xabar yuborish kerak emas.
 - Aniqlik (8-bo‘limda ham): kompaniya adminini platforma egasi bir martalik taklif havolasi (72 soat) bilan qo‘shadi; xodimlarni admin login va boshlang‘ich parol bilan qo‘shadi (birinchi kirishda almashtirish majburiy); parolni tiklash — admin bergan 30 daqiqalik bir martalik havola.
 

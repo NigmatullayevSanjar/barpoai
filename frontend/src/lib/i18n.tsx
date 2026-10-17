@@ -13,13 +13,15 @@ import { workUz } from '@/locales/work.uz';
 import { workRu } from '@/locales/work.ru';
 import { opsUz } from '@/locales/ops.uz';
 import { opsRu } from '@/locales/ops.ru';
+import { dashboardUz } from '@/locales/dashboard.uz';
+import { dashboardRu } from '@/locales/dashboard.ru';
 import { CurrencyCtx } from './currency-store';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
 const dictionaries: Record<Lang, Dict> = {
-  uz: { ...uz, ...erpUz, ...estimatesUz, ...stockUz, ...financeUz, ...workUz, ...opsUz },
-  ru: { ...ru, ...erpRu, ...estimatesRu, ...stockRu, ...financeRu, ...workRu, ...opsRu },
+  uz: { ...uz, ...erpUz, ...estimatesUz, ...stockUz, ...financeUz, ...workUz, ...opsUz, ...dashboardUz },
+  ru: { ...ru, ...erpRu, ...estimatesRu, ...stockRu, ...financeRu, ...workRu, ...opsRu, ...dashboardRu },
 };
 const STORAGE_KEY = 'barpo.lang';
 

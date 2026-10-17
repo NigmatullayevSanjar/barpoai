@@ -27,24 +27,41 @@ import {
 } from './permissions.js';
 import { hashPassword, token, digest } from './security.js';
 import { invariant } from './errors.js';
+import { workFactSql } from './routes-dashboard.js';
 import { creditBalance } from './billing.js';
 import { money } from './money.js';
 import { accessState } from './auth.js';
 import { lockProjectPremises } from './premises.js';
 import { notify } from './notify.js';
+/** Yangi obyekt bilan avtomatik yaratiladigan ombor nomi (foydalanuvchida til ustuni yo'q, nom doimiy). */
+export const MAIN_WAREHOUSE_NAME = 'Asosiy ombor';
 export function companyRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/projects',
-    summary: 'Faqat biriktirilgan obyektlar; q — nom, kod, buyurtmachi, manzil bo‘yicha qidiruv; status filtri',
+    summary:
+      'Faqat biriktirilgan obyektlar; q — nom, kod, buyurtmachi, manzil bo‘yicha qidiruv; status filtri; karta uchun progress, mas‘ul, smeta va xarajat jami (narx huquqisiz kesiladi)',
     permission: 'projects.read',
+    sensitive: true,
     query: searchQuery.extend({
       status: z.enum(['planning', 'active', 'paused', 'completed']).optional(),
     }),
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          `SELECT p.* FROM projects p WHERE p.tenant_id=$1 AND p.archived_at IS NULL AND ($2='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND a.user_id=$3))
+          // Figma obyekt kartasi (2026-10-17): progress — dashboard bilan bir xil qoida (ish qatorlari bo'yicha qabul
+          // qilingan progress o'rtachasi); mas'ul — biriktirilgan prorab, bo'lmasa menejer; smeta — joriy smetalar jami;
+          // xarajat — jurnal `expense`. Pul maydonlari `sensitive` orqali narx huquqisiz kesiladi.
+          `SELECT p.*,
+                  (SELECT avg(least(100,100*${workFactSql}/l.effective_quantity))::numeric(5,1)::text FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id
+                    WHERE l.tenant_id=p.tenant_id AND l.project_id=p.id AND l.kind<>'material' AND l.archived_at IS NULL AND e.archived_at IS NULL AND l.effective_quantity>0) progress_percent,
+                  (SELECT u.display_name FROM project_assignments a JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.user_id
+                    WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND u.active AND u.role IN ('foreman','manager')
+                    ORDER BY (u.role='foreman') DESC,u.display_name LIMIT 1) responsible_name,
+                  (SELECT coalesce(sum(l.total),0)::text FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id
+                    WHERE l.tenant_id=p.tenant_id AND l.project_id=p.id AND l.archived_at IS NULL AND e.archived_at IS NULL) plan_total,
+                  (SELECT coalesce(sum(j.amount),0)::text FROM journal_entries j WHERE j.tenant_id=p.tenant_id AND j.project_id=p.id AND j.account='expense') fact_total
+           FROM projects p WHERE p.tenant_id=$1 AND p.archived_at IS NULL AND ($2='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND a.user_id=$3))
              AND ($6::text IS NULL OR p.name ILIKE $6 ESCAPE '\\' OR p.code ILIKE $6 ESCAPE '\\' OR p.customer_name ILIKE $6 ESCAPE '\\' OR p.address ILIKE $6 ESCAPE '\\')
              AND ($7::text IS NULL OR p.status=$7)
            ORDER BY p.created_at,p.id LIMIT $4 OFFSET $5`,
@@ -105,6 +122,18 @@ export function companyRoutes(add: (r: Endpoint) => void) {
         actor.tenant_id,
         row.id,
         actor.id,
+      ]);
+      // Egasi qarori (2026-10-16): har yangi obyekt bilan "Asosiy ombor" va uning stock hisobi bir
+      // tranzaksiyada yaratiladi (mavjud obyektlar uchun migratsiya 022).
+      const mainWarehouse = await one(
+        db,
+        'INSERT INTO warehouses(tenant_id,project_id,name) VALUES($1,$2,$3) RETURNING id',
+        [actor.tenant_id, row.id, MAIN_WAREHOUSE_NAME],
+      );
+      await db.query('INSERT INTO stock_accounts(tenant_id,project_id,warehouse_id) VALUES($1,$2,$3)', [
+        actor.tenant_id,
+        row.id,
+        mainWarehouse.id,
       ]);
       await audit(db, actor, 'project.create', row.id);
       return row;
@@ -357,7 +386,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     path: '/v1/employees',
     summary:
       'Kompaniya xodimlari; hash hech qachon chiqmaydi; q — ism, login, telefon, lavozim; role va active filtrlari',
-    permission: 'employees.manage',
+    permission: 'employees.read',
     query: searchQuery.extend({
       role: z.enum(tenantRoles).optional(),
       active: queryBool.optional(),

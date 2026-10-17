@@ -1911,7 +1911,8 @@ paths:
               additionalProperties: false
   /v1/projects:
     get:
-      summary: Faqat biriktirilgan obyektlar; q — nom, kod, buyurtmachi, manzil bo‘yicha qidiruv; status filtri
+      summary: Faqat biriktirilgan obyektlar; q — nom, kod, buyurtmachi, manzil bo‘yicha qidiruv; status filtri; karta uchun
+        progress, mas‘ul, smeta va xarajat jami (narx huquqisiz kesiladi)
       operationId: get_v1_projects
       security:
         - bearerAuth: []
@@ -2647,7 +2648,7 @@ paths:
           required: false
           schema:
             type: boolean
-      x-permission: employees.manage
+      x-permission: employees.read
       x-tenant-scope: true
       responses:
         "200":
@@ -2870,7 +2871,7 @@ paths:
             type: string
             format: uuid
             pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
-      x-permission: employees.manage
+      x-permission: employees.read
       x-tenant-scope: true
       responses:
         "200":
@@ -3082,6 +3083,7 @@ paths:
                   enum:
                     - projects.read
                     - projects.write
+                    - employees.read
                     - employees.manage
                     - estimates.read
                     - estimates.import
@@ -6119,7 +6121,7 @@ paths:
         "503": *a103
   /v1/materials:
     post:
-      summary: Kompaniya materialini yaratish (ombor kirimi yoki smeta import huquqi bilan)
+      summary: Kompaniya materialini yaratish (ombor kirimi yoki smeta import huquqi bilan; mijoz admini faqat ko‘radi)
       operationId: post_v1_materials
       security:
         - bearerAuth: []
@@ -6732,7 +6734,8 @@ paths:
                 - lines
               additionalProperties: false
     get:
-      summary: Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi; q — nom yoki muallif bo‘yicha qidiruv
+      summary: Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi; q — nom yoki muallif bo‘yicha qidiruv; summary —
+        obyekt bo‘yicha jami (sahifalashsiz)
       operationId: get_v1_estimates
       security:
         - bearerAuth: []
@@ -8840,8 +8843,8 @@ paths:
               additionalProperties: false
   /v1/dashboard:
     get:
-      summary: "Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, moliya va xodimlar bloklari — faqat ruxsat bo‘lgan
-        bloklar, qolganlari null; obyekt va davr (3/6/12 oy) filtri"
+      summary: "Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, xarajat (narx huquqi), moliya va xodimlar bloklari —
+        faqat ruxsat bo‘lgan bloklar, qolganlari null; obyekt va davr (3/6/12 oy) filtri"
       operationId: get_v1_dashboard
       security:
         - bearerAuth: []

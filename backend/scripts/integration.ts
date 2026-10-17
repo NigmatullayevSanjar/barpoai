@@ -525,11 +525,13 @@ try {
     { project_id: project.id, custodian_id: brigadier.id },
     adminToken,
   );
+  // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; yaratishni ombor mudiri qiladi
+  await call('POST', '/v1/materials', { name: 'Admin materiali', unit_id: 'kg' }, adminToken, undefined, 403);
   const material = await call(
     'POST',
     '/v1/materials',
     { name: 'Sement', unit_id: 'kg' },
-    adminToken,
+    warehouseManager.token,
   );
   const materialSearch = await call('GET', '/v1/materials?q=SEM', undefined, foreman.token);
   assert(materialSearch.items.some((m: any) => m.id === material.id));
@@ -542,7 +544,7 @@ try {
   const numbered = Array.from({ length: 120 }, (_, i) => `Material ${String(i + 1).padStart(3, '0')}`);
   const materialNames = [...numbered, 'AAA takror', 'AAA takror', 'AAA takror', 'Qum_mayda'];
   for (const materialName of materialNames)
-    await call('POST', '/v1/materials', { name: materialName, unit_id: 'kg' }, adminToken);
+    await call('POST', '/v1/materials', { name: materialName, unit_id: 'kg' }, warehouseManager.token);
   const total = materialNames.length + 1;
   const matIds = async (query: string) =>
     (await call('GET', `/v1/materials?${query}`, undefined, foreman.token)).items.map(
@@ -1636,7 +1638,10 @@ try {
   const brigadierUser = await transaction(appPool!, null, (db) =>
     consumeLinkToken(db, brigadierLink.url.split('start=')[1], tgBrigadier),
   );
-  await call('POST', '/v1/materials', { name: 'Armatura 12', unit_id: 'kg' }, adminAgain);
+  // Admin material yaratmaydi (2026-10-16); ombor mudiri (kirim huquqi) yangi sessiya bilan yaratadi
+  const whTg = (await call('POST', '/v1/auth/login', { login: 'warehouse_manager', password: pass + '2' }))
+    .access_token;
+  await call('POST', '/v1/materials', { name: 'Armatura 12', unit_id: 'kg' }, whTg);
   const step1 = await startMaterialRequest(appPool!, brigadierUser, 'uz');
   assert.match(step1, /Materialni tanlang/);
   assert.equal(hasFlow(await loadState(appPool!, '515151')), true);
@@ -1690,15 +1695,24 @@ try {
     adminAgain,
   );
   assert.equal(requests.items.length, 1);
-  const fulfilled = await call(
+  // Talabnomani faqat ombor mudiri hal qiladi (2026-10-16); admin faqat ko'radi
+  await call(
     'POST',
     `/v1/stock/requests/${requests.items[0].id}/actions`,
     { version: 1, action: 'reject', note: 'Sinov: rad etish' },
     adminAgain,
+    undefined,
+    403,
+  );
+  const fulfilled = await call(
+    'POST',
+    `/v1/stock/requests/${requests.items[0].id}/actions`,
+    { version: 1, action: 'reject', note: 'Sinov: rad etish' },
+    whTg,
   );
   assert.equal(fulfilled.status, 'rejected');
   passed.push(
-    'Telegram multi-step material request creates a pending request; admin resolves it via API',
+    'Telegram multi-step material request creates a pending request; the admin only reads it, the warehouse manager resolves it via API',
   );
   // Telegram progress oqimi: obyekt bitta → ish qatori → miqdor → matn → rasmsiz → kunlik hisobot
   const p1 = await startProgressReport(appPool!, brigadierUser, 'uz');
@@ -2218,11 +2232,21 @@ try {
   };
   const tenantB = await newTenant('Begona korxona', 'TEST-G2', 'adminb');
   const adminBToken = tenantB.token;
+  // Admin material yaratmaydi (2026-10-16): B korxonada ombor mudiri yaratadi (nomi "begona" qidiruviga tushmasin)
+  await call(
+    'POST',
+    '/v1/employees',
+    { login: 'wm_b', display_name: 'Omborchi B', password: pass, role: 'warehouse_manager' },
+    adminBToken,
+  );
+  const wmBFirst = (await call('POST', '/v1/auth/login', { login: 'wm_b', password: pass })).access_token;
+  await call('POST', '/v1/auth/password', { current_password: pass, new_password: pass + '2' }, wmBFirst);
+  const wmBToken = (await call('POST', '/v1/auth/login', { login: 'wm_b', password: pass + '2' })).access_token;
   const bMaterial = await call(
     'POST',
     '/v1/materials',
     { name: 'Begona material', unit_id: 'kg' },
-    adminBToken,
+    wmBToken,
   );
   const bCounterparty = await call(
     'POST',
@@ -2892,6 +2916,8 @@ try {
   // Egasi qarori (2026-10-11, 1-savol): zonasiz, lekin smeta qatoriga bog'langan sarf qator zonasiga tushadi.
   // Reja A 100, sarf 80 (zonasiz, A qatoriga bog'langan) → A prognozi 100, umumiy guruh 0.
   const brigP = (await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })).access_token;
+  // Ombor mudiri: material yaratish va ombor amallari (admin faqat ko'radi, 2026-10-16)
+  const whP = (await call('POST', '/v1/auth/login', { login: 'warehouse_manager', password: pass + '2' })).access_token;
   const projectQ = await call('POST', '/v1/projects', { name: 'Sarf zonasi obyekti' }, adminAgain);
   const qBlock = await call('POST', `/v1/projects/${projectQ.id}/zones`, { name: 'Blok Q', kind: 'block' }, adminAgain);
   await call(
@@ -2900,7 +2926,7 @@ try {
     { number: '1', kind: 'apartment', zone_id: qBlock.id, floor: null, rooms: null, area_m2: '10' },
     adminAgain,
   );
-  const brick = await call('POST', '/v1/materials', { name: 'G‘isht', unit_id: 'pcs' }, adminAgain);
+  const brick = await call('POST', '/v1/materials', { name: 'G‘isht', unit_id: 'pcs' }, whP);
   const qEstimate = await call(
     'POST',
     '/v1/estimates',
@@ -2916,17 +2942,22 @@ try {
   await call('POST', `/v1/employees/${brigadier.id}/assignments`, { project_id: projectQ.id }, adminAgain);
   const qWarehouse = await call('POST', '/v1/warehouses', { project_id: projectQ.id, name: 'Ombor Q' }, adminAgain);
   const qCustody = await call('POST', '/v1/stock/custody', { project_id: projectQ.id, custodian_id: brigadier.id }, adminAgain);
+  // Admin ombor amallarini bajarmaydi (2026-10-16): ombor mudiri va prorab obyektga biriktiriladi
   await call(
     'POST',
-    '/v1/stock/commands',
-    { project_id: projectQ.id, kind: 'opening', material_id: brick.id, to_account_id: qWarehouse.account.id, quantity: '1', unit_cost: '80', reason: 'Boshlang‘ich qoldiq' },
+    `/v1/employees/${warehouseManager.id}/assignments`,
+    { project_id: projectQ.id, warehouse_id: qWarehouse.warehouse.id },
     adminAgain,
   );
+  await call('POST', `/v1/employees/${foreman.id}/assignments`, { project_id: projectQ.id }, adminAgain);
+  const qOpeningBody = { project_id: projectQ.id, kind: 'opening', material_id: brick.id, to_account_id: qWarehouse.account.id, quantity: '1', unit_cost: '80', reason: 'Boshlang‘ich qoldiq' };
+  await call('POST', '/v1/stock/commands', qOpeningBody, adminAgain, undefined, 403);
+  await call('POST', '/v1/stock/commands', qOpeningBody, whP);
   const qTransfer = await call(
     'POST',
     '/v1/stock/commands',
     { project_id: projectQ.id, kind: 'transfer', material_id: brick.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '1', reason: 'Brigadirga' },
-    adminAgain,
+    whP,
   );
   await call('POST', `/v1/stock/commands/${qTransfer.id}/actions`, { version: 1, action: 'accept', quantity: '1' }, brigP);
   const qConsumption = await call(
@@ -2935,7 +2966,8 @@ try {
     { project_id: projectQ.id, kind: 'consumption', material_id: brick.id, from_account_id: qCustody.id, quantity: '1', estimate_line_id: qEstimate.lines[0].id, reason: 'Zonasiz sarf' },
     brigP,
   );
-  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, adminAgain);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, adminAgain, undefined, 403);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, foreP);
   const vQ = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
   assert.deepEqual(
     vQ.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
@@ -2946,7 +2978,8 @@ try {
   );
   assert.equal(vQ.forecast_total, '100.00');
   // Sarf reversal (zona va qator nusxalanmaydi) ham asl buyruq orqali Blok Q da kamayadi
-  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, adminAgain);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, adminAgain, undefined, 403);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, whP);
   const vQ2 = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
   assert.deepEqual(
     vQ2.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
@@ -3082,8 +3115,8 @@ try {
     unit_cost: '15',
     reason: 'Yetkazib beruvchidan kirim',
   };
-  const matchedReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
-  const freeReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
+  const matchedReceipt = await call('POST', '/v1/stock/commands', receiptBody, whP);
+  const freeReceipt = await call('POST', '/v1/stock/commands', receiptBody, whP);
   await call(
     'POST',
     '/v1/finance/documents',

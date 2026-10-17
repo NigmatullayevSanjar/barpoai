@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Archive, Image as ImageIcon, Pencil, Plus, Trash2, Upload, UserPlus } from 'lucide-react';
+import { Archive, ArrowLeft, Image as ImageIcon, Pencil, Plus, Trash2, Upload, UserPlus } from 'lucide-react';
 import { api, apiAll, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DetailError } from '@/app/guards';
@@ -15,9 +15,7 @@ import {
   ConfirmDialog,
   Input,
   Modal,
-  PageHeader,
   Select,
-  Stat,
   Tabs,
   Textarea,
 } from '@/components/ui';
@@ -34,6 +32,7 @@ import {
 } from './ProjectsPage';
 import { PremisesTab } from './PremisesTab';
 import { BlocksSection } from './BlocksSection';
+import { useImageSrc } from './blocks';
 import { zoneKinds, type Employee, type Member, type ProjectDetail, type Zone, type ZoneKind } from './types';
 
 type Tab = 'overview' | 'zones' | 'premises' | 'members' | 'warehouses';
@@ -46,7 +45,12 @@ export function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
   const startTab = params.get('tab');
-  const [tab, setTab] = useState<Tab>(startTab === 'zones' || startTab === 'premises' ? startTab : 'overview');
+  // Figma "obyekt ko'rish": sahifa bloklar bilan ochiladi; qolgan bo'limlar tablarda.
+  const [tab, setTab] = useState<Tab>(
+    startTab === 'overview' || startTab === 'premises' || startTab === 'members' || startTab === 'warehouses'
+      ? startTab
+      : 'zones',
+  );
   const [edit, setEdit] = useState(false);
   const [archive, setArchive] = useState(false);
   const [reason, setReason] = useState('');
@@ -74,6 +78,8 @@ export function ProjectDetailPage() {
     onError,
   });
   const d = query.data;
+  // Hook erta qaytishlardan oldin: banner rasmi (files huquqi bo'lsa).
+  const banner = useImageSrc(d?.image_file_id ?? null);
   if (query.isError)
     return (
       <DetailError
@@ -92,56 +98,73 @@ export function ProjectDetailPage() {
   const canManageMembers = me?.role === 'tenant_admin' || can('employees', 'update');
   const endRef = d.forecast_end ?? d.planned_end;
   const daysToEnd = endRef ? Math.ceil((new Date(endRef).getTime() - Date.now()) / 86400000) : null;
+  // Figma "obyekt ko'rish": orqaga va amallar qatori, rasmli banner (nom, manzil), faktlar, keyin bloklar.
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <PageHeader
-        breadcrumbs={
-          <>
-            <Link to="/app/projects">{t('projects.title')}</Link>
-            <span>/</span>
-            <span>{d.name}</span>
-          </>
-        }
-        title={
-          <span className="row">
-            {d.name} <ProjectStatusBadge status={d.status} />
-          </span>
-        }
-        description={[d.code, d.customer_name, d.address].filter(Boolean).join(' · ') || undefined}
-        actions={
-          <>
-            {canEdit && (
-              <Button variant="secondary" icon={<Pencil />} onClick={() => setEdit(true)}>
-                {t('common.edit')}
-              </Button>
-            )}
-            {can('projects', 'delete') && (
-              <Button variant="ghost" icon={<Archive />} onClick={() => setArchive(true)}>
-                {t('projects.archive')}
-              </Button>
-            )}
-          </>
-        }
-      />
-      <div className="grid-4">
-        <Stat
-          label={t('projects.counter.open_tasks')}
-          value={d.counters.open_tasks}
-          sub={`${t('projects.counter.overdue_tasks')}: ${d.counters.overdue_tasks}`}
-        />
-        <Stat label={t('projects.counter.estimates')} value={d.counters.estimates} />
-        <Stat label={t('projects.counter.pending_reports')} value={d.counters.pending_reports} />
-        <Stat
-          label={t('projects.timeline')}
-          value={formatDate(endRef, lang)}
-          sub={
-            daysToEnd === null
-              ? undefined
-              : daysToEnd >= 0
-                ? t('projects.days_to_end', { n: daysToEnd })
-                : t('projects.overdue_by', { n: -daysToEnd })
-          }
-        />
+      <div className="project-top">
+        <Link to="/app/projects" className="btn btn-secondary">
+          <ArrowLeft size={16} /> {t('common.back')}
+        </Link>
+        <span className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {canEdit && (
+            <Button variant="secondary" icon={<Pencil />} onClick={() => setEdit(true)}>
+              {t('common.edit')}
+            </Button>
+          )}
+          {can('projects', 'delete') && (
+            <Button variant="ghost" icon={<Archive />} onClick={() => setArchive(true)}>
+              {t('projects.archive')}
+            </Button>
+          )}
+        </span>
+      </div>
+      <section className="block-banner">
+        {banner && <img src={banner} alt={d.name} />}
+        <div className="block-banner-text">
+          <h1>{d.name}</h1>
+          <p>{[d.code, d.address ?? d.customer_name].filter(Boolean).join(' · ') || t('projects.facts')}</p>
+          <p>
+            <ProjectStatusBadge status={d.status} />
+          </p>
+        </div>
+      </section>
+      <div className="card card-pad">
+        <dl className="block-facts">
+          <div>
+            <dt>{t('projects.counter.open_tasks')}</dt>
+            <dd>
+              {d.counters.open_tasks}
+              <small className="muted">
+                {' '}
+                · {t('projects.counter.overdue_tasks')}: {d.counters.overdue_tasks}
+              </small>
+            </dd>
+          </div>
+          <div>
+            <dt>{t('projects.counter.estimates')}</dt>
+            <dd>{d.counters.estimates}</dd>
+          </div>
+          <div>
+            <dt>{t('projects.counter.pending_reports')}</dt>
+            <dd>{d.counters.pending_reports}</dd>
+          </div>
+          <div>
+            <dt>{t('projects.area_m2')}</dt>
+            <dd>{d.area_m2 ?? '—'}</dd>
+          </div>
+          <div>
+            <dt>{t('projects.timeline')}</dt>
+            <dd>
+              {formatDate(endRef, lang)}
+              {daysToEnd !== null && (
+                <small className="muted">
+                  {' '}
+                  · {daysToEnd >= 0 ? t('projects.days_to_end', { n: daysToEnd }) : t('projects.overdue_by', { n: -daysToEnd })}
+                </small>
+              )}
+            </dd>
+          </div>
+        </dl>
       </div>
       <Tabs<Tab>
         value={tab}
@@ -191,7 +214,6 @@ export function ProjectDetailPage() {
 function Overview({ d }: { d: ProjectDetail }) {
   const { t, lang } = useT();
   const { can } = useAuth();
-  const image = useFileContent(d.image_file_id && can('files') ? d.image_file_id : null);
   return (
     <div className="grid-2" style={{ alignItems: 'start' }}>
       <section className="card">
@@ -199,20 +221,6 @@ function Overview({ d }: { d: ProjectDetail }) {
           <h3>{t('projects.tab.overview')}</h3>
         </div>
         <div className="card-pad">
-          {image.data && (
-            <img
-              src={`data:${image.data.mime_type};base64,${image.data.base64}`}
-              alt={d.name}
-              style={{
-                display: 'block',
-                width: '100%',
-                maxHeight: 240,
-                objectFit: 'cover',
-                borderRadius: 'var(--radius, 8px)',
-                marginBottom: 16,
-              }}
-            />
-          )}
           <dl className="kv">
             <dt>{t('projects.code')}</dt>
             <dd>{d.code ?? '—'}</dd>

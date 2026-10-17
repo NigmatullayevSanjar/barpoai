@@ -131,7 +131,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = useCallback(
     (page: Page, action: CrudAction = 'read') => {
       if (!me) return false;
-      if (me.role === 'tenant_admin') return true;
+      // Admin ruxsatlar yuklanguncha hamma sahifani ko'radi; yuklangach server ruxsati (ombor faqat o'qish, 2026-10-16).
+      if (me.role === 'tenant_admin' && !permissions) return true;
       const rule = permissions?.pages[page];
       return Boolean(rule?.read && rule[action]);
     },

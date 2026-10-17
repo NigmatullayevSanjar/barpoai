@@ -35,6 +35,7 @@ const generatePassword = () => {
 const permissionList = [
   'projects.read',
   'projects.write',
+  'employees.read',
   'estimates.read',
   'estimates.import',
   'estimates.edit',

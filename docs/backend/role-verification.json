@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-13T10:12:30.019Z",
+  "executed_at": "2026-10-17T07:24:44.554Z",
   "passed": [
     "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan, price list",
     "Role × GET endpoint matrix: 71 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
@@ -35,8 +35,8 @@
       "mismatches": []
     },
     "manager": {
-      "allowed": 21,
-      "denied": 50,
+      "allowed": 36,
+      "denied": 35,
       "mismatches": []
     },
     "tenant_admin": {
@@ -50,13 +50,13 @@
       "mismatches": []
     },
     "super_admin": {
-      "allowed": 11,
-      "denied": 60,
+      "allowed": 13,
+      "denied": 58,
       "mismatches": []
     },
     "support": {
-      "allowed": 9,
-      "denied": 62,
+      "allowed": 11,
+      "denied": 60,
       "mismatches": []
     }
   },

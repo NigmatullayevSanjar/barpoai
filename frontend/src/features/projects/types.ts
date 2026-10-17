@@ -17,6 +17,11 @@ export type Project = {
   archived_at: string | null;
   version: number;
   created_at: string;
+  /** Ro'yxat kartasi uchun (GET /v1/projects): progress, mas'ul; pul maydonlari narx huquqisiz kelmaydi. */
+  progress_percent?: string | null;
+  responsible_name?: string | null;
+  plan_total?: string;
+  fact_total?: string;
 };
 export type ZoneKind = 'block' | 'entrance' | 'floor' | 'other';
 export const zoneKinds: ZoneKind[] = ['block', 'entrance', 'floor', 'other'];

@@ -111,55 +111,117 @@ export const pageRoutes: Record<Page, string> = {
   pricing: '/app/finance/pricing',
 };
 
-/** Kompaniya menyusi guruhlari; har band read ruxsati bo'lsa ko'rinadi. */
-export const tenantNav: {
-  group: string;
-  items: { page: Page; icon: string }[];
-}[] = [
-  {
-    group: 'nav.group.main',
-    items: [
-      { page: 'dashboard', icon: 'LayoutDashboard' },
-      { page: 'projects', icon: 'Building2' },
-      { page: 'estimates', icon: 'Calculator' },
-      { page: 'tasks', icon: 'ListChecks' },
-      { page: 'reports', icon: 'ClipboardList' },
-      { page: 'stock', icon: 'Boxes' },
-    ],
-  },
-  {
-    group: 'nav.group.finance',
-    items: [
-      { page: 'finance', icon: 'Wallet' },
-      { page: 'budgets', icon: 'PiggyBank' },
-      { page: 'allocations', icon: 'HandCoins' },
-      { page: 'payment_requests', icon: 'FileInput' },
-      { page: 'payment_calendar', icon: 'CalendarDays' },
-      { page: 'plan_actual', icon: 'GitCompare' },
-      { page: 'pricing', icon: 'Tags' },
-      { page: 'forecast', icon: 'TrendingUp' },
-      { page: 'accounting_documents', icon: 'FileText' },
-      { page: 'invoices', icon: 'Receipt' },
-      { page: 'bank_cash', icon: 'Landmark' },
-      { page: 'counterparties', icon: 'Users' },
-      { page: 'payroll', icon: 'BadgeDollarSign' },
-      { page: 'reconciliation', icon: 'Scale' },
-      { page: 'financial_reports', icon: 'BarChart3' },
-    ],
-  },
-  {
-    group: 'nav.group.admin',
-    items: [
-      { page: 'employees', icon: 'UserCog' },
-      { page: 'permissions', icon: 'ShieldCheck' },
-      { page: 'billing', icon: 'CreditCard' },
-      { page: 'camera', icon: 'Cctv' },
-      { page: 'integrations', icon: 'Plug' },
-      { page: 'audit', icon: 'ScrollText' },
-      { page: 'settings', icon: 'Settings' },
-    ],
-  },
-];
+/** Menyu bandi; `label` berilmasa yorliq `page.<page>` kalitidan olinadi. */
+export type NavItem = { page: Page; icon: string; label?: string };
+export type NavGroup = { group: string | null; items: NavItem[] };
+const item = (page: Page, icon: string, label?: string): NavItem => ({ page, icon, label });
+const flat = (...items: NavItem[]): NavGroup[] => [{ group: null, items }];
+const nav = {
+  dashboard: item('dashboard', 'LayoutDashboard'),
+  projects: item('projects', 'Building2'),
+  estimates: item('estimates', 'Calculator'),
+  tasks: item('tasks', 'ListChecks'),
+  reports: item('reports', 'ClipboardList'),
+  /** Dala rollari uchun ombor sahifasi "Xomashyolar" deb ataladi (Figma). */
+  materials: item('stock', 'Boxes', 'nav.materials'),
+  stock: item('stock', 'Boxes'),
+  employees: item('employees', 'UserCog'),
+  finance: item('finance', 'Wallet'),
+  budgets: item('budgets', 'PiggyBank'),
+  allocations: item('allocations', 'HandCoins'),
+  payment_requests: item('payment_requests', 'FileInput'),
+  payment_calendar: item('payment_calendar', 'CalendarDays'),
+  plan_actual: item('plan_actual', 'GitCompare'),
+  pricing: item('pricing', 'Tags'),
+  forecast: item('forecast', 'TrendingUp'),
+  accounting_documents: item('accounting_documents', 'FileText'),
+  invoices: item('invoices', 'Receipt'),
+  bank_cash: item('bank_cash', 'Landmark'),
+  counterparties: item('counterparties', 'Users'),
+  payroll: item('payroll', 'BadgeDollarSign'),
+  reconciliation: item('reconciliation', 'Scale'),
+  financial_reports: item('financial_reports', 'BarChart3'),
+};
+/**
+ * Kompaniya menyusi rol bo'yicha, Figma tartibida (D17, 2026-10-16): xodim rollarida tekis ro'yxat, adminda guruhlar.
+ * Har band read ruxsati bo'lsa ko'rinadi (ruxsat matritsasi bandni yashirishi mumkin). Figma'da bo'lmagan, lekin
+ * kodda bor sahifalar (Moliya markazi, Mablag' ajratish, Narx varaqasi, Fayllar, Audit, Integratsiyalar) faqat
+ * adminda; Narx varaqasi D8 bo'yicha finansistda ham. Ombor mudiri menyusida vazifa va hisobot yo'q (Figma).
+ */
+export const roleNav: Partial<Record<Role, NavGroup[]>> = {
+  foreman: flat(nav.dashboard, nav.projects, nav.estimates, nav.tasks, nav.materials, nav.reports),
+  manager: flat(
+    nav.dashboard,
+    nav.projects,
+    nav.estimates,
+    nav.tasks,
+    nav.materials,
+    nav.reports,
+    nav.employees,
+  ),
+  brigadier: flat(nav.dashboard, nav.tasks, nav.materials, nav.reports),
+  warehouse_manager: flat(nav.dashboard, item('stock', 'Boxes', 'nav.warehouse')),
+  financier: flat(
+    nav.dashboard,
+    nav.budgets,
+    nav.plan_actual,
+    nav.forecast,
+    nav.payment_requests,
+    nav.payment_calendar,
+    nav.financial_reports,
+    nav.pricing,
+  ),
+  accountant: flat(
+    nav.dashboard,
+    nav.accounting_documents,
+    nav.invoices,
+    nav.bank_cash,
+    nav.counterparties,
+    nav.payroll,
+    nav.reconciliation,
+    nav.financial_reports,
+    nav.allocations,
+  ),
+  tenant_admin: [
+    {
+      group: 'nav.group.main',
+      items: [nav.dashboard, nav.projects, nav.estimates, nav.tasks, nav.reports, nav.stock, nav.employees],
+    },
+    {
+      group: 'nav.group.finance',
+      items: [
+        nav.finance,
+        nav.budgets,
+        nav.plan_actual,
+        nav.forecast,
+        nav.payment_requests,
+        nav.payment_calendar,
+        nav.pricing,
+        nav.allocations,
+        nav.accounting_documents,
+        nav.invoices,
+        nav.bank_cash,
+        nav.counterparties,
+        nav.payroll,
+        nav.reconciliation,
+        nav.financial_reports,
+      ],
+    },
+    {
+      group: 'nav.group.admin',
+      items: [
+        item('permissions', 'ShieldCheck'),
+        item('billing', 'CreditCard'),
+        item('camera', 'Cctv'),
+        item('integrations', 'Plug'),
+        item('audit', 'ScrollText'),
+        item('files', 'FileText'),
+        item('settings', 'Settings'),
+      ],
+    },
+  ],
+};
+export const navFor = (role: Role): NavGroup[] => roleNav[role] ?? [];
 
 export type PlatformNavItem = {
   key: string;

@@ -88,7 +88,7 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/employees/:id',
     summary: 'Xodim kartasi: biriktirishlar, individual ruxsatlar va Telegram holati',
-    permission: 'employees.manage',
+    permission: 'employees.read',
     action: 'read',
     params: idParams,
     handler: async ({ db, actor, params }) => {

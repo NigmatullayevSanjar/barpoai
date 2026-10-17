@@ -61,7 +61,7 @@ export function StockPage() {
   const sel = useProjectSelection();
   const overview = useOverview(sel.projectId);
   const [tab, setTab] = useState<Tab>('balances');
-  const has = (p: string) => me?.role === 'tenant_admin' || Boolean(permissions?.permissions.includes(p));
+  const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const [modal, setModal] = useState<null | {
     kind: Exclude<CommandKind, 'adjustment' | 'reversal'>;
     preset?: { from_account_id?: string; to_account_id?: string; material_id?: string };
@@ -200,7 +200,7 @@ function BalancesTab({
 }) {
   const { t, lang } = useT();
   const { me, permissions } = useAuth();
-  const has = (p: string) => me?.role === 'tenant_admin' || Boolean(permissions?.permissions.includes(p));
+  const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const [account, setAccount] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [reconcile, setReconcile] = useState<StockAccount | null>(null);
@@ -465,7 +465,7 @@ function LedgerModal({
 function MovementsTab({ projectId }: { projectId: string }) {
   const { t, lang } = useT();
   const { me, permissions } = useAuth();
-  const has = (p: string) => me?.role === 'tenant_admin' || Boolean(permissions?.permissions.includes(p));
+  const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const [status, setStatus] = useState<string>('open');
   const [kind, setKind] = useState<string>('');
   const [action, setAction] = useState<{
@@ -644,7 +644,7 @@ function MovementsTab({ projectId }: { projectId: string }) {
 function RequestsTab({ projectId, accounts }: { projectId: string; accounts: StockAccount[] }) {
   const { t, lang } = useT();
   const { me, permissions } = useAuth();
-  const has = (p: string) => me?.role === 'tenant_admin' || Boolean(permissions?.permissions.includes(p));
+  const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const list = useListState();
   const query = useRequests(projectId, list);
   const [create, setCreate] = useState(false);
@@ -951,10 +951,10 @@ function MaterialsTab() {
       api<ListResponse<Material>>(`/v1/materials${qs({ q: list.q, limit: list.limit, offset: list.offset })}`),
   });
   const [create, setCreate] = useState(false);
+  // Admin materiallarni faqat ko'radi (2026-10-16); server ham rad etadi.
   const canCreate =
-    me?.role === 'tenant_admin' ||
-    permissions?.permissions.includes('stock.receive') ||
-    permissions?.permissions.includes('estimates.import');
+    me?.role !== 'tenant_admin' &&
+    (permissions?.permissions.includes('stock.receive') || permissions?.permissions.includes('estimates.import'));
   return (
     <div className="stack" style={{ gap: 12 }}>
       <div className="toolbar">

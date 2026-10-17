@@ -58,7 +58,7 @@ export function EstimateEditorPage() {
 
 function Editor({ projectId, existing }: { projectId: string; existing: EstimateDetail | null }) {
   const { t, lang } = useT();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -253,13 +253,16 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           getSub={(m) => m.unit_id}
                           aria-label={t('est.col.material')}
                           action={
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              icon={<Plus />}
-                              aria-label={t('est.material_new')}
-                              onClick={() => setMaterialModal(l.key)}
-                            />
+                            // Admin materiallarni faqat ko'radi (2026-10-16): yangi material tugmasi yo'q.
+                            me?.role === 'tenant_admin' ? undefined : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                icon={<Plus />}
+                                aria-label={t('est.material_new')}
+                                onClick={() => setMaterialModal(l.key)}
+                              />
+                            )
                           }
                         />
                         {e.material_id && <span className="cell-error">{e.material_id}</span>}

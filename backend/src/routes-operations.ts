@@ -71,13 +71,16 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/materials',
-    summary: 'Kompaniya materialini yaratish (ombor kirimi yoki smeta import huquqi bilan)',
+    summary:
+      'Kompaniya materialini yaratish (ombor kirimi yoki smeta import huquqi bilan; mijoz admini faqat ko‘radi)',
     body: z.strictObject({ name: text, unit_id: text, catalog_id: uuid.optional() }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
+      // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; smeta muharriridagi "Yangi material" ham.
       invariant(
-        (await allowed(db, actor, 'stock.receive')) ||
-          (await allowed(db, actor, 'estimates.import')),
+        actor.role !== 'tenant_admin' &&
+          ((await allowed(db, actor, 'stock.receive')) ||
+            (await allowed(db, actor, 'estimates.import'))),
         'FORBIDDEN',
         403,
       );
@@ -255,13 +258,24 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/estimates',
-    summary: 'Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi; q — nom yoki muallif bo‘yicha qidiruv',
+    summary:
+      'Obyekt smetalari; narx huquqi bo‘lmasa summalar kesiladi; q — nom yoki muallif bo‘yicha qidiruv; summary — obyekt bo‘yicha jami (sahifalashsiz)',
     permission: 'estimates.read',
     sensitive: true,
     query: projectQuery.extend({ q: searchText }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
+      // Figma KPI kartalari uchun: obyektning barcha arxivlanmagan smetalari soni, qatorlari va jamlari (serverda).
+      const summary = await one(
+        db,
+        `SELECT count(DISTINCT e.id)::int count,count(l.id)::int line_count,
+                coalesce(sum(l.total),0)::text total,coalesce(sum(l.total) FILTER(WHERE l.kind='material'),0)::text material_total
+         FROM estimates e LEFT JOIN estimate_lines l ON l.tenant_id=e.tenant_id AND l.estimate_id=e.id AND l.archived_at IS NULL
+         WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.archived_at IS NULL`,
+        [actor.tenant_id, query.project_id],
+      );
       return {
+        summary,
         items: (
           await db.query(
             `SELECT e.*,u.display_name created_by_name,
