@@ -1123,7 +1123,8 @@ try {
   const tenantRow = (
     await owner.query('SELECT id FROM tenants WHERE registration_key=$1', ['UI-TEST-001'])
   ).rows[0];
-  for (const role of ['foreman', 'warehouse_manager', 'financier', 'accountant']) {
+  // Brigadir va ombor mudiri menyusi ombor sahifasining bo'limlari (?tab=…) — sidebar faolligi shu yerda tekshiriladi.
+  for (const role of ['foreman', 'brigadier', 'warehouse_manager', 'financier', 'accountant']) {
     const loginName = `ui_${role}`;
     const u = (
       await owner.query(
@@ -1162,6 +1163,11 @@ try {
       );
       await rolePage.locator('.page-header').first().waitFor();
       await delay(150);
+      // Sidebar: har sahifada aynan bitta band faol va u shu sahifa bandi (NavLink '/app' va ?tab= bandlarini birga yoqardi).
+      const active = await rolePage
+        .locator('.sidebar nav a.nav-link.active')
+        .evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+      assert.deepEqual(active, [href], `${role} sidebar active item on ${href}`);
     }
     assert.deepEqual(errors, [], `${role} pages raised errors`);
     // Xotira: har rol konteksti yopiladi (scrypt + ko'p sahifa birga xotirani tugatadi).
@@ -1182,8 +1188,22 @@ try {
   await supportPage.goto(webURL + '/admin/tenants');
   await supportPage.getByRole('heading', { name: 'Mijoz kompaniyalar' }).waitFor();
   assert.equal(await supportPage.getByRole('button', { name: 'Yangi kompaniya' }).count(), 0);
+  // Mijozlar jadvali: raqamli ustunda sarlavha va qiymat bir tomonda (o'ngda); egasining aliasi (Domen) supportda yo'q;
+  // sidebar'da faqat Mijozlar bandi faol.
+  await supportPage.locator('table td.num').first().waitFor();
+  const align = await supportPage.evaluate(() =>
+    ['table th.num', 'table td.num'].map((sel) => getComputedStyle(document.querySelector(sel)!).textAlign),
+  );
+  assert.deepEqual(align, ['right', 'right'], 'tenants table numeric column alignment');
+  assert.equal(await supportPage.getByRole('columnheader', { name: /Domen/ }).count(), 0);
+  assert.deepEqual(
+    await supportPage
+      .locator('.sidebar nav a.nav-link.active')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('href'))),
+    ['/admin/tenants'],
+  );
   checks.push(
-    'Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions and every allowed page renders without errors',
+    'Foreman, brigadier, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions, exactly one menu item is active on every allowed page, and every page renders without errors; the support tenants table aligns numeric headers and values',
   );
 
   // 7a. 100 tadan ortiq obyekt: ProjectSelect barcha sahifalarni (apiAll) yuklaydi

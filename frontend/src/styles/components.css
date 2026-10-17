@@ -716,6 +716,11 @@
   text-align: right;
   white-space: nowrap;
 }
+/* Raqamli ustun: .table td (0,1,1) umumiy .num (0,1,0) ni bosib ketmasin — sarlavha va qiymat bir tomonda. */
+.table th.num,
+.table td.num {
+  text-align: right;
+}
 .table td .cell-main {
   font-weight: 500;
 }

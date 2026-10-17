@@ -207,7 +207,8 @@ export function AppShell() {
   const { t } = useT();
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
-  useEffect(() => setNavOpen(false), [location.pathname]);
+  // Ombor bo'limlari bir sahifada (?tab=…): mobil menyu so'rov parametri o'zgarganda ham yopiladi.
+  useEffect(() => setNavOpen(false), [location.pathname, location.search]);
   if (!me) return null;
 
   const tenantGroups = navFor(me.role)
@@ -238,16 +239,22 @@ export function AppShell() {
             : tenantGroups.map((g, i) => (
                 <div key={g.group ?? i}>
                   {g.group && <div className="nav-group">{t(g.group)}</div>}
-                  {g.items.map((it) => (
-                    <NavLink
-                      key={navHref(it)}
-                      to={navHref(it)}
-                      className={`nav-link ${isNavActive(it, location.pathname, location.search, g.items) ? 'active' : ''}`}
-                    >
-                      <Icon name={it.icon} />
-                      {t(it.label ?? `page.${it.page}`)}
-                    </NavLink>
-                  ))}
+                  {g.items.map((it) => {
+                    // NavLink emas: u so'rov parametrlarini hisobga olmaydi va "/app" ni har sahifada faol qiladi —
+                    // natijada bir nechta band birga yonardi. Faollik faqat isNavActive bilan (bitta band).
+                    const active = isNavActive(it, location.pathname, location.search, g.items);
+                    return (
+                      <Link
+                        key={navHref(it)}
+                        to={navHref(it)}
+                        className={`nav-link${active ? ' active' : ''}`}
+                        aria-current={active ? 'page' : undefined}
+                      >
+                        <Icon name={it.icon} />
+                        {t(it.label ?? `page.${it.page}`)}
+                      </Link>
+                    );
+                  })}
                 </div>
               ))}
           {!isPlatform && issue && (

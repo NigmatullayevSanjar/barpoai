@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-17T08:56:27.699Z",
+  "executed_at": "2026-10-17T09:35:48.577Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -43,7 +43,7 @@
     "Super admin reads diagnostics (queue, migration) and answers a support request; the admin receives the reply as a notification",
     "Overpayment becomes tenant credit; the company billing page shows the credit balance and next invoice date",
     "Owner assigns plan, issues invoice and records payment; coverage extends paid_until",
-    "Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions and every allowed page renders without errors",
+    "Foreman, brigadier, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions, exactly one menu item is active on every allowed page, and every page renders without errors; the support tenants table aligns numeric headers and values",
     "Project select loads every page of a 100+ project list (apiAll)",
     "Unknown record id and unknown route render the in-app 404 page with SPA navigation back",
     "Missing, unassigned and foreign-tenant project ids render the identical not-found view (existence is not revealed)",

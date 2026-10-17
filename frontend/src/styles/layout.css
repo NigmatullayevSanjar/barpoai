@@ -81,6 +81,11 @@
   background: var(--brand-700);
   color: #fff;
 }
+/* To'q fonda global bordo fokus halqasi ortiqcha hoshiya bo'lib ko'rinardi: faqat klaviaturada, ichki oq chiziq. */
+.sidebar .nav-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: -2px;
+}
 .nav-link.active::after {
   content: '';
   position: absolute;

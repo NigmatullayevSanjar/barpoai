@@ -107,9 +107,12 @@ export function TenantsTable({
       render: (r) => <span className="mono">{formatDate(r.created_at, lang)}</span>,
     },
   ];
+  // "Domen" — platforma egasining shaxsiy belgisi (alias, egaga bog'liq): texnik xodim va super adminda doim bo'sh,
+  // shuning uchun hech bir qatorda alias bo'lmasa ustun ko'rsatilmaydi.
+  const hasAlias = (rows ?? []).some((r) => r.alias);
   return (
     <DataTable
-      columns={columns}
+      columns={hasAlias ? columns : columns.filter((c) => c.key !== 'alias')}
       rows={rows}
       rowKey={(r) => r.id}
       loading={loading}
