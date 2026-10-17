@@ -1551,3 +1551,107 @@
   font-family: var(--font-mono);
   font-size: var(--fs-lg);
 }
+
+/* ---------- Vazifalar Kanban (Figma "vazifalar"): ustun sarlavhasida rangli nuqta va son, kartada daraja va sana ---------- */
+.kanban-col > header {
+  padding: 6px 8px 10px;
+  font-weight: 700;
+}
+.kanban-col > header .kanban-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.kanban-col > header .kanban-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: center;
+  line-height: 20px;
+  color: var(--text-2);
+}
+.kanban-card {
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.kanban-card .kanban-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.kanban-card .kanban-card-foot .row {
+  gap: 6px;
+}
+/* Daraja belgisi: to'ldirilgan (Figma "Yuqori", "O'rta", "Past") */
+.badge-fill {
+  border-color: transparent;
+  color: #fff;
+}
+.badge-fill.badge-danger {
+  background: #e11d48;
+}
+.badge-fill.badge-warning {
+  background: #f97316;
+}
+.badge-fill.badge-info {
+  background: #2563eb;
+}
+.badge-fill.badge-neutral {
+  background: var(--text-3);
+}
+
+/* ---------- Hisobot formasi bo'limlari (Figma "kunlik/haftalik hisobot yaratish") ---------- */
+.form-section {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.form-section > h4 {
+  margin: 0 0 12px;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+.form-section .form-grid {
+  margin: 0;
+}
+.review-note {
+  padding: 14px 16px;
+  border: 1px solid #efcfda;
+  border-radius: var(--radius);
+  background: var(--brand-50);
+}
+.review-note b {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* ---------- Xodimlar jadvali: avatar bilan ism ---------- */
+.person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status-text-active {
+  color: #16a34a;
+  font-weight: 600;
+}
+.status-text-inactive {
+  color: #ea7a0c;
+  font-weight: 600;
+}

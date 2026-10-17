@@ -13,8 +13,9 @@ import {
   Input,
   Modal,
   PageHeader,
+  SearchInput,
+  Segmented,
   Select,
-  Stat,
   Textarea,
   useListState,
 } from '@/components/ui';
@@ -43,13 +44,20 @@ function useWorkLines(projectId: string, enabled: boolean) {
   return { lines: query.data?.items ?? [], loaded: query.isFetched };
 }
 
+/** Hisobot turi belgisi (Figma: kunlik — yashil kontur, haftalik — to'q kontur). */
+function KindBadge({ kind }: { kind: Report['kind'] }) {
+  const { t } = useT();
+  return <Badge tone={kind === 'daily' ? 'success' : 'brand'}>{t(`reports.kind.${kind}`)}</Badge>;
+}
+
+/** Hisobotlar sahifasi (Figma "Hisobotlar va tahlillar"): tur segmenti, qidiruv, ro'yxat kartasi, yaratish oynasi. */
 export function ReportsPage() {
   const { t, lang } = useT();
   const { can } = useAuth();
   const sel = useProjectSelection();
   const list = useListState();
   const [status, setStatus] = useState('');
-  const [kind, setKind] = useState('');
+  const [kind, setKind] = useState<'' | 'daily' | 'weekly'>('');
   const [create, setCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const query = useReports(
@@ -57,74 +65,89 @@ export function ReportsPage() {
     { ...(status ? { status } : {}), ...(kind ? { kind } : {}) },
     { offset: list.offset, limit: list.limit },
   );
-  const rows = query.data?.items ?? [];
+  // Qidiruv sahifadagi qatorlar ustida (ro'yxat API'sida q yo'q): mazmun, muallif, zona.
+  const needle = list.q.toLocaleLowerCase();
+  const rows = (query.data?.items ?? []).filter(
+    (r) =>
+      !needle ||
+      [r.content, r.author_name, r.zone_name].some((f) => (f ?? '').toLocaleLowerCase().includes(needle)),
+  );
   const columns: Column<Report>[] = [
+    {
+      key: 'n',
+      header: t('reports.col.n'),
+      render: (r) => (
+        <span className="muted" style={{ fontFamily: 'var(--font-mono)' }}>
+          #{r.id.slice(0, 6)}
+        </span>
+      ),
+    },
     {
       key: 'date',
       header: t('reports.date'),
       sortValue: (r) => r.report_date,
       render: (r) => (
-        <>
-          <div>{formatDate(r.report_date, lang)}</div>
-          <div className="cell-sub">{t(`reports.kind.${r.kind}`)}</div>
-        </>
+        <span style={{ fontFamily: 'var(--font-mono)' }}>{formatDate(r.report_date, lang)}</span>
       ),
     },
     {
-      key: 'author',
-      header: t('reports.author'),
-      sortValue: (r) => r.author_name,
-      render: (r) => r.author_name,
+      key: 'kind',
+      header: t('reports.kind'),
+      sortValue: (r) => r.kind,
+      render: (r) => <KindBadge kind={r.kind} />,
     },
     {
       key: 'content',
-      header: t('reports.content'),
+      header: t('reports.col.summary'),
       render: (r) => (
         <>
           <div style={{ maxWidth: 420, whiteSpace: 'pre-line' }}>
             {r.content.length > 140 ? r.content.slice(0, 140) + '…' : r.content}
           </div>
           <div className="cell-sub">
-            {[r.zone_name, r.file_count ? `📷 ${r.file_count}` : null].filter(Boolean).join(' · ')}
+            {[
+              r.zone_name,
+              r.estimate_line_name
+                ? `${r.estimate_line_name}: ${formatQuantity(r.progress_quantity, r.estimate_unit)}`
+                : null,
+              r.file_count ? `📷 ${r.file_count}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </div>
         </>
       ),
     },
     {
-      key: 'progress',
-      header: t('reports.progress'),
-      render: (r) =>
-        r.estimate_line_name ? (
-          <>
-            <div>{formatQuantity(r.progress_quantity, r.estimate_unit)}</div>
-            <div className="cell-sub">{r.estimate_line_name}</div>
-          </>
-        ) : (
-          <span className="muted">—</span>
-        ),
+      key: 'author',
+      header: t('reports.col.author'),
+      sortValue: (r) => r.author_name,
+      render: (r) => r.author_name,
     },
     {
       key: 'status',
-      header: t('common.status'),
+      header: t('reports.col.status'),
       sortValue: (r) => r.status,
       render: (r) => <Badge tone={reportTone[r.status]}>{t(`reports.status.${r.status}`)}</Badge>,
     },
   ];
   const pending = rows.filter((r) => r.status === 'submitted').length;
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        title={t('reports.title')}
-        description={t('reports.sub')}
-        actions={
-          can('reports', 'create') && sel.projectId ? (
-            <Button icon={<Plus />} onClick={() => setCreate(true)}>
-              {t('reports.new')}
-            </Button>
-          ) : undefined
-        }
-      />
-      <div className="toolbar">
+    <div className="stack" style={{ gap: 16 }}>
+      <PageHeader title={t('reports.title')} description={t('reports.sub')} />
+      <div className="toolbar blocks-toolbar">
+        <Segmented<'' | 'daily' | 'weekly'>
+          value={kind}
+          onChange={(k) => {
+            setKind(k);
+            list.setOffset(0);
+          }}
+          items={[
+            { key: '', label: t('common.all') },
+            { key: 'daily', label: t('reports.kind.daily') },
+            { key: 'weekly', label: t('reports.kind.weekly') },
+          ]}
+        />
         <ProjectSelect
           value={sel.projectId}
           onChange={(id) => {
@@ -133,18 +156,7 @@ export function ReportsPage() {
           }}
           projects={sel.projects}
         />
-        <Select
-          aria-label={t('reports.kind')}
-          value={kind}
-          onChange={(e) => {
-            setKind(e.target.value);
-            list.setOffset(0);
-          }}
-        >
-          <option value="">{t('common.all')}</option>
-          <option value="daily">{t('reports.kind.daily')}</option>
-          <option value="weekly">{t('reports.kind.weekly')}</option>
-        </Select>
+        <SearchInput value={list.search} onChange={list.setSearch} placeholder={t('reports.search')} />
         <Select
           aria-label={t('common.status')}
           value={status}
@@ -161,25 +173,37 @@ export function ReportsPage() {
           ))}
         </Select>
         {pending > 0 && <Badge tone="warning">{t('reports.pending_on_page', { n: pending })}</Badge>}
+        <span className="spacer" />
+        {can('reports', 'create') && sel.projectId && (
+          <Button icon={<Plus />} onClick={() => setCreate(true)}>
+            {t('reports.new')}
+          </Button>
+        )}
       </div>
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.id}
-        loading={query.isLoading}
-        error={
-          query.error
-            ? errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)
-            : null
-        }
-        onRetry={query.refetch}
-        onRowClick={(r) => setSelected(r.id)}
-        pagination={list.pagination}
-        empty={{ title: t('reports.empty'), description: t('reports.empty_desc') }}
-      />
+      <section className="card">
+        <div className="card-header">
+          <h3>{t('reports.list_title')}</h3>
+        </div>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.id}
+          loading={query.isLoading}
+          error={
+            query.error
+              ? errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)
+              : null
+          }
+          onRetry={query.refetch}
+          onRowClick={(r) => setSelected(r.id)}
+          pagination={list.pagination}
+          empty={{ title: t('reports.empty'), description: t('reports.empty_desc') }}
+        />
+      </section>
       {create && (
         <ReportModal
           projectId={sel.projectId}
+          projectName={sel.projects.find((p) => p.id === sel.projectId)?.name ?? ''}
           onClose={() => setCreate(false)}
           onCreated={(id) => {
             setCreate(false);
@@ -192,16 +216,20 @@ export function ReportsPage() {
   );
 }
 
+/** Hisobot yaratish (Figma "kunlik/haftalik hisobot yaratish"): raqamlangan bo'limlar, mavjud maydonlar bilan. */
 function ReportModal({
   projectId,
+  projectName,
   onClose,
   onCreated,
 }: {
   projectId: string;
+  projectName: string;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
   const { t } = useT();
+  const { me } = useAuth();
   const zones = useZones(projectId);
   const { lines, loaded } = useWorkLines(projectId, true);
   const [form, setForm] = useState({
@@ -238,6 +266,7 @@ function ReportModal({
     'reports.created',
   );
   const progressPair = Boolean(form.estimate_line_id) === Boolean(form.progress_quantity);
+  const weekly = form.kind === 'weekly';
   return (
     <Modal
       open
@@ -259,70 +288,98 @@ function ReportModal({
         </>
       }
     >
-      <div className="form-grid">
-        <Select label={t('reports.kind')} value={form.kind} onChange={(e) => set('kind', e.target.value)}>
-          <option value="daily">{t('reports.kind.daily')}</option>
-          <option value="weekly">{t('reports.kind.weekly')}</option>
-        </Select>
-        <Input
-          type="date"
-          label={t('reports.date')}
-          value={form.report_date}
-          onChange={(e) => set('report_date', e.target.value)}
-        />
-        <Select label={t('stock.zone')} value={form.zone_id} onChange={(e) => set('zone_id', e.target.value)}>
-          <option value="">—</option>
-          {(zones.data?.items ?? []).map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.name}
-            </option>
-          ))}
-        </Select>
-        {form.kind === 'weekly' && (
-          <Input
-            type="date"
-            label={t('reports.forecast_end')}
-            hint={t('reports.forecast_hint')}
-            value={form.forecast_end}
-            onChange={(e) => set('forecast_end', e.target.value)}
-          />
-        )}
-        <Textarea
-          wrapClassName="span-2"
-          label={t('reports.content')}
-          hint={t('common.reason_hint')}
-          rows={4}
-          value={form.content}
-          onChange={(e) => set('content', e.target.value)}
-        />
-        <Select
-          wrapClassName="span-2"
-          label={t('reports.progress_line')}
-          hint={loaded && lines.length === 0 ? t('reports.no_work_lines') : t('reports.progress_hint')}
-          value={form.estimate_line_id}
-          onChange={(e) => set('estimate_line_id', e.target.value)}
-        >
-          <option value="">—</option>
-          {lines.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.description} · {t('reports.plan')}: {formatQuantity(l.effective_quantity, l.unit_id)}
-              {l.zone_name ? ` · ${l.zone_name}` : ''}
-            </option>
-          ))}
-        </Select>
-        {form.estimate_line_id && (
-          <Input
-            label={`${t('reports.progress_qty')}${line ? ` (${line.unit_id})` : ''}`}
-            inputMode="decimal"
-            value={form.progress_quantity}
-            onChange={(e) => set('progress_quantity', e.target.value)}
-          />
+      <div className="stack" style={{ gap: 14 }}>
+        <section className="form-section">
+          <h4>{t('reports.section.main')}</h4>
+          <div className="form-grid">
+            <Select label={t('reports.kind')} value={form.kind} onChange={(e) => set('kind', e.target.value)}>
+              <option value="daily">{t('reports.kind.daily')}</option>
+              <option value="weekly">{t('reports.kind.weekly')}</option>
+            </Select>
+            <Input
+              type="date"
+              label={weekly ? t('reports.week_of') : t('reports.date')}
+              value={form.report_date}
+              onChange={(e) => set('report_date', e.target.value)}
+            />
+            <Input label={t('reports.object')} value={projectName} readOnly />
+            <Input label={t('reports.responsible')} value={me?.display_name ?? ''} readOnly />
+            <Select
+              wrapClassName="span-2"
+              label={t('stock.zone')}
+              value={form.zone_id}
+              onChange={(e) => set('zone_id', e.target.value)}
+            >
+              <option value="">—</option>
+              {(zones.data?.items ?? []).map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </section>
+        <section className="form-section">
+          <h4>{weekly ? t('reports.section.summary') : t('reports.section.works')}</h4>
+          <div className="form-grid">
+            <Textarea
+              wrapClassName="span-2"
+              label={t('reports.content')}
+              hint={t('common.reason_hint')}
+              rows={4}
+              value={form.content}
+              onChange={(e) => set('content', e.target.value)}
+            />
+            <Select
+              wrapClassName="span-2"
+              label={t('reports.progress_line')}
+              hint={loaded && lines.length === 0 ? t('reports.no_work_lines') : t('reports.progress_hint')}
+              value={form.estimate_line_id}
+              onChange={(e) => set('estimate_line_id', e.target.value)}
+            >
+              <option value="">—</option>
+              {lines.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.description} · {t('reports.plan')}: {formatQuantity(l.effective_quantity, l.unit_id)}
+                  {l.zone_name ? ` · ${l.zone_name}` : ''}
+                </option>
+              ))}
+            </Select>
+            {form.estimate_line_id && (
+              <Input
+                label={`${t('reports.progress_qty')}${line ? ` (${line.unit_id})` : ''}`}
+                inputMode="decimal"
+                value={form.progress_quantity}
+                onChange={(e) => set('progress_quantity', e.target.value)}
+              />
+            )}
+          </div>
+        </section>
+        {weekly ? (
+          <section className="form-section">
+            <h4>{t('reports.section.forecast')}</h4>
+            <div className="form-grid">
+              <Input
+                type="date"
+                label={t('reports.forecast_end')}
+                hint={t('reports.forecast_hint')}
+                value={form.forecast_end}
+                onChange={(e) => set('forecast_end', e.target.value)}
+              />
+            </div>
+          </section>
+        ) : (
+          <section className="form-section">
+            <h4>{t('reports.section.photos')}</h4>
+            <p className="muted text-sm">{t('reports.photos_after')}</p>
+          </section>
         )}
       </div>
     </Modal>
   );
 }
 
+/** Hisobot kartasi (Figma "hisobotlar ko'rish"): ma'lumot kartasi, ishlar jadvali, foto, tekshiruvchi izohi, prognoz. */
 function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { t, lang } = useT();
   const { me, can } = useAuth();
@@ -382,6 +439,11 @@ function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const isAuthor = d.author_id === me?.id;
   const canReview = can('reports', 'update') && !isAuthor;
   const effective = d.progress ? Number(d.progress.quantity) + Number(d.progress.corrected_delta) : null;
+  // Tekshiruvchi izohi: oxirgi qabul/qaytarish yozuvidagi sabab (tarixdan).
+  const reviewNote = [...d.history]
+    .reverse()
+    .find((h) => /review|accept|return/.test(h.action) && typeof h.details?.reason === 'string')?.details
+    ?.reason as string | undefined;
   return (
     <Modal
       open
@@ -393,61 +455,121 @@ function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="stack" style={{ gap: 16 }}>
         <div className="row wrap" style={{ gap: 6 }}>
           <Badge tone={reportTone[d.status]}>{t(`reports.status.${d.status}`)}</Badge>
+          <KindBadge kind={d.kind} />
           {d.reviewed_by_name && (
             <small className="muted">
               {t('reports.reviewed_by')}: {d.reviewed_by_name}
             </small>
           )}
         </div>
-        {content === null ? (
-          <p style={{ whiteSpace: 'pre-wrap' }}>{d.content}</p>
-        ) : (
-          <Textarea
-            label={t('reports.content')}
-            rows={5}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          />
-        )}
-        {d.estimate_line_name && (
-          <div className="grid-3">
-            <Stat
-              label={t('reports.progress_line')}
-              value={d.estimate_line_name}
-              sub={`${t('reports.plan')}: ${formatQuantity(d.estimate_plan_quantity, d.estimate_unit)}`}
-            />
-            <Stat
-              label={t('reports.progress_qty')}
-              value={formatQuantity(d.progress_quantity, d.estimate_unit)}
-            />
-            {d.progress && (
-              <Stat
-                label={t('reports.effective_progress')}
-                value={formatQuantity(effective, d.estimate_unit)}
-                sub={
-                  Number(d.progress.corrected_delta)
-                    ? `${t('reports.corrections')}: ${formatQuantity(d.progress.corrected_delta)}`
-                    : undefined
-                }
+        <div className="card card-pad">
+          <dl className="block-facts">
+            <div>
+              <dt>{d.kind === 'weekly' ? t('reports.week_of') : t('reports.date')}</dt>
+              <dd>{formatDate(d.report_date, lang)}</dd>
+            </div>
+            <div>
+              <dt>{t('reports.object')}</dt>
+              <dd>
+                {d.project_name}
+                {d.zone_name ? ` · ${d.zone_name}` : ''}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('reports.responsible')}</dt>
+              <dd>{d.author_name}</dd>
+            </div>
+          </dl>
+        </div>
+        <section className="card">
+          <div className="card-header">
+            <h3>
+              {d.kind === 'weekly'
+                ? t('reports.section.summary').replace(/^\d+\.\s*/, '')
+                : t('reports.content')}
+            </h3>
+          </div>
+          <div className="card-pad">
+            {content === null ? (
+              <p style={{ whiteSpace: 'pre-wrap' }}>{d.content}</p>
+            ) : (
+              <Textarea
+                label={t('reports.content')}
+                rows={5}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
               />
             )}
           </div>
+        </section>
+        {d.estimate_line_name && (
+          <section className="card">
+            <div className="card-header">
+              <h3>{t('reports.works_title')}</h3>
+            </div>
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th>{t('reports.col.work')}</th>
+                  <th>{t('reports.col.unit')}</th>
+                  <th className="num">{t('reports.col.qty')}</th>
+                  <th className="num">{t('reports.plan')}</th>
+                  {d.progress && <th className="num">{t('reports.effective_progress')}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="cell-main">{d.estimate_line_name}</td>
+                  <td>{d.estimate_unit}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>
+                    {formatQuantity(d.progress_quantity)}
+                  </td>
+                  <td className="num">{formatQuantity(d.estimate_plan_quantity)}</td>
+                  {d.progress && (
+                    <td className="num">
+                      {formatQuantity(effective)}
+                      {Number(d.progress.corrected_delta) ? (
+                        <small className="muted">
+                          {' '}
+                          ({t('reports.corrections')}: {formatQuantity(d.progress.corrected_delta)})
+                        </small>
+                      ) : null}
+                    </td>
+                  )}
+                </tr>
+              </tbody>
+            </table>
+          </section>
         )}
         {d.forecast_end && (
-          <Alert tone="info">
-            {t('reports.forecast_end')}: {formatDate(d.forecast_end, lang)}
+          <Alert tone="warning">
+            <b>{t('reports.forecast_updated')}</b>
+            <div>{formatDate(d.forecast_end, lang)}</div>
           </Alert>
         )}
-        <section>
-          <h3 style={{ marginBottom: 8 }}>{t('reports.photos')}</h3>
-          <PhotoGallery
-            files={d.files}
-            projectId={d.project_id}
-            reportId={d.id}
-            canUpload={isAuthor && d.status !== 'accepted'}
-            canDelete={(isAuthor || me?.role === 'tenant_admin') && d.status !== 'accepted'}
-          />
+        <section className="card">
+          <div className="card-header">
+            <h3>{t('reports.photos')}</h3>
+          </div>
+          <div className="card-pad">
+            <PhotoGallery
+              files={d.files}
+              projectId={d.project_id}
+              reportId={d.id}
+              canUpload={isAuthor && d.status !== 'accepted'}
+              canDelete={(isAuthor || me?.role === 'tenant_admin') && d.status !== 'accepted'}
+            />
+          </div>
         </section>
+        {reviewNote && d.status !== 'submitted' && (
+          <div className="review-note">
+            <b>
+              {t('reports.reviewer_note')}
+              {d.reviewed_by_name ? ` (${d.reviewed_by_name})` : ''}:
+            </b>
+            <span>{reviewNote}</span>
+          </div>
+        )}
         {d.status === 'submitted' && canReview && (
           <section className="card card-pad stack">
             <Textarea

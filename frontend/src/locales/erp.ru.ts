@@ -78,7 +78,12 @@ export const erpRu: Record<string, string> = {
   'projects.overdue_by': 'Срок просрочен на {n} дн.',
 
   'employees.title': 'Сотрудники',
-  'employees.sub': 'Пользователи компании, роли, назначения на объекты и индивидуальные права',
+  'employees.sub': 'Данные о сотрудниках и управление',
+  'employees.kpi.total': 'Всего сотрудников',
+  'employees.kpi.active': 'Активные',
+  'employees.kpi.inactive': 'Неактивные',
+  'employees.search': 'Поиск по компании',
+  'employees.phone': 'Телефон',
   'employees.new': 'Добавить сотрудника',
   'employees.edit': 'Карточка сотрудника',
   'employees.name': 'Имя и фамилия',

@@ -392,6 +392,12 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       active: queryBool.optional(),
     }),
     handler: async ({ db, actor, query }) => ({
+      // Figma "Xodimlar" KPI kartalari: jami, faol, nofaol (filtrsiz, sahifalashsiz).
+      summary: await one(
+        db,
+        'SELECT count(*)::int total,count(*) FILTER(WHERE active)::int active,count(*) FILTER(WHERE NOT active)::int inactive FROM users WHERE tenant_id=$1',
+        [actor.tenant_id],
+      ),
       items: (
         await db.query(
           `SELECT u.id,u.login,u.display_name,u.phone,u.role,u.active,u.must_change_password,u.position,u.hired_at,u.version,u.created_at,

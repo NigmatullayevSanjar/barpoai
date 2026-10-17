@@ -80,7 +80,12 @@ export const erpUz: Record<string, string> = {
 
   // xodimlar
   'employees.title': 'Xodimlar',
-  'employees.sub': 'Kompaniya foydalanuvchilari, rollar, obyekt biriktirishlari va individual ruxsatlar',
+  'employees.sub': 'Xodimlarga oid ma’lumotlar va boshqaruv',
+  'employees.kpi.total': 'Jami xodimlar',
+  'employees.kpi.active': 'Faol',
+  'employees.kpi.inactive': 'Nofaol',
+  'employees.search': 'Kompaniya bo‘yicha qidiruv',
+  'employees.phone': 'Telefon',
   'employees.new': 'Xodim qo‘shish',
   'employees.edit': 'Xodim kartasi',
   'employees.name': 'Ism va familiya',

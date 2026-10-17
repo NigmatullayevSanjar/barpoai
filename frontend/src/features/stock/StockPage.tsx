@@ -69,13 +69,35 @@ export function StockPage() {
   const d = overview.data;
   const pending = d?.pending;
   const low = d?.balances.filter((b) => b.low).length ?? 0;
+  // Figma "Ombor va xomashyo nazorati": KPI kartalar, bitta toolbar kartasida obyekt tanlovi va amallar.
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        title={t('stock.title')}
-        description={t('stock.sub')}
-        actions={
-          sel.projectId && (
+    <div className="stack" style={{ gap: 16 }}>
+      <PageHeader title={t('stock.title')} description={t('stock.sub')} />
+      {d && (
+        <div className="grid-4">
+          <Stat label={t('stock.kpi.kinds')} value={d.balances.length} sub={t('stock.kpi.kinds_sub')} />
+          <Stat
+            label={t('stock.kpi.low')}
+            value={low}
+            sub={t('stock.kpi.low_sub')}
+            tone={low > 0 ? 'danger' : undefined}
+          />
+          <Stat
+            label={t('stock.kpi.requests')}
+            value={pending?.requests ?? 0}
+            sub={t('stock.pending_requests', { n: pending?.requests ?? 0 })}
+          />
+          <Stat
+            label={t('stock.kpi.transfers')}
+            value={pending?.transfers ?? 0}
+            sub={`${t('stock.pending_transfers', { n: pending?.transfers ?? 0 })} · ${t('stock.pending_consumptions', { n: pending?.consumptions ?? 0 })}`}
+          />
+        </div>
+      )}
+      <div className="toolbar blocks-toolbar">
+        <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
+        <span className="spacer" />
+        {sel.projectId && (
             <>
               <ExportButton path={`/v1/stock/overview/export?project_id=${sel.projectId}`} />
               {has('stock.receive') && (
@@ -115,40 +137,12 @@ export function StockPage() {
                 </>
               )}
             </>
-          )
-        }
-      />
-      <div className="toolbar">
-        <ProjectSelect value={sel.projectId} onChange={sel.setProjectId} projects={sel.projects} />
+        )}
       </div>
       {overview.isError && (
         <Alert tone="danger">
           {errorMessage(t, (overview.error as ApiError).code, (overview.error as ApiError).status)}
         </Alert>
-      )}
-      {d && (
-        <div className="grid-4">
-          <Stat
-            label={t('stock.tab.balances')}
-            value={d.balances.length}
-            sub={low ? t('stock.low_items', { n: low }) : undefined}
-          />
-          <Stat
-            label={t('stock.transfer')}
-            value={pending?.transfers ?? 0}
-            sub={t('stock.pending_transfers', { n: pending?.transfers ?? 0 })}
-          />
-          <Stat
-            label={t('stock.consumption')}
-            value={pending?.consumptions ?? 0}
-            sub={t('stock.pending_consumptions', { n: pending?.consumptions ?? 0 })}
-          />
-          <Stat
-            label={t('stock.tab.requests')}
-            value={pending?.requests ?? 0}
-            sub={t('stock.pending_requests', { n: pending?.requests ?? 0 })}
-          />
-        </div>
       )}
       <Tabs<Tab>
         value={tab}

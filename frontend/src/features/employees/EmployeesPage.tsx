@@ -11,6 +11,7 @@ import { formatDate } from '@/lib/format';
 import { employeeRoles, type Role } from '@/lib/permissions';
 import {
   Alert,
+  Avatar,
   Badge,
   Button,
   ConfirmDialog,
@@ -19,6 +20,7 @@ import {
   PageHeader,
   SearchInput,
   Select,
+  Stat,
   Switch,
   Textarea,
   useListState,
@@ -73,7 +75,7 @@ export function EmployeesPage() {
   const query = useQuery({
     queryKey: ['employees', 'list', list.q, role, status, list.offset, list.limit],
     queryFn: () =>
-      api<ListResponse<Employee>>(
+      api<ListResponse<Employee> & { summary: { total: number; active: number; inactive: number } }>(
         `/v1/employees${qs({
           q: list.q,
           role: role === 'all' ? undefined : role,
@@ -84,31 +86,43 @@ export function EmployeesPage() {
       ),
   });
   const rows = query.data?.items;
+  const summary = query.data?.summary;
+  // Figma "Hodimlar" jadvali: avatar bilan ism, telefon (mono), lavozim (rol + lavozim), holat matni.
   const columns: Column<Employee>[] = [
     {
       key: 'name',
       header: t('employees.name'),
       sortValue: (r) => r.display_name,
       render: (r) => (
-        <>
-          <div className="cell-main">{r.display_name}</div>
-          <div className="cell-sub mono">
-            {r.login}
-            {r.phone ? ` · ${r.phone}` : ''}
-          </div>
-        </>
+        <span className="person-cell">
+          <Avatar name={r.display_name} />
+          <span>
+            <div className="cell-main">{r.display_name}</div>
+            <div className="cell-sub mono">{r.login}</div>
+          </span>
+        </span>
       ),
     },
     {
-      key: 'role',
-      header: t('common.role'),
-      sortValue: (r) => r.role,
-      render: (r) => <Badge tone="brand">{t(`role.${r.role}`)}</Badge>,
+      key: 'phone',
+      header: t('employees.phone'),
+      render: (r) =>
+        r.phone ? (
+          <span style={{ fontFamily: 'var(--font-mono)' }}>{r.phone}</span>
+        ) : (
+          <span className="muted">—</span>
+        ),
     },
     {
-      key: 'position',
+      key: 'role',
       header: t('employees.position'),
-      render: (r) => r.position ?? <span className="muted">—</span>,
+      sortValue: (r) => r.role,
+      render: (r) => (
+        <>
+          <div className="cell-main">{t(`role.${r.role}`)}</div>
+          {r.position && <div className="cell-sub">{r.position}</div>}
+        </>
+      ),
     },
     {
       key: 'projects',
@@ -132,9 +146,9 @@ export function EmployeesPage() {
       sortValue: (r) => (r.active ? 1 : 0),
       render: (r) => (
         <span className="row" style={{ gap: 6 }}>
-          <Badge tone={r.active ? 'success' : 'neutral'}>
+          <span className={r.active ? 'status-text-active' : 'status-text-inactive'}>
             {r.active ? t('employees.active') : t('employees.inactive')}
-          </Badge>
+          </span>
           {r.must_change_password && r.active && (
             <Badge tone="warning">{t('employees.pending_password')}</Badge>
           )}
@@ -155,10 +169,21 @@ export function EmployeesPage() {
     </Button>
   ) : undefined;
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('employees.title')} description={t('employees.sub')} actions={createButton} />
-      <div className="toolbar">
-        <SearchInput value={list.search} onChange={list.setSearch} />
+    <div className="stack" style={{ gap: 16 }}>
+      <PageHeader title={t('employees.title')} description={t('employees.sub')} />
+      {summary && (
+        <div className="grid-3">
+          <Stat label={t('employees.kpi.total')} value={summary.total} />
+          <Stat label={t('employees.kpi.active')} value={summary.active} tone="success" />
+          <Stat
+            label={t('employees.kpi.inactive')}
+            value={summary.inactive}
+            tone={summary.inactive > 0 ? 'warning' : undefined}
+          />
+        </div>
+      )}
+      <div className="toolbar blocks-toolbar">
+        <SearchInput value={list.search} onChange={list.setSearch} placeholder={t('employees.search')} />
         <Select
           aria-label={t('employees.filter_role')}
           value={role}
@@ -186,6 +211,8 @@ export function EmployeesPage() {
           <option value="inactive">{t('employees.inactive')}</option>
           <option value="all">{t('common.all')}</option>
         </Select>
+        <span className="spacer" />
+        {createButton}
       </div>
       <DataTable
         columns={columns}
