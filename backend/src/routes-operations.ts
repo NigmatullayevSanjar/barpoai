@@ -548,31 +548,48 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     summary: 'Kompaniya kontragentlari; q — nom, INN, telefon, kontakt; archived=false — faqat faollar',
     permission: 'finance.read',
     page: 'counterparties',
-    query: searchQuery.extend({ archived: queryBool.optional() }),
-    handler: async ({ db, actor, query }) => ({
-      items: (
-        await db.query(
-          `SELECT c.*,
-             (-coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='payable'
-               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0))::numeric(20,2)::text debt,
-             coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='advance'
-               AND ($4='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.tenant_id=j.tenant_id AND a.project_id=j.project_id AND a.user_id=$5))),0)::numeric(20,2)::text advance
+    query: searchQuery.extend({
+      archived: queryBool.optional(),
+      kind: z.enum(['supplier', 'contractor', 'customer', 'employee']).optional(),
+    }),
+    handler: async ({ db, actor, query }) => {
+      // Figma F5 "Kontragentlar bilan hisob-kitob": qarz, avans, muddati o'tgan qarz va oxirgi operatsiya —
+      // foydalanuvchi obyektlari doirasida; summary (KPI) shu filtr bilan, sahifalashsiz.
+      const scoped = (a: string) =>
+        `($2='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments pa WHERE pa.tenant_id=${a}.tenant_id AND pa.project_id=${a}.project_id AND pa.user_id=$3))`;
+      const select = `SELECT c.*,
+             (-coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='payable' AND ${scoped('j')}),0))::numeric(20,2)::text debt,
+             coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.counterparty_id=c.id AND j.account='advance' AND ${scoped('j')}),0)::numeric(20,2)::text advance,
+             coalesce((SELECT sum(${outstandingSql}) FROM finance_documents f WHERE f.tenant_id=c.tenant_id AND f.counterparty_id=c.id AND f.kind=ANY($7::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date<current_date AND ${scoped('f')}),0)::numeric(20,2)::text overdue,
+             (SELECT max(f.document_date) FROM finance_documents f WHERE f.tenant_id=c.tenant_id AND f.counterparty_id=c.id AND ${scoped('f')}) last_activity
            FROM counterparties c WHERE c.tenant_id=$1
-             AND ($6::text IS NULL OR c.name ILIKE $6 ESCAPE '\\' OR c.inn ILIKE $6 ESCAPE '\\' OR c.phone ILIKE $6 ESCAPE '\\' OR c.contact ILIKE $6 ESCAPE '\\')
-             AND ($7::boolean IS NULL OR (c.archived_at IS NOT NULL)=$7)
-           ORDER BY c.archived_at NULLS FIRST,c.name,c.id LIMIT $2 OFFSET $3`,
-          [
-            actor.tenant_id,
+             AND ($4::text IS NULL OR c.name ILIKE $4 ESCAPE '\\' OR c.inn ILIKE $4 ESCAPE '\\' OR c.phone ILIKE $4 ESCAPE '\\' OR c.contact ILIKE $4 ESCAPE '\\')
+             AND ($5::boolean IS NULL OR (c.archived_at IS NOT NULL)=$5)
+             AND ($6::text IS NULL OR c.kind=$6)`;
+      const params = [
+        actor.tenant_id,
+        actor.role,
+        actor.id,
+        query.q ? likePattern(query.q) : null,
+        query.archived ?? null,
+        query.kind ?? null,
+        payableKinds,
+      ];
+      return {
+        summary: await one(
+          db,
+          `SELECT coalesce(sum(s.debt::numeric),0)::text debt,coalesce(sum(s.advance::numeric),0)::text advance,coalesce(sum(s.overdue::numeric),0)::text overdue FROM (${select}) s`,
+          params,
+        ),
+        items: (
+          await db.query(`${select} ORDER BY c.archived_at NULLS FIRST,c.name,c.id LIMIT $8 OFFSET $9`, [
+            ...params,
             query.limit,
             query.offset,
-            actor.role,
-            actor.id,
-            query.q ? likePattern(query.q) : null,
-            query.archived ?? null,
-          ],
-        )
-      ).rows,
-    }),
+          ])
+        ).rows,
+      };
+    },
   });
   add({
     method: 'POST',
@@ -627,6 +644,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       to: date.optional(),
       // unpaid=true — faqat qoldig'i bor, qaytarilmagan qarz hujjatlari (invoyslar sahifasi).
       unpaid: queryBool.optional(),
+      // Figma F5 "Bank va kassa": bank yoki kassa hisobidagi operatsiyalar segmenti.
+      cash_kind: z.enum(['bank', 'cash']).optional(),
     }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
@@ -643,36 +662,51 @@ export function operationRoutes(add: (r: Endpoint) => void) {
             .split(',')
             .filter((k: string) => kinds.includes(k))
         : kinds;
+      // Figma F5: ro'yxat va KPI (summary) bir xil filtr bilan; summary sahifalashsiz.
+      const paidSql = `coalesce((SELECT sum(p.amount) FROM finance_documents p WHERE p.tenant_id=f.tenant_id AND p.allocated_invoice_id=f.id AND NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=p.tenant_id AND r.reverses_id=p.id)),0)`;
+      const where = `f.tenant_id=$1 AND f.project_id=$2 AND f.kind=ANY($3::text[])
+               AND (f.kind<>'reversal' OR EXISTS(SELECT 1 FROM finance_documents original WHERE original.tenant_id=f.tenant_id AND original.id=f.reverses_id AND original.kind=ANY($3::text[])))
+               AND ($4::uuid IS NULL OR f.counterparty_id=$4) AND ($5::date IS NULL OR f.document_date>=$5) AND ($6::date IS NULL OR f.document_date<=$6)
+               AND ($7::boolean IS NOT TRUE OR (f.kind=ANY($8::text[]) AND ${notReversedSql} AND ${outstandingSql}>0))
+               AND ($9::text IS NULL OR ca.kind=$9)`;
+      const params = [
+        actor.tenant_id,
+        query.project_id,
+        wanted.length ? wanted : ['__none__'],
+        query.counterparty_id ?? null,
+        query.from ?? null,
+        query.to ?? null,
+        query.unpaid ?? false,
+        payableKinds,
+        query.cash_kind ?? null,
+      ];
       return {
+        summary: await one(
+          db,
+          `SELECT count(*)::int count,
+                  coalesce(sum(f.amount) FILTER(WHERE f.kind<>'reversal' AND ${notReversedSql}),0)::text total,
+                  coalesce(sum(${outstandingSql}) FILTER(WHERE f.kind=ANY($8::text[]) AND ${notReversedSql}),0)::text outstanding,
+                  count(*) FILTER(WHERE f.kind=ANY($8::text[]) AND ${notReversedSql} AND ${outstandingSql}<=0)::int paid_count,
+                  count(*) FILTER(WHERE f.kind=ANY($8::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND (f.due_date IS NULL OR f.due_date>=current_date))::int open_count,
+                  count(*) FILTER(WHERE f.kind=ANY($8::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date<current_date)::int overdue_count
+           FROM finance_documents f LEFT JOIN cash_accounts ca ON ca.id=f.cash_account_id WHERE ${where}`,
+          params,
+        ),
         items: (
           await db.query(
-            `SELECT f.*,f.amount::text,c.name counterparty_name,c.kind counterparty_kind,ca.name cash_account_name,ta.name target_cash_account_name,u.display_name created_by_name,z.name zone_name,
+            `SELECT f.*,f.amount::text,c.name counterparty_name,c.kind counterparty_kind,ca.name cash_account_name,ca.kind cash_account_kind,ta.name target_cash_account_name,u.display_name created_by_name,z.name zone_name,
                     m.name matched_material_name,inv.description allocated_invoice_description,inv.kind allocated_invoice_kind,
-                    CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN
-                      (f.amount-coalesce((SELECT sum(p.amount) FROM finance_documents p WHERE p.tenant_id=f.tenant_id AND p.allocated_invoice_id=f.id AND NOT EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=p.tenant_id AND r.reverses_id=p.id)),0))::text END outstanding,
+                    CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN (f.amount-${paidSql})::text END outstanding,
+                    CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN ${paidSql}::text END paid,
                     EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=f.tenant_id AND r.reverses_id=f.id) reversed
              FROM finance_documents f
              LEFT JOIN counterparties c ON c.id=f.counterparty_id LEFT JOIN cash_accounts ca ON ca.id=f.cash_account_id LEFT JOIN cash_accounts ta ON ta.id=f.target_cash_account_id
              LEFT JOIN users u ON u.id=f.created_by LEFT JOIN zones z ON z.id=f.zone_id
              LEFT JOIN stock_commands sc ON sc.id=f.matched_receipt_id LEFT JOIN materials m ON m.id=sc.material_id
              LEFT JOIN finance_documents inv ON inv.id=f.allocated_invoice_id
-             WHERE f.tenant_id=$1 AND f.project_id=$2 AND f.kind=ANY($5::text[])
-               AND (f.kind<>'reversal' OR EXISTS(SELECT 1 FROM finance_documents original WHERE original.tenant_id=f.tenant_id AND original.id=f.reverses_id AND original.kind=ANY($5::text[])))
-               AND ($6::uuid IS NULL OR f.counterparty_id=$6) AND ($7::date IS NULL OR f.document_date>=$7) AND ($8::date IS NULL OR f.document_date<=$8)
-               AND ($9::boolean IS NOT TRUE OR (f.kind=ANY($10::text[]) AND ${notReversedSql} AND ${outstandingSql}>0))
-             ORDER BY f.document_date DESC,f.created_at DESC,f.id LIMIT $3 OFFSET $4`,
-            [
-              actor.tenant_id,
-              query.project_id,
-              query.limit,
-              query.offset,
-              wanted.length ? wanted : ['__none__'],
-              query.counterparty_id ?? null,
-              query.from ?? null,
-              query.to ?? null,
-              query.unpaid ?? false,
-              payableKinds,
-            ],
+             WHERE ${where}
+             ORDER BY f.document_date DESC,f.created_at DESC,f.id LIMIT $10 OFFSET $11`,
+            [...params, query.limit, query.offset],
           )
         ).rows,
       };
@@ -733,16 +767,37 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/budgets',
-    summary: 'Obyektning oylik budjetlari',
+    summary: 'Obyektning oylik budjetlari; har oy uchun fakt xarajat, qoldiq va foiz; yillik yig‘ma va summary',
     permission: 'finance.read',
     page: 'budgets',
     query: projectQuery,
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
+      // Figma F5 "Budjetlar boshqaruvi": Yillik/Oylik ko'rinish va KPI — hamma yig'indilar serverda.
+      const fact = `fact AS (SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,sum(amount) v FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1)`;
+      const pct = (amount: string, actual: string) =>
+        `CASE WHEN ${amount}>0 THEN round(100*${actual}/${amount},1)::text END`;
       return {
+        summary: await one(
+          db,
+          `WITH ${fact} SELECT coalesce(sum(b.amount),0)::numeric(20,2)::text amount,coalesce(sum(coalesce(f.v,0)),0)::numeric(20,2)::text actual,
+                  (coalesce(sum(b.amount),0)-coalesce(sum(coalesce(f.v,0)),0))::numeric(20,2)::text remaining,${pct('coalesce(sum(b.amount),0)', 'coalesce(sum(coalesce(f.v,0)),0)')} percent
+           FROM budgets b LEFT JOIN fact f ON f.month=b.month WHERE b.tenant_id=$1 AND b.project_id=$2`,
+          [actor.tenant_id, query.project_id],
+        ),
+        yearly: (
+          await db.query(
+            `WITH ${fact},years AS (SELECT extract(year FROM b.month)::int AS year,sum(b.amount) AS amount,sum(coalesce(f.v,0)) AS actual,count(*)::int AS months
+                                  FROM budgets b LEFT JOIN fact f ON f.month=b.month WHERE b.tenant_id=$1 AND b.project_id=$2 GROUP BY 1)
+             SELECT year,months,amount::numeric(20,2)::text amount,actual::numeric(20,2)::text actual,(amount-actual)::numeric(20,2)::text remaining,${pct('amount', 'actual')} percent
+             FROM years ORDER BY year`,
+            [actor.tenant_id, query.project_id],
+          )
+        ).rows,
         items: (
           await db.query(
-            'SELECT * FROM budgets WHERE tenant_id=$1 AND project_id=$2 ORDER BY month LIMIT $3 OFFSET $4',
+            `WITH ${fact} SELECT b.*,b.amount::text,coalesce(f.v,0)::numeric(20,2)::text actual,(b.amount-coalesce(f.v,0))::numeric(20,2)::text remaining,${pct('b.amount', 'coalesce(f.v,0)')} percent
+             FROM budgets b LEFT JOIN fact f ON f.month=b.month WHERE b.tenant_id=$1 AND b.project_id=$2 ORDER BY b.month LIMIT $3 OFFSET $4`,
             [actor.tenant_id, query.project_id, query.limit, query.offset],
           )
         ).rows,

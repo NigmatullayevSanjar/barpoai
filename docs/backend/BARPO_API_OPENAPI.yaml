@@ -4378,7 +4378,7 @@ paths:
               additionalProperties: false
   /v1/finance/cash-balances:
     get:
-      summary: Bank va kassa hisoblari qoldiqlari (foydalanuvchi obyektlari bo‘yicha)
+      summary: Bank va kassa hisoblari qoldiqlari (foydalanuvchi obyektlari bo‘yicha); summary — bank va kassa yig‘indisi
       operationId: get_v1_finance_cash_balances
       security:
         - bearerAuth: []
@@ -7335,6 +7335,16 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - supplier
+              - contractor
+              - customer
+              - employee
       x-permission: finance.read
       x-tenant-scope: true
       responses:
@@ -7647,6 +7657,14 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: cash_kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - bank
+              - cash
       x-permission: authenticated
       x-tenant-scope: true
       responses:
@@ -7863,7 +7881,7 @@ paths:
                 - version
               additionalProperties: false
     get:
-      summary: Obyektning oylik budjetlari
+      summary: Obyektning oylik budjetlari; har oy uchun fakt xarajat, qoldiq va foiz; yillik yig‘ma va summary
       operationId: get_v1_budgets
       security:
         - bearerAuth: []

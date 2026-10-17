@@ -85,7 +85,27 @@ export async function planActual(db: Db, actor: Row, projectId: string) {
       [actor.tenant_id, projectId],
     )
   ).rows;
-  return { by_kind: byKind, by_zone: byZone, lines, monthly };
+  // Figma F5 "Reja va fakt tahlili": kategoriyalar jadvali va KPI jami. Fakt qator kesimida faqat materialda bor
+  // (mehnat/texnika/xizmat fakti hujjat turi bo'yicha, by_kind da).
+  const byCategory = (
+    await db.query(
+      `SELECT coalesce(l.category,'') category,l.kind,count(*)::int lines,sum(l.total)::text plan_value,
+              CASE WHEN l.kind='material' THEN sum((SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory'))::text END fact_value
+       FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id
+       WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL
+       GROUP BY l.category,l.kind ORDER BY l.category NULLS LAST,l.kind`,
+      [actor.tenant_id, projectId],
+    )
+  ).rows;
+  const planTotal = byKind.reduce((s, k) => s.add(k.plan_value), dec('0'));
+  const factTotal = byKind.reduce((s, k) => s.add(k.fact_value), dec('0'));
+  const totals = {
+    plan_value: money(planTotal),
+    fact_value: money(factTotal),
+    variance: money(planTotal.minus(factTotal)),
+    percent: planTotal.isZero() ? null : factTotal.div(planTotal).mul(100).toFixed(1),
+  };
+  return { totals, by_kind: byKind, by_category: byCategory, by_zone: byZone, lines, monthly };
 }
 async function ensureEmployeeCounterparty(db: Db, actor: Row, employeeId: string) {
   const user = await one(db, 'SELECT id,display_name FROM users WHERE tenant_id=$1 AND id=$2', [
@@ -244,15 +264,24 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/finance/cash-balances',
-    summary: 'Bank va kassa hisoblari qoldiqlari (foydalanuvchi obyektlari bo‘yicha)',
+    summary:
+      'Bank va kassa hisoblari qoldiqlari (foydalanuvchi obyektlari bo‘yicha); summary — bank va kassa yig‘indisi',
     permission: 'finance.read',
     page: 'bank_cash',
     handler: async ({ db, actor }) => {
       const projects = await projectIds(db, actor);
+      const balance = `coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.cash_account_id=c.id AND j.account='cash' AND j.project_id=ANY($2::uuid[])),0)`;
       return {
+        // Figma F5 "Bank va kassa": arxivlanmagan hisoblar bo'yicha bank va kassa qoldig'i
+        summary: await one(
+          db,
+          `SELECT coalesce(sum(s.balance) FILTER(WHERE s.kind='bank'),0)::text bank,coalesce(sum(s.balance) FILTER(WHERE s.kind='cash'),0)::text cash
+           FROM (SELECT c.kind,${balance} balance FROM cash_accounts c WHERE c.tenant_id=$1 AND c.archived_at IS NULL) s`,
+          [actor.tenant_id, projects],
+        ),
         items: (
           await db.query(
-            `SELECT c.*,coalesce((SELECT sum(j.amount) FROM journal_entries j WHERE j.tenant_id=c.tenant_id AND j.cash_account_id=c.id AND j.account='cash' AND j.project_id=ANY($2::uuid[])),0)::text balance
+            `SELECT c.*,${balance}::text balance
              FROM cash_accounts c WHERE c.tenant_id=$1 ORDER BY c.archived_at NULLS FIRST,c.kind,c.name`,
             [actor.tenant_id, projects],
           )
@@ -405,7 +434,31 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         `SELECT coalesce(sum(${outstandingSql}),0)::text amount,count(*)::int count FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($3::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date<current_date`,
         [actor.tenant_id, projects, payableKinds],
       );
-      return { documents, requests, overdue };
+      // Figma F5 "To'lov kalendari": bajarilgan to'lovlar (yashil nuqta) va bugun/hafta/oy KPI — hammasi serverda.
+      const payments = (
+        await db.query(
+          `SELECT f.id,f.document_date,f.amount::text,f.description,f.reference,p.name project_name,c.name counterparty_name
+           FROM finance_documents f JOIN projects p ON p.id=f.project_id LEFT JOIN counterparties c ON c.id=f.counterparty_id
+           WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind='payment' AND ${notReversedSql} AND f.document_date BETWEEN $3 AND $4
+           ORDER BY f.document_date`,
+          [actor.tenant_id, projects, query.from, query.to],
+        )
+      ).rows;
+      const summary = await one(
+        db,
+        `WITH due AS (
+           SELECT f.due_date d,${outstandingSql} a FROM finance_documents f
+           WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($3::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date IS NOT NULL
+           UNION ALL
+           SELECT r.due_date,r.amount FROM payment_requests r
+           WHERE r.tenant_id=$1 AND r.project_id=ANY($2::uuid[]) AND r.status IN ('pending','approved') AND r.due_date IS NOT NULL)
+         SELECT count(*) FILTER(WHERE d=current_date)::int today_count,coalesce(sum(a) FILTER(WHERE d=current_date),0)::text today_amount,
+                count(*) FILTER(WHERE d BETWEEN current_date AND current_date+6)::int week_count,coalesce(sum(a) FILTER(WHERE d BETWEEN current_date AND current_date+6),0)::text week_amount,
+                count(*) FILTER(WHERE date_trunc('month',d)=date_trunc('month',current_date))::int month_count,coalesce(sum(a) FILTER(WHERE date_trunc('month',d)=date_trunc('month',current_date)),0)::text month_amount
+         FROM due`,
+        [actor.tenant_id, projects, payableKinds],
+      );
+      return { documents, requests, payments, overdue, summary };
     },
   });
   // ---------------------------------------------------------------- To'lov so'rovlari
@@ -614,7 +667,9 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
           `SELECT pp.*,u.display_name posted_by_name,
                   (SELECT count(*)::int FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) entries,
                   (SELECT coalesce(sum(e.net),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) total,
-                  (SELECT coalesce(sum(e.net) FILTER(WHERE e.status='paid'),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) paid
+                  (SELECT coalesce(sum(e.net) FILTER(WHERE e.status='paid'),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) paid,
+                  (SELECT coalesce(sum(e.base_salary+e.bonus),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) gross,
+                  (SELECT coalesce(sum(e.net) FILTER(WHERE e.status<>'paid'),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) due
            FROM payroll_periods pp LEFT JOIN users u ON u.id=pp.posted_by WHERE pp.tenant_id=$1 AND pp.project_id=$2 ORDER BY pp.month DESC`,
           [actor.tenant_id, query.project_id],
         )
@@ -853,7 +908,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       );
       const months = (
         await db.query(
-          `SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01') AS month,sum(amount)::text expense FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1 ORDER BY 1 DESC LIMIT 3`,
+          `SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01') AS month,sum(amount)::text expense FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1 ORDER BY 1 DESC LIMIT 6`,
           [actor.tenant_id, query.project_id],
         )
       ).rows;
@@ -862,8 +917,10 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         'SELECT coalesce(sum(amount),0)::text total FROM budgets WHERE tenant_id=$1 AND project_id=$2',
         [actor.tenant_id, query.project_id],
       );
-      const burn = months.length
-        ? months.reduce((s, m) => s.add(m.expense), dec('0')).div(months.length)
+      // O'rtacha — so'nggi 3 oy; `recent` 6 oy (Figma F5 prognoz grafigi).
+      const burnMonths = months.slice(0, 3);
+      const burn = burnMonths.length
+        ? burnMonths.reduce((s, m) => s.add(m.expense), dec('0')).div(burnMonths.length)
         : dec('0');
       const end = project.forecast_end ?? project.planned_end;
       const monthsLeft = end
@@ -877,7 +934,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         actual_cost: fact.actual_cost,
         remaining_plan: money(remainingPlan),
         monthly_burn: money(burn),
-        months_used: months.length,
+        months_used: burnMonths.length,
         months_left: monthsLeft === null ? null : Math.round(monthsLeft * 10) / 10,
         projected_remaining_spend: projected === null ? null : money(projected),
         projected_total: projected === null ? null : money(dec(fact.actual_cost).add(projected)),

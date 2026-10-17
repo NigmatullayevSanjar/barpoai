@@ -1659,3 +1659,197 @@
   color: var(--danger);
   font-weight: 600;
 }
+.status-text-muted {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ---------- Moliya sahifalari (Figma F5) ---------- */
+.filters-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.money-in {
+  color: var(--success);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.money-out {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+.report-card .report-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.report-card .report-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  display: grid;
+  place-items: center;
+}
+.report-card .report-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.report-card h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+.report-card .report-meta {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.report-card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.report-card .report-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: auto;
+}
+.report-card .report-actions .btn {
+  width: 100%;
+}
+
+/* To'lov kalendari */
+.cal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px 16px 12px;
+}
+.cal-weekday {
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  padding: 4px 0;
+}
+.cal-cell {
+  position: relative;
+  min-height: 72px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 10px;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.cal-cell:hover {
+  border-color: var(--border-strong);
+}
+.cal-cell.other {
+  color: var(--muted);
+  background: var(--surface-2);
+}
+.cal-cell.today {
+  border-color: var(--brand-600);
+}
+.cal-cell.selected {
+  background: var(--brand-900);
+  border-color: var(--brand-900);
+  color: #fff;
+}
+.cal-dots {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+}
+.cal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cal-dot.paid {
+  background: #16a34a;
+}
+.cal-dot.planned {
+  background: #f59e0b;
+}
+.cal-dot.overdue {
+  background: #dc2626;
+}
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.cal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+.cal-item + .cal-item {
+  margin-top: 10px;
+}
+.cal-item .cal-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.cal-item .cal-item-amount {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* Solishtirish dalolatnomasi chop etish */
+@media print {
+  .sidebar,
+  .topbar,
+  .toolbar,
+  .page-header .btn,
+  .cal-legend {
+    display: none !important;
+  }
+}
