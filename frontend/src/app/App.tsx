@@ -101,44 +101,23 @@ const CameraPage = lazy(() =>
   import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.CameraPage })),
 );
 const AuditPage = lazy(() => import('@/features/audit/AuditPage').then((m) => ({ default: m.AuditPage })));
+// Figma F6 (2026-10-17): platforma sahifalari alohida modullarda.
 const Platform = {
   Dashboard: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.PlatformDashboard,
-    })),
+    import('@/features/platform/dashboard').then((m) => ({ default: m.PlatformDashboard })),
   ),
-  Tenants: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.TenantsPage,
-    })),
-  ),
+  Tenants: lazy(() => import('@/features/platform/tenants').then((m) => ({ default: m.TenantsPage }))),
   TenantDetail: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.TenantDetailPage,
-    })),
+    import('@/features/platform/pages').then((m) => ({ default: m.TenantDetailPage })),
   ),
-  Plans: lazy(() => import('@/features/platform/pages').then((m) => ({ default: m.PlansPage }))),
-  Billing: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.BillingPage,
-    })),
-  ),
-  Debtors: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.DebtorsPage,
-    })),
-  ),
-  Support: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.SupportPage,
-    })),
-  ),
+  Plans: lazy(() => import('@/features/platform/plans').then((m) => ({ default: m.PlansPage }))),
+  Billing: lazy(() => import('@/features/platform/billing').then((m) => ({ default: m.BillingPage }))),
+  Debtors: lazy(() => import('@/features/platform/billing').then((m) => ({ default: m.DebtorsPage }))),
+  Support: lazy(() => import('@/features/platform/support').then((m) => ({ default: m.SupportPage }))),
   Staff: lazy(() => import('@/features/platform/pages').then((m) => ({ default: m.StaffPage }))),
   Audit: lazy(() => import('@/features/platform/AuditPage').then((m) => ({ default: m.PlatformAuditPage }))),
   Diagnostics: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.DiagnosticsPage,
-    })),
+    import('@/features/platform/diagnostics').then((m) => ({ default: m.DiagnosticsPage })),
   ),
 };
 

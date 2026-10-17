@@ -932,6 +932,17 @@ WHERE NOT EXISTS(SELECT 1 FROM stock_accounts a WHERE a.tenant_id=w.tenant_id AN
 
 ```
 
+## 023_tenant_profile.sql
+
+```sql
+-- Figma F6 (2026-10-17): kompaniya profili — mas'ul shaxs, e-mail, tashkiliy shakl (manzil va telefon 012 da).
+ALTER TABLE tenants
+ ADD COLUMN contact_name text,
+ ADD COLUMN email text CHECK (email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+ ADD COLUMN legal_form text CHECK (legal_form IN ('mchj','aj','yatt','qk','other'));
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

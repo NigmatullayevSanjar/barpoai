@@ -140,12 +140,16 @@ try {
     .getByRole('dialog')
     .getByRole('button', { name: 'Yaratish', exact: true })
     .click();
-  await ownerPage.getByRole('cell', { name: 'standard' }).waitFor();
+  // Figma F6: tariflar kartalar ko'rinishida — sarlavha tarif kodi
+  await ownerPage.getByRole('heading', { name: 'standard', exact: true }).waitFor();
   checks.push('Plan version created from the UI');
   await ownerPage.getByRole('link', { name: 'Mijozlar' }).click();
   await ownerPage.getByRole('button', { name: 'Yangi kompaniya' }).first().click();
+  // Figma F6: uch qadamli yaratish — ma'lumotlar → yuridik va domen → tarif va holat
   await ownerPage.getByLabel('Kompaniya nomi').fill('UI sinov qurilish');
+  await ownerPage.getByRole('dialog').getByRole('button', { name: 'Keyingisi', exact: true }).click();
   await ownerPage.getByLabel('Ro‘yxat raqami (STIR yoki ichki kod)').fill('UI-TEST-001');
+  await ownerPage.getByRole('dialog').getByRole('button', { name: 'Keyingisi', exact: true }).click();
   await ownerPage
     .getByRole('dialog')
     .getByRole('button', { name: 'Yaratish', exact: true })
@@ -1045,17 +1049,15 @@ try {
   await adminPage.getByRole('dialog').getByLabel('Xabar').fill('UI sinov: eksport qayerda?');
   await adminPage.getByRole('dialog').locator('.modal-footer button').last().click();
   await adminPage.getByRole('dialog').waitFor({ state: 'detached' });
+  // Figma F6: murojaatlar chat ko'rinishida — ro'yxatdan tanlash, javob yuborish, yakunlash
   await techPage.goto(webURL + '/admin/support');
-  await techPage.getByText('UI sinov: eksport qayerda?').waitFor();
-  await techPage.getByRole('button', { name: 'Javob yozish' }).first().click();
-  await techPage
-    .getByRole('dialog')
-    .getByLabel('Javob')
-    .fill('UI sinov: eksport tugmasi reja–fakt sahifasida.');
-  await techPage.getByRole('dialog').getByRole('button', { name: 'Javob berib yopish' }).click();
-  await techPage.getByRole('dialog').waitFor({ state: 'detached' });
-  await techPage.getByRole('button', { name: 'Yopiq', exact: true }).first().click();
-  await techPage.getByText('Javob: UI sinov: eksport tugmasi').waitFor();
+  await techPage.getByText('UI sinov: eksport qayerda?').first().click();
+  await techPage.getByLabel('Javob').fill('UI sinov: eksport tugmasi reja–fakt sahifasida.');
+  await techPage.getByRole('button', { name: 'Yuborish', exact: true }).click();
+  await techPage.locator('.chat-bubble.staff').getByText('UI sinov: eksport tugmasi').waitFor();
+  await techPage.getByRole('button', { name: 'Yakunlansin', exact: true }).click();
+  await techPage.getByRole('button', { name: 'Yakunlanganlar', exact: true }).click();
+  await techPage.getByText('UI sinov: eksport qayerda?').first().waitFor();
   await adminPage.goto(webURL + '/notifications');
   await adminPage.getByText('BARPO AI support javobi').first().waitFor();
   checks.push(

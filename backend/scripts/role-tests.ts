@@ -495,6 +495,8 @@ try {
     material_id: material.id,
     counterparty_id: supplier.id,
     tenant_id: A.id,
+    // Figma F6: platforma oylik buxgalter hisoboti
+    month: '2026-10-01',
   };
   const fillUrl = (route: Endpoint) => {
     const prefix = Object.keys(ids)

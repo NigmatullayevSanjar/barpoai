@@ -896,6 +896,10 @@
   padding: 12px 20px 18px;
   border-top: 1px solid var(--border);
 }
+/* Uch qadamli oyna (Figma F6): Orqaga/Tozalash chapda, Keyingisi/Yaratish o'ngda */
+.modal-footer .spacer {
+  flex: 1;
+}
 .drawer-overlay {
   justify-content: flex-end;
   padding: 0;
@@ -1841,6 +1845,247 @@
 .cal-item .cal-item-amount {
   font-family: var(--font-mono);
   font-weight: 700;
+}
+
+/* ---------- Platforma (Figma F6) ---------- */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+.plan-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.plan-card h3 {
+  margin: 0;
+  font-size: var(--fs-xl);
+}
+.plan-card .plan-sub {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.plan-limit {
+  display: grid;
+  gap: 6px;
+}
+.plan-limit .row-between {
+  font-size: var(--fs-sm);
+}
+.plan-limit .progress {
+  width: 100%;
+}
+.plan-card .plan-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+.chat-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.chat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 64vh;
+  overflow: auto;
+}
+.chat-item {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  align-items: flex-start;
+}
+.chat-item:hover {
+  background: var(--surface-2);
+}
+.chat-item.selected {
+  background: var(--brand-50);
+}
+.chat-item .chat-main {
+  min-width: 0;
+  flex: 1;
+}
+.chat-item .chat-preview {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-item .chat-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  text-align: right;
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+.chat-unread {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--brand-900);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+}
+.chat-body {
+  padding: 16px;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-day {
+  align-self: center;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.chat-bubble {
+  max-width: 72%;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  white-space: pre-wrap;
+}
+.chat-bubble .chat-who {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+.chat-bubble .chat-time {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-align: right;
+  margin-top: 4px;
+}
+.chat-bubble.staff {
+  align-self: flex-end;
+  background: var(--brand-900);
+  color: #fff;
+}
+.chat-bubble.staff .chat-who,
+.chat-bubble.staff .chat-time {
+  color: rgba(255, 255, 255, 0.75);
+}
+.chat-footer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  align-items: flex-end;
+}
+.bars-7 {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+  align-items: end;
+  height: 180px;
+  padding: 8px 16px 12px;
+}
+.bars-7 .bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.bars-7 .bar {
+  width: 22px;
+  border-radius: 4px 4px 0 0;
+  background: var(--chart-fact);
+  min-height: 2px;
+}
+.bars-7 .bar-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+}
+.role-bars {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+.role-bars .role-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 40px;
+  gap: 12px;
+  align-items: center;
+  font-size: var(--fs-sm);
+}
+.role-bars .progress {
+  width: 100%;
+}
+.role-bars .role-count {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.ops-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ops-list li {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ops-list small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.wizard-steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.wizard-steps span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.wizard-steps span.done {
+  background: var(--brand-700);
+}
+.wizard-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-lg);
+}
+.wizard-sub {
+  margin: 0 0 14px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
 }
 
 /* Solishtirish dalolatnomasi chop etish */
