@@ -718,8 +718,11 @@ function MovementsTab({ projectId, initialKind = '' }: { projectId: string; init
 
 function RequestsTab({ projectId, accounts }: { projectId: string; accounts: StockAccount[] }) {
   const { t, lang } = useT();
-  const { me, permissions } = useAuth();
+  const { me, permissions, can } = useAuth();
   const has = (p: string) => Boolean(permissions?.permissions.includes(p));
+  // Talabnoma yaratish serverda ombor sahifasining "create" ruxsati bilan (brigadir, ombor mudiri); prorab, bosh
+  // muhandis va admin faqat ko'radi. Admin ruxsatlar yuklanguncha ham tugmani ko'rmasin.
+  const canRequest = me?.role !== 'tenant_admin' && can('stock', 'create');
   const list = useListState();
   const query = useRequests(projectId, list);
   const [create, setCreate] = useState(false);
@@ -816,11 +819,13 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
           />
         </div>
       )}
-      <div className="row" style={{ justifyContent: 'flex-end' }}>
-        <Button icon={<Plus />} onClick={() => setCreate(true)}>
-          {t('stock.request_new')}
-        </Button>
-      </div>
+      {canRequest && (
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <Button icon={<Plus />} onClick={() => setCreate(true)}>
+            {t('stock.request_new')}
+          </Button>
+        </div>
+      )}
       <DataTable
         columns={columns}
         rows={query.data?.items}

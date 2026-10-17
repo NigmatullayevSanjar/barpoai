@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-17T09:35:48.577Z",
+  "executed_at": "2026-10-17T11:52:03.035Z",
   "browser": "Headless Chrome",
   "checks": [
     "Platform owner logs in with cookie session and sees the platform dashboard",
@@ -22,7 +22,7 @@
     "Warehouse receipt posts stock and inventory value from the UI",
     "Brigadier accepts a transfer partially and submits a consumption proposal",
     "Consumption review posts expense 150 x 1200 and leaves warehouse 800 (100 still reserved) and custody 50",
-    "Material request from brigadier is fulfilled by the warehouse manager via a transfer created from the request; the admin only reads it",
+    "Material request from brigadier is fulfilled by the warehouse manager via a transfer created from the request; the admin and the foreman only read requests (no request button)",
     "Counterparty and cash account created from the UI",
     "Supplier invoice matched to the receipt clears GR/IR; payment settles the debt and reduces cash",
     "Payment request → approve → pay settles a service act; expense is booked once",

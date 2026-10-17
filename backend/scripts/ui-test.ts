@@ -641,8 +641,14 @@ try {
   await adminPage.getByRole('tab', { name: /So‘rovlar/ }).click();
   await adminPage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
   assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 0);
+  // Talabnomani faqat brigadir va ombor mudiri yaratadi (server: ombor 'create'); admin va prorabda tugma yo'q.
+  assert.equal(await adminPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
+  await foremanPage.goto(stockUrl);
+  await foremanPage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  await foremanPage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
+  assert.equal(await foremanPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
   checks.push(
-    'Material request from brigadier is fulfilled by the warehouse manager via a transfer created from the request; the admin only reads it',
+    'Material request from brigadier is fulfilled by the warehouse manager via a transfer created from the request; the admin and the foreman only read requests (no request button)',
   );
   // 5e. Moliya: kontragent, kassa, invoys (kirimga bog'langan), to'lov, to'lov so'rovi, ish haqi (stage 07)
   const dialog = () => adminPage.getByRole('dialog');
