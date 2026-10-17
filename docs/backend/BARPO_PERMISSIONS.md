@@ -26,7 +26,7 @@ POST /v1/company/role-permissions optimistic version + idempotency bilan saqlayd
 | estimates.import | estimates / create | — | — | — | ✓ | — | — | — | ✓ | — | ✓ |
 | estimates.edit | estimates / update | — | — | — | ✓ | — | — | — | — | — | ✓ |
 | prices.read | finance / read | — | — | — | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| stock.read | stock / read | — | — | — | ✓ | ✓ | ✓ | ✓ | — | — | ✓ |
+| stock.read | stock / read | — | — | — | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
 | stock.receive | stock / create | — | — | — | — | — | — | ✓ | — | — | — |
 | stock.send | stock / create | — | — | — | — | — | — | ✓ | — | — | — |
 | stock.accept | stock / update | — | — | — | — | — | ✓ | — | — | — | — |

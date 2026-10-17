@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-17T08:53:45.818Z",
+  "executed_at": "2026-10-17T15:36:31.010Z",
   "passed": [
     "Seed: two tenants, seven tenant roles, project/zone/warehouse/custody, stock chain, estimate, task, report+photo, finance documents, payroll, payment request, plan, price list",
     "Role × GET endpoint matrix: 72 endpoints × 10 roles match /v1/me/permissions (403 exactly where expected)",
@@ -30,8 +30,8 @@
       "mismatches": []
     },
     "accountant": {
-      "allowed": 42,
-      "denied": 30,
+      "allowed": 50,
+      "denied": 22,
       "mismatches": []
     },
     "manager": {

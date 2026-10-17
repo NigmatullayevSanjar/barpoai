@@ -332,12 +332,13 @@ function EditProjectModal({
       address: d.address ?? '',
       description: d.description ?? '',
       status: d.status,
-      planned_start: d.planned_start ?? '',
-      planned_end: d.planned_end ?? '',
+      // Sana maydonlari faqat YYYY-MM-DD qabul qiladi (server ham shuni kutadi).
+      planned_start: d.planned_start?.slice(0, 10) ?? '',
+      planned_end: d.planned_end?.slice(0, 10) ?? '',
       area_m2: d.area_m2 ?? '',
-      forecast_end: d.forecast_end ?? '',
-      actual_start: d.actual_start ?? '',
-      actual_end: d.actual_end ?? '',
+      forecast_end: d.forecast_end?.slice(0, 10) ?? '',
+      actual_start: d.actual_start?.slice(0, 10) ?? '',
+      actual_end: d.actual_end?.slice(0, 10) ?? '',
     },
   });
   const save = useMutation({

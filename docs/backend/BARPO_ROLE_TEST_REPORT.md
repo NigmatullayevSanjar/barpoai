@@ -1,6 +1,6 @@
 # BARPO AI — 11-bosqich: rol bo‘yicha to‘liq sinov hisoboti
 
-Bajarildi: 2026-10-17T08:53:45.817Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
+Bajarildi: 2026-10-17T15:36:31.007Z (`npm run test:roles`, vaqtinchalik PostgreSQL 17 Docker, runtime NOSUPERUSER NOBYPASSRLS). Har bosqichda avtomatik qayta yuriladi; qo‘lda tahrirlanmaydi.
 
 ## Natija
 
@@ -22,7 +22,7 @@ Har rol uchun 72 ta GET endpoint chaqirildi; kutilgan natija `/v1/me/permissions
 | brigadier | 29 | 43 | 0 |
 | warehouse_manager | 29 | 43 | 0 |
 | financier | 46 | 26 | 0 |
-| accountant | 42 | 30 | 0 |
+| accountant | 50 | 22 | 0 |
 | manager | 36 | 36 | 0 |
 | tenant_admin | 62 | 10 | 0 |
 | platform_owner | 12 | 60 | 0 |
@@ -41,7 +41,7 @@ R — o‘qish, RW — o‘qish va yozish (create yoki update), — yo‘q.
 | brigadier | R | R | — | — | RW | — | RW | RW | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | RW |
 | warehouse_manager | R | R | — | — | RW | — | RW | R | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | financier | R | R | — | RW | — | RW | RW | R | RW | — | — | — | — | — | — | R | R | R | R | R | R | R | RW | RW | R | R | RW | R | RW |
-| accountant | R | R | — | R | — | RW | RW | R | RW | — | — | — | — | — | — | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | — |
+| accountant | R | R | — | R | R | RW | RW | R | RW | — | — | — | — | — | — | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | — |
 | manager | R | RW | R | RW | R | — | RW | RW | RW | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | tenant_admin | RW | RW | RW | RW | R | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW | RW |
 

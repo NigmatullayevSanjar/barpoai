@@ -195,8 +195,11 @@ export const basePermissions: Record<string, readonly Permission[]> = {
     'pricing.write',
   ],
   // finance.allocate: Figma bo'yicha buxgalter talabnomalarga mablag' ajratadi (egasi, 2026-10-16).
+  // stock.read (2026-10-17): yetkazib beruvchi invoysi ombor kirimiga bog'lanadi — kirimlar ro'yxatini o'qimasa
+  // buxgalter invoys yarata olmasdi; Figma "Hisob hisobotlari"da "Ombor hisoboti" ham bor. Ombor amallari yo'q.
   accountant: [
     ...common,
+    'stock.read',
     'estimates.read',
     'prices.read',
     'finance.read',

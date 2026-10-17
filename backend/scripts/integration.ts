@@ -170,6 +170,7 @@ try {
     foreman = await employee('foreman'),
     warehouseManager = await employee('warehouse_manager'),
     financier = await employee('financier'),
+    accountant = await employee('accountant'),
     manager = await employee('manager');
   passed.push('Employee first login requires password change; sessions revoked');
   // ---- 1.1: ro'yxat qidiruvi va filtrlari serverda (sahifalash bilan birga ishlashi uchun)
@@ -467,6 +468,7 @@ try {
       role: 'manager',
       phone: '+998901234567',
       position: 'Sayt muhandisi',
+      hired_at: '2026-10-10',
     },
     adminToken,
   );
@@ -501,8 +503,27 @@ try {
   assert(!(await empIds('active=true&limit=100')).includes(searcher.id));
   assert((await empIds('active=true&limit=100')).includes(foreman.id));
   assert.deepEqual(await empIds('active=0'), await empIds('active=false'));
+  // Kartadagi qiymatlarni o'zgartirmasdan qaytarib saqlash (UI shunday qiladi): `date` ustuni YYYY-MM-DD matn bo'lib keladi,
+  // aks holda pg Date ni ISO vaqtga aylantirib, PATCH VALIDATION_ERROR berardi (2026-10-17 egasi xabari).
+  const empCard = await call('GET', `/v1/employees/${searcher.id}`, undefined, adminToken);
+  assert.equal(empCard.hired_at, '2026-10-10');
+  await call(
+    'PATCH',
+    `/v1/employees/${searcher.id}`,
+    {
+      version: empCard.version,
+      display_name: empCard.display_name,
+      role: 'foreman',
+      active: empCard.active,
+      phone: empCard.phone,
+      position: empCard.position,
+      hired_at: empCard.hired_at,
+    },
+    adminToken,
+  );
+  assert.equal((await call('GET', `/v1/employees/${searcher.id}`, undefined, adminToken)).role, 'foreman');
   passed.push(
-    'Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server',
+    'Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server; an employee card with a hire date is saved back unchanged (date columns are YYYY-MM-DD text)',
   );
   const financierPages = await call('GET', '/v1/me/permissions', undefined, financier.token);
   assert.equal(financierPages.pages.bank_cash.create, false);
@@ -3149,6 +3170,19 @@ try {
     (await receiptIds(`&unmatched=true&q=${encodeURIComponent(material.name)}`)).includes(freeReceipt.id),
   );
   assert.deepEqual(await receiptIds('&unmatched=true&q=mavjud-emas-xyz'), []);
+  // Buxgalter invoysni o'zi yaratadi: bog'lanmagan kirimlarni ko'radi (stock.read), lekin kirim yarata olmaydi.
+  // Boshlang'ich token bu bo'limgacha eskiradi — boshqa bo'limlardagidek yangi login.
+  const accP = (await call('POST', '/v1/auth/login', { login: 'accountant', password: pass + '2' })).access_token;
+  const accountantReceipts = (
+    await call(
+      'GET',
+      `/v1/stock/commands?project_id=${project.id}&kind=receipt&status=posted&unmatched=true&limit=100`,
+      undefined,
+      accP,
+    )
+  ).items.map((r: any) => r.id);
+  assert(accountantReceipts.includes(freeReceipt.id) && !accountantReceipts.includes(matchedReceipt.id));
+  await call('POST', '/v1/stock/commands', receiptBody, accP, undefined, 403);
   await call(
     'GET',
     `/v1/stock/commands?project_id=${project.id}&unmatched=yes`,
@@ -3158,7 +3192,7 @@ try {
     400,
   );
   passed.push(
-    'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name',
+    'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name; the accountant lists unmatched receipts but cannot post stock',
   );
   // O7: moliya yig'masi yozuv bo'lmasa ham 2 xonali summa qaytaradi ('0' emas, '0.00')
   const emptyProject = await call('POST', '/v1/projects', { name: 'Bo‘sh yig‘ma' }, adminAgain);

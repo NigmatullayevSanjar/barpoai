@@ -1,5 +1,5 @@
 {
-  "executed_at": "2026-10-17T08:53:11.859Z",
+  "executed_at": "2026-10-17T15:41:30.578Z",
   "database": "PostgreSQL 17 Docker; runtime NOSUPERUSER NOBYPASSRLS",
   "passed": [
     "Fresh migration and repeated migration",
@@ -9,7 +9,7 @@
     "Project and employee lists filter by q, status, role and active on the server",
     "Project q matches code, customer and address and status filters on the server; a foreman never finds or opens an unassigned project",
     "Project area, date order and image file are validated; zones carry kind/floors and are edited with version check, scope and audit",
-    "Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server",
+    "Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server; an employee card with a hire date is saved back unchanged (date columns are YYYY-MM-DD text)",
     "Material search is case-insensitive and escapes LIKE wildcards",
     "Material list pages without overlap or gaps, searches case-insensitively, treats _ and % literally, ignores blank q, caps q at 100 chars and rejects bad limit/offset with VALIDATION_ERROR",
     "Material pages split a run of equal names deterministically: each duplicate appears exactly once",
@@ -64,7 +64,7 @@
     "CBU USD rate: worker saves a valid rate, skips while fresh, keeps the last rate on HTTP/parse/timeout errors and never stores 0; latest rate is readable by any signed-in user, not anonymously",
     "Price list (stage 4): the 4.4 control example is reproduced end to end, a reversed expense stays in its zone group, versions are immutable and numbered per project, USD columns follow the version rate, the Excel export is audited, and pricing is limited to admin and financier",
     "Dashboard charts (stage 1.4): project and period filters, expense kinds sum to the period expense with server shares, a reversal stays in its original kind and document month, over-budget matches the budgets page, overdue tasks list",
-    "Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name",
+    "Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name; the accountant lists unmatched receipts but cannot post stock",
     "Finance summary amounts always have two decimals, also for a project without entries",
     "Estimate import reads openpyxl workbooks (absolute rels, table, merged title and total rows), finds the header row, maps m³/m²/kompl. units and reports unreadable files as INVALID_XLSX",
     "Plan edit changes price and limits for future invoices only, is audited, owner-only, and plans still cannot be deleted",

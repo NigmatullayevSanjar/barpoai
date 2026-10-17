@@ -471,7 +471,8 @@ function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           phone: d.phone ?? '',
           role: d.role,
           position: d.position ?? '',
-          hired_at: d.hired_at ?? '',
+          // Sana maydoni faqat YYYY-MM-DD qabul qiladi (server ham shuni kutadi).
+          hired_at: d.hired_at?.slice(0, 10) ?? '',
           active: d.active,
         }
       : undefined,
