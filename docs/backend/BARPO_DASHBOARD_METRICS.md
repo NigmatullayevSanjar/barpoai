@@ -12,8 +12,9 @@
 | | | `behind_schedule` | `status<>'completed'` va (`planned_end<bugun` yoki `forecast_end>planned_end`) |
 | | | `items[].open_tasks`, `overdue_tasks` | `tasks` (archived_at IS NULL, status<>accepted); overdue — `deadline<now()` |
 | | | `items[].pending_reports` | `reports` status='submitted' |
+| | | `items[].planned_start`, `actual_start`, `responsible_name` | obyekt sanalari; mas’ul — obyektga biriktirilgan faol prorab (bo‘lmasa menejer), ism bo‘yicha birinchisi (Figma «Mas’ul shaxs», 2026-10-16) |
 | | | `items[].progress_percent` | ish qatorlari (`estimate_lines.kind<>'material'`, joriy smetalar, `effective_quantity>0`) bo‘yicha `least(100, fakt/reja·100)` ning oddiy o‘rtachasi; fakt = `progress_entries` + `progress_corrections` yig‘indisi (faqat qabul qilingan hisobotlar) |
-| tasks | `tasks.read` | `open`, `overdue`, `due_today` | `tasks`; `tasks.manage` bo‘lmasa faqat o‘zi bajaruvchi/tekshiruvchi bo‘lgan vazifalar; due_today — `deadline` Toshkent sanasi = bugun |
+| tasks | `tasks.read` | `total`, `accepted`, `open`, `overdue`, `due_today` | `tasks`; `tasks.manage` bo‘lmasa faqat o‘zi bajaruvchi/tekshiruvchi bo‘lgan vazifalar; `accepted` — status='accepted' (hozirgi holat; UI «bajarilgan %» = accepted/total); due_today — `deadline` Toshkent sanasi = bugun |
 | | | `awaiting_my_review` | status='submitted' va reviewer = foydalanuvchi |
 | | | `my_open` | status ∈ {todo,in_progress,returned} va assignee = foydalanuvchi |
 | | | `accepted_period` | davr: status='accepted' va audit `task.accepted` sanasi davrda |
@@ -29,6 +30,9 @@
 | | | `pending_transfers` | `stock_commands` kind='transfer', status ∈ {pending,partial,disputed} |
 | | | `today_receipts`, `today_consumptions` | `stock_commands` kind='receipt' (posted) / 'consumption' (posted, partial), `created_at` bugun |
 | | | `low_items` | kam qolgan 6 ta material (mavjud/minimum nisbati bo‘yicha) |
+| | | `monthly[]` | davr oylari, **sonlar** (summa emas): `receipts` — rol doirasidagi hisobga kirgan `receipt`/`opening`/`return` (posted), `issues` — hisobdan chiqqan `transfer`/`consumption` (posted, partial); oy — `created_at` Toshkent sanasi (ombor mudiri grafigi, 2026-10-16) |
+| | | `recent[]` | rol doirasidagi hisoblar ishtirok etgan so‘nggi 6 ta buyruq: tur, holat, miqdor, material, obyekt, qayerdan/qayerga, kim yaratgan (narxsiz) |
+| costs | `prices.read` | `budget_total`, `period_budget`, `plan_total`, `actual_cost`, `period_expense`, `remaining_budget`, `monthly[]`, `by_kind[]`, `over_budget[]` | `finance` blokidagi xarajat ko‘rsatkichlarining o‘zi (pastda), lekin kassa/qarz/to‘lovsiz; narx huquqi bo‘lgan har rolga, jumladan bosh muhandisga (Figma, 2026-10-16). `finance.read` ham bo‘lsa ikkala blok bir xil qiymat bilan keladi |
 | finance | `finance.read` | `budget_total`, `period_budget` | `budgets.amount` yig‘indisi; davr oylari |
 | | | `plan_total` | joriy smetalar `estimate_lines.total` yig‘indisi |
 | | | `actual_cost` | `journal_entries.account='expense'` (hammasi) |

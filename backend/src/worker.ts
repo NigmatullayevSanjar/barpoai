@@ -102,7 +102,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         if (!(await pollOnce(pool)))
           await new Promise((r) => setTimeout(r, telegramConfigured() ? 1000 : 15000));
       } catch (error: any) {
-        console.error('Telegram polling failed', error?.code ?? error?.message);
+        // Telegram tavsifi ham yoziladi: "Conflict: terminated by other getUpdates request" — shu token bilan
+        // boshqa joyda ham worker ishlayapti (bitta bot = bitta polling).
+        console.error(
+          'Telegram polling failed',
+          error?.code ?? error?.message,
+          error?.message !== error?.code ? error?.message : '',
+        );
         await new Promise((r) => setTimeout(r, 5000));
       }
     }

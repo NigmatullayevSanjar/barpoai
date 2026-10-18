@@ -21,7 +21,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 **Qat’iy qoidalar (CLAUDE.md dan):**
 - Pul va miqdor — oxirigacha decimal string. Saqlash va kiritish faqat UZS. USD faqat ko‘rsatish uchun: konvertatsiya faqat `formatMoney` ichida, server bergan CBU kursi bilan, decimal arifmetika (Number emas). Frontend yig‘indi hisoblamaydi, jamlar serverdan.
 - Ruxsat serverda (UI faqat yashiradi). Har yangi matn `uz` va `ru` lokallarga. Statik demo raqam yo‘q — bo‘sh/xato holatlari.
-- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `019_block_profile.sql`, keyingisi **020**.
+- Qo‘llangan migratsiyani tahrirlamang. Oxirgi migratsiya `021_telegram_bot_health.sql`, keyingisi **022**.
 - AI funksiya qo‘shilmaydi. CRM, sotuv, bron, mijoz, shartnoma yo‘q (D1).
 - Sirlar `backend/.env` da (gitignore). Token yoki parol yaratmang, so‘ramang, faylga yozmang. Lokal hisob parollari hech qayerda yozilmagan — kerak bo‘lsa foydalanuvchi o‘zi kiradi.
 
@@ -51,7 +51,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 - `backend/` da `docker compose up --build -d` (migratsiyalar avtomatik), API `127.0.0.1:3001`, DB `127.0.0.1:5433`, frontend `pnpm dev` → `localhost:5173` (strictPort).
 - `COMPOSE_PROJECT_NAME=barpo`; boshqa loyihaning `backend_postgres_data` volume’iga tegmang.
 - Eski kompyuter bazasida “Sinov kompaniya” (`SINOV-001`) va `SINOV-` test ma’lumotlari bor; yangi kompyuterga va bulutga ko‘chmaydi.
-- `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti).
+- `backend/.env` da haqiqiy Telegram bot tokeni bor: bitta token bilan ikki joyda worker ishlamasin (`getUpdates` konflikti). 2026-10-13: shunday konflikt topildi — boshqa nusxa (eski kompyuter yoki bulut) polling qilib, ulash havolasi va 2FA kodlarini “yutgan”. Endi worker so‘nggi xatoni `telegram_bot_state` ga yozadi (migratsiya 021), Diagnostika va Profil “bot boshqa joyda ishlayapti” deb ko‘rsatadi; `docker logs barpo-worker-1` da `Conflict: terminated by other getUpdates request`.
 - Lokalda CBU kursi ishlaydi (2026-10-11 da 11 897,90 olingan, `parseCbuRate` mos).
 - Kompyuter vaqt zonasi UTC+5: Docker testlarini `TZ=UTC` bilan yurgizing (Git Bash: `TZ=UTC npm run test:integration`), aks holda `integration.ts` eski O17 xatosi bilan yiqiladi (toza `main` da ham). 2026-10-12 da shu rejimda: integration 71, roles 5, UI 47.
 
@@ -69,6 +69,12 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 | Kichik tuzatishlar | O1, O4–O8, O10 (`PayablesList` o‘chirildi), reja 9.1/9.4; yangi O13 | `main` (PR #6, `ec9a706`) |
 | Hujjat | TZ’dan kelishilgan farqlar (8-bo‘lim), bosqichlar holati | `main` (PR #5, `0542d87`) |
 | Egasi fikri 2026-10-12 | D11–D14: tarif tahriri (018), super_admin huquqlari va parol tiklash havolasi, parol 6 belgi, blok kartasi va blok sahifasi (019, xonadon reja rasmi, narx varaqasidagi tannarx), Excel import tuzatishi (openpyxl fayllari, sarlavha qatorini topish, birlik sinonimlari), login sahifasi ru tili, bildirishnomadan sahifaga o‘tish, “Obuna to‘lovlari”, overscroll, Windows Chrome kursori, logo, kalendar va select komponentlari, smeta muharriri joylashuvi; `scripts/seed-dev.ts` (dev hisoblar, parol faqat `SEED_PASSWORD`) | branch `claude/feedback-2026-10-12`, PR egasi ruxsati bilan |
+| Figma F1 (2026-10-16/17) | D17–D20 (rejaning 1-bo‘limi): migratsiya 022 (“Asosiy ombor”), admin ombor/materiallarni faqat ko‘radi, rollar Figma bo‘yicha (`employees.read` yangi ruxsat), umumiy qobiq va rolga xos menyular, 6 rol bosh sahifasi, `GET /v1/dashboard` `costs`/`stock.monthly`/`stock.recent` | branch `claude/figma-stage-1` (`claude/feedback-2026-10-12` ustiga), commit egasi ruxsati bilan |
+| Figma F2 (2026-10-17) | Obyektlar kartalari (`GET /v1/projects` progress/mas’ul/smeta/xarajat), obyekt sahifasi banner va bloklar tabi, smetalar KPI va ro‘yxat (`GET /v1/estimates` `summary`), smeta ko‘rish ierarxik jadvali va hisoblash kartasi | o‘sha branch, F1 bilan bitta commit `111398c` |
+| Figma F3 (2026-10-17) | Vazifalar Kanban va oynasi, hisobotlar ro‘yxati/yaratish/karta (raqamlangan bo‘limlar, ishlar jadvali, tekshiruvchi izohi), xodimlar KPI (`GET /v1/employees` `summary`) va jadval, ombor sahifasi sarlavhasi va KPI | o‘sha branch, commit `3e9c5d5` |
+| Figma F4 (2026-10-17) | Brigadir va ombor mudiri menyusi ombor sahifasining bo‘limlariga (`?tab=…`), bo‘limga xos sarlavhalar, qoldiqlarda “Holati” ustuni va inventarizatsiya bandi, harakatlarda kirim/chiqim segmenti (`GET /v1/stock/commands` `direction`), talabnomalar KPI (`GET /v1/stock/requests` `summary`) | o‘sha branch, commit `34554ee` |
+| Figma F5 (2026-10-17) | Buxgalter va finansist sahifalari modullarga bo‘lindi (`features/finance/documents|counterparties|budgets|requests|calendar|payroll|analysis`): hujjatlar/hisoblar/bank-kassa/ajratmalar KPI va segmentlar, kontragentlar KPI, ish haqi KPI, solishtirish dalolatnomasi chop etish, hisobot kartalari, budjet Yillik/Oylik, reja–fakt grafigi va kategoriyalar, prognoz grafigi, to‘lov kalendari to‘ri; backend `summary` maydonlari (hujjatlar, kontragentlar, kassa, kalendar, budjet), `direction`/`cash_kind`/`kind` filtrlari | o‘sha branch, commit `51daf45` |
+| Figma F6 (2026-10-17) | Platforma sahifalari modullarga bo‘lindi (`features/platform/dashboard|tenants|plans|billing|support|diagnostics`): bosh sahifa KPI/grafik/rollar/operatsiyalar, kompaniyalar filtrlari va uch qadamli yaratish, profil tahrirlash (migratsiya 023, `PATCH /tenants/:id/profile`), tarif kartalari, daromad va qarzdorlik (donut, oylik hisobot `GET /billing/report`), murojaatlar chati, diagnostika (haftalik xatolar, jurnal, integratsiyalar). Figma bosqichlari F1–F6 yakunlandi; push/PR egasi ruxsati bilan | o‘sha branch |
 
 ### Bosqich 3 — xonadonlar (asosiy qarorlar)
 - Jadval `premises`: zona ixtiyoriy, `kind` apartment/commercial/parking/storage, qavat −10…500, xonalar 0…50, maydon numeric(12,2) > 0, arxiv, version; RLS, kompozit FK.
@@ -97,6 +103,7 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 
 **`main` = `0542d87` da to‘liq tekshiruv (2026-10-12, bulut, Docker PostgreSQL 17):** build, unit 27, integration 65, roles 5 (topilma yo‘q), UI 47; frontend typecheck va build — hammasi o‘tdi.
 
+0. **Figma bosqichlari F2–F6** (2026-10-17 dan asosiy ish): tartib va mazmun rejaning 3-bo‘limidagi “Figma bosqichlari” jadvalida; har bosqich alohida branch va PR, egasi tasdig‘i bilan. `claude/figma-stage-1` branch’i hali commit qilinmagan o‘zgarishlar bilan (egasi ruxsatini kutadi).
 1. **Yangi kompyuterda tekshiruv** (foydalanuvchi): `git pull`, `docker compose up --build -d`, platforma egasini bootstrap, brauzerda dashboard grafiklari, Xonadonlar, Narx varaqasi va UZS/USD.
 2. **O3** — frontenddagi pul yig‘indilarini serverga ko‘chirish (kassalar `finance/pages.tsx`, budjet, to‘lov kalendari `workflow.tsx`, smeta importi oldindan ko‘rish `ImportWizard.tsx`). Opus tekshiruvi qo‘shimcha joylarni ham topgan: `finance/pages.tsx` (~178, ~783, ~843) va `workflow.tsx` (~976, ~1345) da `num(a) - num(b)`. Alohida PR. Shu ro‘yxatga `finance/DocumentModal.tsx` dagi kirim summasi (`unit_cost × accepted_quantity`, `Number`) ham kiradi.
 3. **O12** — reja–fakt va budjet sahifalarini `document_date` ga o‘tkazish (dashboard “budjetdan oshgan” ro‘yxati ham birga).
@@ -109,7 +116,8 @@ Qurilish kompaniyalari uchun multi-tenant SaaS ERP: obyektlar va zonalar, smeta,
 
 ## 7. Dizayn
 
-- Loyihada dizayner yo‘q (egasi, 2026-10-12). Figma maketi chizilmaydi; dizayn manbai — kod (mavjud komponentlar, `tokens.css`). Figma TZ faqat talablar ro‘yxati.
+- **2026-10-16 dan:** egasi Figma dizaynini PNG eksport sifatida berdi — `D:\SANCEEK\barpoai\figma` (repoda emas; 9 rol papkasi, 91 ekran). Bu endi har rol uchun dizayn va mantiq manbai (reja D17–D20, F1–F6 bosqichlari rejaning 3-bo‘limida). Backendda ma’lumoti yo‘q bo‘limlar ko‘rsatilmaydi; demo raqam yo‘q qoidasi kuchda.
+- Oldin (2026-10-12): dizayner yo‘q, dizayn manbai — kod (mavjud komponentlar, `tokens.css`). Figma TZ faqat talablar ro‘yxati.
 - TZ’dan farqlar rejaning 8-bo‘limida “kelishilgan farqlar” sifatida qayd etilgan; hech kimga xabar yuborish kerak emas.
 - Aniqlik (8-bo‘limda ham): kompaniya adminini platforma egasi bir martalik taklif havolasi (72 soat) bilan qo‘shadi; xodimlarni admin login va boshlang‘ich parol bilan qo‘shadi (birinchi kirishda almashtirish majburiy); parolni tiklash — admin bergan 30 daqiqalik bir martalik havola.
 

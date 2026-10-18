@@ -889,6 +889,60 @@ ALTER TABLE premises
 
 ```
 
+## 020_login_codes_platform_audit.sql
+
+```sql
+-- Ikki bosqichli kirish (egasi qarori, 2026-10-13): platforma egasi va super admin uchun Telegram orqali 6 xonali kod.
+-- Parol to'g'ri bo'lgach kod yoziladi (hash), 5 daqiqa amal qiladi, 5 marta xato — bekor. Sessiya faqat kod tasdiqlangach.
+CREATE TABLE login_codes (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id),
+ challenge_hash text NOT NULL UNIQUE, code_hash text NOT NULL, channel text NOT NULL CHECK(channel IN ('bearer','cookie')),
+ attempts integer NOT NULL DEFAULT 0, expires_at timestamptz NOT NULL, used_at timestamptz, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX login_codes_user ON login_codes(user_id) WHERE used_at IS NULL;
+-- Platforma auditi sahifasi uchun: tenant'siz yozuvlar va platforma xodimlari amallari sana bo'yicha.
+CREATE INDEX audit_platform ON audit_events(created_at DESC, id) WHERE tenant_id IS NULL;
+
+```
+
+## 021_telegram_bot_health.sql
+
+```sql
+-- Bot polling holati: worker har getUpdates natijasini yozadi. "Conflict: terminated by other getUpdates request" —
+-- shu token bilan boshqa joyda ham worker ishlayapti; diagnostika va profil shuni ko'rsatadi (2026-10-13 topilmasi).
+ALTER TABLE telegram_bot_state
+ ADD COLUMN last_ok_at timestamptz,
+ ADD COLUMN last_error text,
+ ADD COLUMN last_error_at timestamptz;
+
+```
+
+## 022_main_warehouse.sql
+
+```sql
+-- Egasi qarori (2026-10-16): har obyektning "Asosiy ombor"i bo'ladi. Yangi obyektda uni API yaratadi
+-- (POST /v1/projects); ombori yo'q mavjud obyektlar (arxivlanganlar ham) uchun shu migratsiya yaratadi.
+-- Har ombor uchun stock hisobi ham bo'lishi shart (stock_accounts.warehouse_id unikal).
+INSERT INTO warehouses(tenant_id,project_id,name)
+SELECT p.tenant_id,p.id,'Asosiy ombor' FROM projects p
+WHERE NOT EXISTS(SELECT 1 FROM warehouses w WHERE w.tenant_id=p.tenant_id AND w.project_id=p.id);
+INSERT INTO stock_accounts(tenant_id,project_id,warehouse_id)
+SELECT w.tenant_id,w.project_id,w.id FROM warehouses w
+WHERE NOT EXISTS(SELECT 1 FROM stock_accounts a WHERE a.tenant_id=w.tenant_id AND a.warehouse_id=w.id);
+
+```
+
+## 023_tenant_profile.sql
+
+```sql
+-- Figma F6 (2026-10-17): kompaniya profili — mas'ul shaxs, e-mail, tashkiliy shakl (manzil va telefon 012 da).
+ALTER TABLE tenants
+ ADD COLUMN contact_name text,
+ ADD COLUMN email text CHECK (email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+ ADD COLUMN legal_form text CHECK (legal_form IN ('mchj','aj','yatt','qk','other'));
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

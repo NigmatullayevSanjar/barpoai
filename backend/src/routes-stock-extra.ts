@@ -95,6 +95,8 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
       account_id: uuid.optional(),
       material_id: uuid.optional(),
       unmatched: queryBool.optional(),
+      /** Figma "Kirim/Chiqim" segmenti: in — opening/receipt/return (omborga kiradi), out — transfer/consumption. */
+      direction: z.enum(['in', 'out']).optional(),
     }),
     sensitive: true,
     handler: async ({ db, actor, query }) => {
@@ -119,6 +121,7 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
                AND ($8::uuid IS NULL OR c.material_id=$8)
                AND ($11::text IS NULL OR m.name ILIKE $11 ESCAPE '\\')
                AND ($12::boolean IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM finance_documents f WHERE f.tenant_id=c.tenant_id AND f.matched_receipt_id=c.id))
+               AND ($13::text IS NULL OR ($13='in' AND c.kind IN ('opening','receipt','return')) OR ($13='out' AND c.kind IN ('transfer','consumption')))
                AND ($3<>'brigadier' OR af.custodian_id=$4 OR at.custodian_id=$4)
                AND ($3<>'warehouse_manager' OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=c.tenant_id AND w.user_id=$4 AND (w.warehouse_id=af.warehouse_id OR w.warehouse_id=at.warehouse_id)) OR (af.warehouse_id IS NULL AND at.warehouse_id IS NULL))
              ORDER BY c.created_at DESC,c.id LIMIT $9 OFFSET $10`,
@@ -135,6 +138,7 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
               query.offset,
               query.q ? likePattern(query.q) : null,
               query.unmatched ?? null,
+              query.direction ?? null,
             ],
           )
         ).rows,
@@ -247,6 +251,14 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
         actor.role === 'tenant_admin' ||
         (await allowed(db, actor, 'stock.review'));
       return {
+        // Figma "Material talabnomalari" KPI kartalari: holat bo'yicha sonlar (sahifalashsiz), ro'yxat bilan bir xil doira.
+        summary: await one(
+          db,
+          `SELECT count(*)::int total,count(*) FILTER(WHERE status='pending')::int pending,
+                  count(*) FILTER(WHERE status='fulfilled')::int fulfilled,count(*) FILTER(WHERE status='rejected')::int rejected
+           FROM material_requests WHERE tenant_id=$1 AND project_id=$2 AND ($3 OR requested_by=$4)`,
+          [actor.tenant_id, query.project_id, manage, actor.id],
+        ),
         items: (
           await db.query(
             `SELECT r.*,m.name material_name,m.unit_id,u.display_name requested_by_name,rb.display_name reviewed_by_name,z.name zone_name
@@ -297,18 +309,12 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
         request.material_id,
       ]);
       let command: Row | null = null;
+      // Egasi qarori (2026-10-16): talabnomani faqat ombor mudiri (stock.send) bajaradi yoki rad etadi,
+      // bekor qilishni faqat so'rovchi; admin faqat ko'radi.
       if (body.action === 'cancel') {
-        invariant(
-          request.requested_by === actor.id || actor.role === 'tenant_admin',
-          'FORBIDDEN',
-          403,
-        );
+        invariant(request.requested_by === actor.id, 'FORBIDDEN', 403);
       } else {
-        invariant(
-          (await allowed(db, actor, 'stock.send')) || actor.role === 'tenant_admin',
-          'FORBIDDEN',
-          403,
-        );
+        invariant(await allowed(db, actor, 'stock.send'), 'FORBIDDEN', 403);
         if (body.action === 'fulfill') {
           invariant(body.from_account_id, 'FROM_ACCOUNT_REQUIRED', 400);
           let toAccount = body.to_account_id ?? null;

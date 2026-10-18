@@ -19,28 +19,29 @@ POST /v1/company/role-permissions optimistic version + idempotency bilan saqlayd
 | Permission | Sahifa / CRUD | super_admin | platform_owner | support | tenant_admin | foreman | brigadier | warehouse_manager | financier | accountant | manager |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | projects.read | projects / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| projects.write | projects / create | — | — | — | ✓ | — | — | — | — | — | — |
+| projects.write | projects / create | — | — | — | ✓ | — | — | — | — | — | ✓ |
+| employees.read | employees / read | — | — | — | ✓ | — | — | — | — | — | ✓ |
 | employees.manage | employees / update | — | — | — | ✓ | — | — | — | — | — | — |
-| estimates.read | estimates / read | — | — | — | ✓ | ✓ | — | — | ✓ | ✓ | — |
-| estimates.import | estimates / create | — | — | — | ✓ | — | — | — | ✓ | — | — |
-| estimates.edit | estimates / update | — | — | — | ✓ | — | — | — | — | — | — |
-| prices.read | finance / read | — | — | — | ✓ | — | — | — | ✓ | ✓ | — |
-| stock.read | stock / read | — | — | — | ✓ | ✓ | ✓ | ✓ | — | — | — |
-| stock.receive | stock / create | — | — | — | ✓ | — | — | ✓ | — | — | — |
-| stock.send | stock / create | — | — | — | ✓ | — | — | ✓ | — | — | — |
-| stock.accept | stock / update | — | — | — | ✓ | — | ✓ | — | — | — | — |
-| stock.consume | stock / create | — | — | — | ✓ | — | ✓ | — | — | — | — |
-| stock.review | stock / update | — | — | — | ✓ | ✓ | — | — | — | — | — |
-| stock.reverse | stock / delete | — | — | — | ✓ | — | — | — | — | — | — |
+| estimates.read | estimates / read | — | — | — | ✓ | ✓ | — | — | ✓ | ✓ | ✓ |
+| estimates.import | estimates / create | — | — | — | ✓ | — | — | — | ✓ | — | ✓ |
+| estimates.edit | estimates / update | — | — | — | ✓ | — | — | — | — | — | ✓ |
+| prices.read | finance / read | — | — | — | ✓ | — | — | — | ✓ | ✓ | ✓ |
+| stock.read | stock / read | — | — | — | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| stock.receive | stock / create | — | — | — | — | — | — | ✓ | — | — | — |
+| stock.send | stock / create | — | — | — | — | — | — | ✓ | — | — | — |
+| stock.accept | stock / update | — | — | — | — | — | ✓ | — | — | — | — |
+| stock.consume | stock / create | — | — | — | — | — | ✓ | — | — | — | — |
+| stock.review | stock / update | — | — | — | — | ✓ | — | — | — | — | — |
+| stock.reverse | stock / delete | — | — | — | — | — | — | ✓ | — | — | — |
 | finance.read | finance / read | — | — | — | ✓ | — | — | — | ✓ | ✓ | — |
-| finance.allocate | finance / create | — | — | — | ✓ | — | — | — | ✓ | — | — |
+| finance.allocate | finance / create | — | — | — | ✓ | — | — | — | ✓ | ✓ | — |
 | finance.post | finance / create | — | — | — | ✓ | — | — | — | — | ✓ | — |
 | finance.reverse | finance / delete | — | — | — | ✓ | — | — | — | — | ✓ | — |
 | tasks.read | tasks / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | tasks.manage | tasks / update | — | — | — | ✓ | ✓ | — | — | — | — | ✓ |
 | reports.read | reports / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| reports.submit | reports / create | — | — | — | ✓ | ✓ | ✓ | — | — | — | — |
-| reports.review | reports / update | — | — | — | ✓ | ✓ | — | — | — | — | — |
+| reports.submit | reports / create | — | — | — | ✓ | ✓ | ✓ | — | — | — | ✓ |
+| reports.review | reports / update | — | — | — | ✓ | ✓ | — | — | — | — | ✓ |
 | files.read | files / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | files.write | files / create | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | integrations.read | integrations / read | — | — | — | ✓ | — | — | — | — | — | — |
@@ -84,7 +85,7 @@ Forma va tafsilotlar o‘z biznes sahifasining huquqini oladi: masalan smeta yar
 
 ## Platforma chegaralari
 
-Platform owner: kompaniya/invite/alias/tarif/invoys/manual payment/support. Super admin: texnik diagnostika va texnik staff. Support: support so‘rovlari. Hech biri tenant APIga avtomatik kira olmaydi; break-glass o‘chirilgan. Super admin PostgreSQL SUPERUSER emas.
+Platform owner: kompaniya/invite/alias/tarif/obuna/invoys/manual payment/support/audit/parol tiklash. Super admin (D15): o‘qish (kompaniyalar, tariflar, to‘lovlar), murojaatlar, diagnostika, texnik staff (yaratish, faolsizlantirish, rol), platforma auditi, parol tiklash; biznes amallari yo‘q. Support: o‘qish, murojaatlar, diagnostika. Egasi va super admin Telegram ulangan bo‘lsa 2FA (D16). Hech biri tenant APIga avtomatik kira olmaydi; break-glass o‘chirilgan. Super admin PostgreSQL SUPERUSER emas.
 
 ## Sezgir maydonlar
 

@@ -1,6 +1,10 @@
+import { randomInt } from 'node:crypto';
+import type pg from 'pg';
 import { type Db, type Row, one, audit } from './db.js';
 import { digest, token, hashPassword, verifyPassword } from './security.js';
 import { invariant } from './errors.js';
+// telegram.ts bu modulni import qiladi (tenantAccess); aylanma importdan qochish uchun kerak bo'lganda yuklanadi.
+const telegram = () => import('./telegram.js');
 export const SESSION_SECONDS = 12 * 3600;
 export const SESSION_COOKIE = 'barpo_session';
 export async function authenticate(db: Db, bearer: string | undefined, cookie?: string) {
@@ -90,8 +94,88 @@ export async function login(
   dummyHash ??= hashPassword(token());
   const valid = await verifyPassword(input.password, user?.password_hash ?? (await dummyHash));
   invariant(user?.active && valid, 'INVALID_CREDENTIALS', 401);
+  // Ikki bosqichli kirish (2026-10-13): platforma egasi va super admin Telegram'ga ulangan bo'lsa, sessiya
+  // faqat botga yuborilgan 6 xonali kod tasdiqlangach beriladi. Ulanmagan bo'lsa oddiy kirish (profil ogohlantiradi).
+  if (TWO_FACTOR_ROLES.includes(user.role)) {
+    const tg = (
+      await db.query('SELECT telegram_user_id FROM telegram_accounts WHERE user_id=$1', [user.id])
+    ).rows[0];
+    if (tg && (await telegram()).telegramConfigured())
+      return startLoginChallenge(db, user, tg.telegram_user_id, channel);
+  }
   await audit(db, user, 'auth.login', user.id, { channel });
   return issueSession(db, user, channel);
+}
+export const TWO_FACTOR_ROLES = ['platform_owner', 'super_admin'];
+const CODE_SECONDS = 300;
+/** Kodni yozadi va botga yuboradi; javobda sessiya emas, challenge (5 daqiqa). Eski ochiq kodlar bekor qilinadi. */
+async function startLoginChallenge(
+  db: Db,
+  user: Row,
+  chatId: string,
+  channel: 'bearer' | 'cookie',
+) {
+  await db.query('UPDATE login_codes SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [
+    user.id,
+  ]);
+  const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  const challenge = token();
+  await db.query(
+    'INSERT INTO login_codes(user_id,challenge_hash,code_hash,channel,expires_at) VALUES($1,$2,$3,$4,now()+make_interval(secs=>$5))',
+    [user.id, digest(challenge), digest(code), channel, CODE_SECONDS],
+  );
+  await (
+    await telegram()
+  ).sendMessage(
+    chatId,
+    `BARPO AI — kirish kodi: ${code}\n\nKod ${CODE_SECONDS / 60} daqiqa amal qiladi. Agar siz kirmayotgan bo‘lsangiz, parolni darhol almashtiring.`,
+  );
+  await audit(db, user, 'auth.login_code_sent', user.id, { channel });
+  return { two_factor: true as const, challenge, expires_in: CODE_SECONDS, user: publicUser(user) };
+}
+/**
+ * Kodni tekshiradi: 5 marta xato — challenge bekor; to'g'ri bo'lsa sessiya (kanal challenge'dan).
+ * Xato urinish `pool` orqali alohida yoziladi: so'rov tranzaksiyasi xato bilan ROLLBACK bo'ladi, hisob esa saqlanishi shart.
+ */
+export async function verifyLoginCode(
+  db: Db,
+  pool: pg.Pool,
+  input: { challenge: string; code: string },
+) {
+  const row = (
+    await db.query(
+      'SELECT c.*,u.active FROM login_codes c JOIN users u ON u.id=c.user_id WHERE c.challenge_hash=$1',
+      [digest(input.challenge)],
+    )
+  ).rows[0];
+  invariant(
+    row && !row.used_at && new Date(row.expires_at).getTime() > Date.now(),
+    'LOGIN_CODE_EXPIRED',
+    410,
+  );
+  invariant(row.active, 'INVALID_CREDENTIALS', 401);
+  const ok = digest(input.code) === row.code_hash;
+  if (!ok) {
+    const attempts = (
+      await pool.query(
+        'UPDATE login_codes SET attempts=attempts+1,used_at=CASE WHEN attempts+1>=5 THEN now() ELSE used_at END WHERE id=$1 RETURNING attempts',
+        [row.id],
+      )
+    ).rows[0].attempts as number;
+    invariant(
+      false,
+      attempts >= 5 ? 'LOGIN_CODE_EXPIRED' : 'LOGIN_CODE_INVALID',
+      attempts >= 5 ? 410 : 401,
+    );
+  }
+  const claimed = await db.query(
+    'UPDATE login_codes SET used_at=now() WHERE id=$1 AND used_at IS NULL',
+    [row.id],
+  );
+  invariant(claimed.rowCount === 1, 'LOGIN_CODE_EXPIRED', 410);
+  const user = await one(db, 'SELECT * FROM users WHERE id=$1', [row.user_id]);
+  await audit(db, user, 'auth.login', user.id, { channel: row.channel, two_factor: true });
+  return issueSession(db, user, row.channel);
 }
 export async function registerInvite(
   db: Db,

@@ -15,6 +15,8 @@ import { useToast } from '@/components/ui/Toast';
 type TelegramStatus = {
   configured: boolean;
   bot_username: string;
+  /** Worker polling holati; conflict — shu bot boshqa joyda ham ishlayapti, ulash havolasi u yerga ketadi. */
+  bot: { polling_ok: boolean; conflict: boolean; last_error: string | null } | null;
   linked: boolean;
   username: string | null;
   first_name: string | null;
@@ -27,6 +29,8 @@ function TelegramCard() {
   const { t, lang } = useT();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { me } = useAuth();
+  const twoFactor = me?.role === 'platform_owner' || me?.role === 'super_admin';
   const status = useQuery({
     queryKey: ['telegram-status'],
     queryFn: () => api<TelegramStatus>('/v1/integrations/telegram'),
@@ -92,6 +96,10 @@ function TelegramCard() {
       </div>
       <div className="card-pad stack">
         <p className="muted text-sm">{t('telegram.desc')}</p>
+        {/* Profilda faqat bot umuman xabar olmayotganda; navbatma-navbat konflikt tafsiloti Diagnostikada. */}
+        {s?.bot && !s.bot.polling_ok && (
+          <Alert tone="danger">{t(s.bot.conflict ? 'telegram.bot_conflict' : 'telegram.bot_down')}</Alert>
+        )}
         {status.isError && (
           <Alert tone="danger">
             {errorMessage(t, (status.error as ApiError).code, (status.error as ApiError).status)}{' '}
@@ -101,8 +109,10 @@ function TelegramCard() {
           </Alert>
         )}
         {s && !s.configured && <Alert tone="warning">{t('telegram.not_configured')}</Alert>}
+        {s && !s.linked && twoFactor && <Alert tone="warning">{t('telegram.two_factor_required')}</Alert>}
         {s?.linked && (
           <>
+            {twoFactor && <Alert tone="success">{t('telegram.two_factor_on')}</Alert>}
             <dl className="kv">
               <dt>Telegram</dt>
               <dd>{s.username ? `@${s.username}` : (s.first_name ?? '—')}</dd>

@@ -538,11 +538,11 @@
 }
 
 /* ---------- Cards / panels ---------- */
+/* Figma: tekis oq karta, yupqa chegara, 12px burchak, soyasiz. */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 .card-pad {
   padding: 18px 20px;
@@ -552,12 +552,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
 .card-header h2,
 .card-header h3 {
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.card-header .card-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text-3);
 }
 .card-footer {
   padding: 12px 20px;
@@ -566,25 +575,37 @@
   justify-content: flex-end;
   gap: 8px;
 }
+/* Figma KPI kartasi: katta harfli yorliq, mono shriftli katta raqam, pastda izoh. */
 .stat {
-  padding: 16px 18px;
+  padding: 18px 20px;
 }
 .stat .stat-label {
   font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-3);
+  letter-spacing: 0.06em;
+  color: var(--text-2);
   font-weight: 600;
 }
 .stat .stat-value {
-  font-size: var(--fs-2xl);
-  font-weight: 650;
-  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: 8px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.stat .stat-value.is-danger {
+  color: var(--danger);
+}
+.stat .stat-value.is-success {
+  color: var(--success);
+}
+.stat .stat-value.is-warning {
+  color: var(--warning);
 }
 .stat .stat-sub {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: var(--fs-sm);
   color: var(--text-3);
 }
@@ -615,51 +636,35 @@
 }
 
 /* ---------- Badges ---------- */
+/* Figma: holat belgilari — oq fonda rangli chegara va matn (nuqtasiz). */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
   font-size: var(--fs-xs);
   font-weight: 600;
   white-space: nowrap;
-  background: var(--surface-2);
-  color: var(--text-2);
-  border: 1px solid var(--border);
-}
-.badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+  background: var(--surface);
+  color: var(--text-3);
+  border: 1px solid currentColor;
 }
 .badge-success {
-  background: var(--success-bg);
-  color: var(--success);
-  border-color: #bbf7d0;
+  color: #16a34a;
 }
 .badge-warning {
-  background: var(--warning-bg);
-  color: var(--warning);
-  border-color: #fde68a;
+  color: #ea7a0c;
 }
 .badge-danger {
-  background: var(--danger-bg);
-  color: var(--danger);
-  border-color: #fecaca;
+  color: #dc2626;
 }
 .badge-info {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: #bfdbfe;
+  color: #2563eb;
 }
 .badge-brand {
-  background: var(--brand-100);
   color: var(--brand-700);
-  border-color: #efcfda;
 }
 
 /* ---------- Table ---------- */
@@ -674,17 +679,17 @@
 }
 .table th,
 .table td {
-  padding: 10px 14px;
+  padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
 .table th {
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-3);
+  color: var(--text-2);
   background: var(--surface-2);
   white-space: nowrap;
   position: sticky;
@@ -710,6 +715,11 @@
 .table td.actions {
   text-align: right;
   white-space: nowrap;
+}
+/* Raqamli ustun: .table td (0,1,1) umumiy .num (0,1,0) ni bosib ketmasin — sarlavha va qiymat bir tomonda. */
+.table th.num,
+.table td.num {
+  text-align: right;
 }
 .table td .cell-main {
   font-weight: 500;
@@ -891,6 +901,10 @@
   padding: 12px 20px 18px;
   border-top: 1px solid var(--border);
 }
+/* Uch qadamli oyna (Figma F6): Orqaga/Tozalash chapda, Keyingisi/Yaratish o'ngda */
+.modal-footer .spacer {
+  flex: 1;
+}
 .drawer-overlay {
   justify-content: flex-end;
   padding: 0;
@@ -942,26 +956,26 @@
   color: var(--brand-700);
   border-bottom-color: var(--brand-700);
 }
+/* Figma filtr tugmalari: oq konteyner, faol band bordo. */
 .segmented {
   display: inline-flex;
-  padding: 3px;
-  background: var(--surface-2);
+  padding: 4px;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 .segmented button {
   border: 0;
   background: transparent;
-  padding: 5px 12px;
-  border-radius: 4px;
+  padding: 6px 14px;
+  border-radius: 6px;
   font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--text-3);
+  font-weight: 600;
+  color: var(--text-2);
 }
 .segmented button[aria-pressed='true'] {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+  background: var(--brand-700);
+  color: #fff;
 }
 
 /* ---------- Toasts ---------- */
@@ -1002,17 +1016,24 @@
 }
 
 /* ---------- Page ---------- */
+/* Figma: sahifa sarlavhasi qalin va katta, izohi bordo rangda. */
 .page-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
+.page-header h1 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
 .page-header p {
-  color: var(--text-3);
+  color: var(--brand-600);
   margin-top: 4px;
+  font-size: var(--fs);
 }
 .page-header .actions {
   display: flex;
@@ -1421,4 +1442,664 @@
 }
 .chart-donut svg {
   width: 180px;
+}
+
+/* ---------- Smetalar (Figma "smetalar", "smeta ko'rish") ---------- */
+.est-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.est-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+}
+.est-row:last-child {
+  border-bottom: 0;
+}
+.est-row:hover {
+  background: var(--brand-50);
+  text-decoration: none;
+}
+.est-row .est-main {
+  flex: 1;
+  min-width: 0;
+}
+.est-row .est-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.est-row h3 {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.est-row .est-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.est-row .est-total {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.est-row .est-date {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* Smeta jadvali: to'liq chegarali katak, och ko'k sarlavha, yig'iladigan kategoriya qatori */
+.est-table th,
+.est-table td {
+  border: 1px solid var(--border);
+}
+.est-table thead th {
+  background: #eef2f7;
+  color: var(--text);
+}
+.est-table tr.est-category td {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+.est-table tr.est-category button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  padding: 0;
+}
+.est-table tr.est-category svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s;
+}
+.est-table tr.est-category button[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+.est-table tr.est-subtotal td {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.est-table tr.est-grand td {
+  background: var(--surface-2);
+  font-weight: 800;
+}
+.est-calc dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 20px;
+  margin: 0;
+}
+.est-calc dt {
+  color: var(--text-2);
+}
+.est-calc dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: right;
+}
+.est-calc .est-grand-total {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-weight: 800;
+}
+.est-calc .est-grand-total span:last-child {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+}
+
+/* ---------- Vazifalar Kanban (Figma "vazifalar"): ustun sarlavhasida rangli nuqta va son, kartada daraja va sana ---------- */
+.kanban-col > header {
+  padding: 6px 8px 10px;
+  font-weight: 700;
+}
+.kanban-col > header .kanban-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.kanban-col > header .kanban-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: center;
+  line-height: 20px;
+  color: var(--text-2);
+}
+.kanban-card {
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.kanban-card .kanban-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.kanban-card .kanban-card-foot .row {
+  gap: 6px;
+}
+/* Daraja belgisi: to'ldirilgan (Figma "Yuqori", "O'rta", "Past") */
+.badge-fill {
+  border-color: transparent;
+  color: #fff;
+}
+.badge-fill.badge-danger {
+  background: #e11d48;
+}
+.badge-fill.badge-warning {
+  background: #f97316;
+}
+.badge-fill.badge-info {
+  background: #2563eb;
+}
+.badge-fill.badge-neutral {
+  background: var(--text-3);
+}
+
+/* ---------- Hisobot formasi bo'limlari (Figma "kunlik/haftalik hisobot yaratish") ---------- */
+.form-section {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.form-section > h4 {
+  margin: 0 0 12px;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+.form-section .form-grid {
+  margin: 0;
+}
+.review-note {
+  padding: 14px 16px;
+  border: 1px solid #efcfda;
+  border-radius: var(--radius);
+  background: var(--brand-50);
+}
+.review-note b {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* ---------- Xodimlar jadvali: avatar bilan ism ---------- */
+.person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status-text-active {
+  color: #16a34a;
+  font-weight: 600;
+}
+.status-text-inactive {
+  color: #ea7a0c;
+  font-weight: 600;
+}
+.status-text-danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+.status-text-muted {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ---------- Moliya sahifalari (Figma F5) ---------- */
+.filters-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.money-in {
+  color: var(--success);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.money-out {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+.report-card .report-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.report-card .report-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  display: grid;
+  place-items: center;
+}
+.report-card .report-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.report-card h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+.report-card .report-meta {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.report-card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.report-card .report-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: auto;
+}
+.report-card .report-actions .btn {
+  width: 100%;
+}
+
+/* To'lov kalendari */
+.cal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px 16px 12px;
+}
+.cal-weekday {
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  padding: 4px 0;
+}
+.cal-cell {
+  position: relative;
+  min-height: 72px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 10px;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.cal-cell:hover {
+  border-color: var(--border-strong);
+}
+.cal-cell.other {
+  color: var(--muted);
+  background: var(--surface-2);
+}
+.cal-cell.today {
+  border-color: var(--brand-600);
+}
+.cal-cell.selected {
+  background: var(--brand-900);
+  border-color: var(--brand-900);
+  color: #fff;
+}
+.cal-dots {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+}
+.cal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cal-dot.paid {
+  background: #16a34a;
+}
+.cal-dot.planned {
+  background: #f59e0b;
+}
+.cal-dot.overdue {
+  background: #dc2626;
+}
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.cal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+.cal-item + .cal-item {
+  margin-top: 10px;
+}
+.cal-item .cal-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.cal-item .cal-item-amount {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* ---------- Platforma (Figma F6) ---------- */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+.plan-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.plan-card h3 {
+  margin: 0;
+  font-size: var(--fs-xl);
+}
+.plan-card .plan-sub {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.plan-limit {
+  display: grid;
+  gap: 6px;
+}
+.plan-limit .row-between {
+  font-size: var(--fs-sm);
+}
+.plan-limit .progress {
+  width: 100%;
+}
+.plan-card .plan-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+.chat-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.chat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 64vh;
+  overflow: auto;
+}
+.chat-item {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  align-items: flex-start;
+}
+.chat-item:hover {
+  background: var(--surface-2);
+}
+.chat-item.selected {
+  background: var(--brand-50);
+}
+.chat-item .chat-main {
+  min-width: 0;
+  flex: 1;
+}
+.chat-item .chat-preview {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-item .chat-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  text-align: right;
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+.chat-unread {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--brand-900);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+}
+.chat-body {
+  padding: 16px;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-day {
+  align-self: center;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.chat-bubble {
+  max-width: 72%;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  white-space: pre-wrap;
+}
+.chat-bubble .chat-who {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+.chat-bubble .chat-time {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-align: right;
+  margin-top: 4px;
+}
+.chat-bubble.staff {
+  align-self: flex-end;
+  background: var(--brand-900);
+  color: #fff;
+}
+.chat-bubble.staff .chat-who,
+.chat-bubble.staff .chat-time {
+  color: rgba(255, 255, 255, 0.75);
+}
+.chat-footer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  align-items: flex-end;
+}
+.bars-7 {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+  align-items: end;
+  height: 180px;
+  padding: 8px 16px 12px;
+}
+.bars-7 .bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.bars-7 .bar {
+  width: 22px;
+  border-radius: 4px 4px 0 0;
+  background: var(--chart-fact);
+  min-height: 2px;
+}
+.bars-7 .bar-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+}
+.role-bars {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+.role-bars .role-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 40px;
+  gap: 12px;
+  align-items: center;
+  font-size: var(--fs-sm);
+}
+.role-bars .progress {
+  width: 100%;
+}
+.role-bars .role-count {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.ops-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ops-list li {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ops-list small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.wizard-steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.wizard-steps span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.wizard-steps span.done {
+  background: var(--brand-700);
+}
+.wizard-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-lg);
+}
+.wizard-sub {
+  margin: 0 0 14px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+/* Solishtirish dalolatnomasi chop etish */
+@media print {
+  .sidebar,
+  .topbar,
+  .toolbar,
+  .page-header .btn,
+  .cal-legend {
+    display: none !important;
+  }
 }

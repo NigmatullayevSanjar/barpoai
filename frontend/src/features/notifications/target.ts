@@ -29,6 +29,8 @@ const projectScoped: Page[] = ['tasks', 'reports', 'stock'];
 
 /** Bildirishnoma ochiladigan marshrut; noma'lum tur uchun null. Sahifalarda alohida yozuvni ochish yo'q, shuning uchun ro'yxat sahifasi. */
 export function notificationTarget(n: Pick<Target, 'kind' | 'project_id'>): string | null {
+  // Kompaniya murojaati platforma xodimlariga keladi; javob esa kompaniya billing sahifasiga qaytadi.
+  if (n.kind === 'support.request') return '/admin/support';
   const page = pageFor(n.kind);
   if (!page) return null;
   return n.project_id && projectScoped.includes(page)

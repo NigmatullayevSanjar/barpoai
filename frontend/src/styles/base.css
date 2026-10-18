@@ -174,18 +174,35 @@ code,
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
+.grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+/* Figma bosh sahifa: keng asosiy ustun + tor yon ustun. */
+.grid-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
 @media (max-width: 1100px) {
-  .grid-4 {
+  .grid-4,
+  .grid-5 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .grid-3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .grid-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @media (max-width: 720px) {
   .grid-2,
   .grid-3,
-  .grid-4 {
+  .grid-4,
+  .grid-5 {
     /* minmax(0, …): ustun ichidagi uzun nowrap matn (masalan obyekt nomi) kartani ekrandan kengaytirmasin */
     grid-template-columns: minmax(0, 1fr);
   }

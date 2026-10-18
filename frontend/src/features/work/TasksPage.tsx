@@ -7,6 +7,7 @@ import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
   Alert,
+  Avatar,
   Badge,
   Button,
   ConfirmDialog,
@@ -14,6 +15,7 @@ import {
   Modal,
   PageHeader,
   Pagination,
+  SearchInput,
   Segmented,
   Select,
   Textarea,
@@ -34,6 +36,7 @@ import {
   useTask,
   useTasks,
   useWorkMutation,
+  type Priority,
   type Task,
   type TaskStatus,
 } from './model';
@@ -48,6 +51,18 @@ const useMembers = (projectId: string) =>
     enabled: Boolean(projectId),
   });
 
+/** Figma daraja belgisi: to'ldirilgan rangli pill. */
+function PriorityBadge({ priority }: { priority: Priority }) {
+  const { t } = useT();
+  const tone = priorityTone[priority];
+  return (
+    <span className={`badge badge-fill badge-${tone === 'neutral' ? 'neutral' : tone}`}>
+      {t(`tasks.priority.${priority}`)}
+    </span>
+  );
+}
+
+/** Vazifalar sahifasi (Figma "Vazifalar va ish rejalari"): filtr kartasi, Kanban yoki jadval, vazifa oynasi. */
 export function TasksPage() {
   const { t, lang } = useT();
   const { can } = useAuth();
@@ -55,7 +70,8 @@ export function TasksPage() {
   const list = useListState();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mine, setMine] = useState(false);
-  const [status, setStatus] = useState<string>('open');
+  const [status, setStatus] = useState<string>('');
+  const [priority, setPriority] = useState<'' | Priority>('');
   const [create, setCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const query = useTasks(
@@ -63,7 +79,14 @@ export function TasksPage() {
     { ...(status ? { status } : {}), ...(mine ? { mine: true } : {}) },
     { offset: list.offset, limit: list.limit },
   );
-  const tasks = query.data?.items ?? [];
+  // Qidiruv va daraja filtri sahifadagi qatorlar ustida (ro'yxat API'sida q yo'q).
+  const needle = list.q.toLocaleLowerCase();
+  const tasks = (query.data?.items ?? []).filter(
+    (x) =>
+      (!priority || x.priority === priority) &&
+      (!needle ||
+        [x.title, x.assignee_name, x.zone_name].some((f) => (f ?? '').toLocaleLowerCase().includes(needle))),
+  );
   const Deadline = ({ task }: { task: Task }) => {
     if (!task.deadline) return <span className="muted">—</span>;
     const d = daysUntil(task.deadline)!;
@@ -114,7 +137,7 @@ export function TasksPage() {
       key: 'priority',
       header: t('tasks.priority'),
       sortValue: (r) => priorities.indexOf(r.priority),
-      render: (r) => <Badge tone={priorityTone[r.priority]}>{t(`tasks.priority.${r.priority}`)}</Badge>,
+      render: (r) => <PriorityBadge priority={r.priority} />,
     },
     {
       key: 'assignee',
@@ -130,27 +153,13 @@ export function TasksPage() {
       render: (r) => <Deadline task={r} />,
     },
   ];
+  const columnsShown = taskStatuses.filter((s) =>
+    status === '' || status === 'open' ? s !== 'accepted' || status === '' : s === status,
+  );
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        title={t('tasks.title')}
-        description={t('tasks.sub')}
-        actions={
-          sel.projectId ? (
-            <>
-              <ExportButton
-                path={`/v1/tasks/export${qs({ project_id: sel.projectId, status: status || undefined, mine: mine || undefined })}`}
-              />
-              {can('tasks', 'create') && (
-                <Button icon={<Plus />} onClick={() => setCreate(true)}>
-                  {t('tasks.new')}
-                </Button>
-              )}
-            </>
-          ) : undefined
-        }
-      />
-      <div className="toolbar">
+    <div className="stack" style={{ gap: 16 }}>
+      <PageHeader title={t('tasks.title')} description={t('tasks.sub')} />
+      <div className="toolbar blocks-toolbar">
         <ProjectSelect
           value={sel.projectId}
           onChange={(id) => {
@@ -159,14 +168,7 @@ export function TasksPage() {
           }}
           projects={sel.projects}
         />
-        <Segmented<'board' | 'table'>
-          value={view}
-          onChange={setView}
-          items={[
-            { key: 'board', label: t('tasks.view.board') },
-            { key: 'table', label: t('tasks.view.table') },
-          ]}
-        />
+        <SearchInput value={list.search} onChange={list.setSearch} placeholder={t('tasks.search')} />
         <Select
           aria-label={t('common.status')}
           value={status}
@@ -175,22 +177,59 @@ export function TasksPage() {
             list.setOffset(0);
           }}
         >
-          <option value="open">{t('stock.status.open')}</option>
           <option value="">{t('tasks.all')}</option>
+          <option value="open">{t('stock.status.open')}</option>
           {taskStatuses.map((s) => (
             <option key={s} value={s}>
               {t(`tasks.status.${s}`)}
             </option>
           ))}
         </Select>
+        <Select
+          aria-label={t('tasks.filter_priority')}
+          value={priority}
+          onChange={(e) => setPriority(e.target.value as typeof priority)}
+        >
+          <option value="">{t('tasks.all_priorities')}</option>
+          {priorities.map((p) => (
+            <option key={p} value={p}>
+              {t(`tasks.priority.${p}`)}
+            </option>
+          ))}
+        </Select>
         {can('tasks', 'update') && (
           <label className="checkbox">
-            <input type="checkbox" checked={mine} onChange={(e) => {
+            <input
+              type="checkbox"
+              checked={mine}
+              onChange={(e) => {
                 setMine(e.target.checked);
                 list.setOffset(0);
-              }} />{' '}
+              }}
+            />{' '}
             {t('tasks.mine')}
           </label>
+        )}
+        <Segmented<'board' | 'table'>
+          value={view}
+          onChange={setView}
+          items={[
+            { key: 'board', label: t('tasks.view.board') },
+            { key: 'table', label: t('tasks.view.table') },
+          ]}
+        />
+        <span className="spacer" />
+        {sel.projectId && (
+          <>
+            <ExportButton
+              path={`/v1/tasks/export${qs({ project_id: sel.projectId, status: status || undefined, mine: mine || undefined })}`}
+            />
+            {can('tasks', 'create') && (
+              <Button icon={<Plus />} onClick={() => setCreate(true)}>
+                {t('tasks.new')}
+              </Button>
+            )}
+          </>
         )}
       </div>
       {query.isError && (
@@ -200,44 +239,55 @@ export function TasksPage() {
       )}
       {view === 'board' ? (
         <div className="kanban">
-          {taskStatuses
-            .filter((s) =>
-              status === '' || status === 'open' ? s !== 'accepted' || status === '' : s === status,
-            )
-            .map((s) => {
-              const col = tasks.filter((x) => x.status === s);
-              return (
-                <section key={s} className="kanban-col">
-                  <header>
-                    <Badge tone={statusTone[s]}>{t(`tasks.status.${s}`)}</Badge>
-                    <span className="muted text-xs">{col.length}</span>
-                  </header>
-                  {col.length === 0 && (
-                    <p className="muted text-xs" style={{ padding: 8 }}>
-                      {t('tasks.empty')}
-                    </p>
-                  )}
-                  {col.map((task) => (
-                    <button key={task.id} className="kanban-card" onClick={() => setSelected(task.id)}>
-                      <div className="row-between">
-                        <Badge tone={priorityTone[task.priority]}>
-                          {t(`tasks.priority.${task.priority}`)}
-                        </Badge>
-                        {task.overdue && <Badge tone="danger">{t('tasks.overdue')}</Badge>}
-                      </div>
-                      <b>{task.title}</b>
+          {columnsShown.map((s) => {
+            const col = tasks.filter((x) => x.status === s);
+            const tone = statusTone[s];
+            const dotColor =
+              tone === 'success'
+                ? '#16a34a'
+                : tone === 'warning'
+                  ? '#f97316'
+                  : tone === 'danger'
+                    ? '#e11d48'
+                    : tone === 'info'
+                      ? '#2563eb'
+                      : '#e11d48';
+            return (
+              <section key={s} className="kanban-col">
+                <header>
+                  <span>
+                    <span className="kanban-dot" style={{ color: dotColor }} aria-hidden />
+                    {t(`tasks.status.${s}`)}
+                  </span>
+                  <span className="kanban-count">{col.length}</span>
+                </header>
+                {col.length === 0 && (
+                  <p className="muted text-xs" style={{ padding: 8 }}>
+                    {t('tasks.empty')}
+                  </p>
+                )}
+                {col.map((task) => (
+                  <button key={task.id} className="kanban-card" onClick={() => setSelected(task.id)}>
+                    <div className="row-between">
+                      <PriorityBadge priority={task.priority} />
                       <small className="muted">
-                        {task.assignee_name}
-                        {task.zone_name ? ` · ${task.zone_name}` : ''}
+                        {task.deadline ? formatDate(task.deadline, lang) : t('tasks.no_deadline')}
                       </small>
-                      <small>
-                        <Deadline task={task} />
-                      </small>
-                    </button>
-                  ))}
-                </section>
-              );
-            })}
+                    </div>
+                    <b>{task.title}</b>
+                    <div className="kanban-card-foot">
+                      <span className="truncate">{task.zone_name ?? ''}</span>
+                      <span className="row">
+                        <Avatar name={task.assignee_name} size="sm" />
+                        <span className="truncate">{task.assignee_name}</span>
+                      </span>
+                    </div>
+                    {task.overdue && <Badge tone="danger">{t('tasks.overdue')}</Badge>}
+                  </button>
+                ))}
+              </section>
+            );
+          })}
         </div>
       ) : (
         <DataTable
@@ -251,13 +301,15 @@ export function TasksPage() {
         />
       )}
       {view === 'board' && !query.isError && (
-        <Pagination
-          offset={list.offset}
-          limit={list.limit}
-          count={tasks.length}
-          onChange={list.setOffset}
-          onLimitChange={list.setLimit}
-        />
+        <div className="card">
+          <Pagination
+            offset={list.offset}
+            limit={list.limit}
+            count={query.data?.items.length ?? 0}
+            onChange={list.setOffset}
+            onLimitChange={list.setLimit}
+          />
+        </div>
       )}
       {create && <TaskModal projectId={sel.projectId} onClose={() => setCreate(false)} />}
       {selected && <TaskDrawer id={selected} onClose={() => setSelected(null)} />}
@@ -408,6 +460,7 @@ function TaskModal({ projectId, task, onClose }: { projectId: string; task?: Tas
   );
 }
 
+/** Vazifa oynasi (Figma "vazifani ko'rish"): ma'lumotlar kartasi, amallar, fayllar, tarix. */
 function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { t, lang } = useT();
   const { me, can } = useAuth();
@@ -456,22 +509,33 @@ function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="stack" style={{ gap: 16 }}>
         <div className="row wrap" style={{ gap: 6 }}>
           <Badge tone={statusTone[d.status]}>{t(`tasks.status.${d.status}`)}</Badge>
-          <Badge tone={priorityTone[d.priority]}>{t(`tasks.priority.${d.priority}`)}</Badge>
+          <PriorityBadge priority={d.priority} />
           {d.overdue && <Badge tone="danger">{t('tasks.overdue')}</Badge>}
         </div>
-        <dl className="kv">
-          <dt>{t('tasks.assignee')}</dt>
-          <dd>{d.assignee_name}</dd>
-          <dt>{t('tasks.reviewer')}</dt>
-          <dd>{d.reviewer_name}</dd>
-          <dt>{t('tasks.deadline')}</dt>
-          <dd>{formatDateTime(d.deadline, lang)}</dd>
-          <dt>{t('tasks.created_by')}</dt>
-          <dd>
-            {d.created_by_name} · {formatDateTime(d.created_at, lang)}
-          </dd>
-        </dl>
-        {d.description && <p style={{ whiteSpace: 'pre-wrap' }}>{d.description}</p>}
+        <div className="card card-pad">
+          <dl className="block-facts">
+            <div>
+              <dt>{t('tasks.assignee')}</dt>
+              <dd>{d.assignee_name}</dd>
+            </div>
+            <div>
+              <dt>{t('tasks.reviewer')}</dt>
+              <dd>{d.reviewer_name}</dd>
+            </div>
+            <div>
+              <dt>{t('tasks.deadline')}</dt>
+              <dd>{d.deadline ? formatDateTime(d.deadline, lang) : t('tasks.no_deadline')}</dd>
+            </div>
+            <div>
+              <dt>{t('tasks.created_by')}</dt>
+              <dd>
+                {d.created_by_name}
+                <small className="muted"> · {formatDateTime(d.created_at, lang)}</small>
+              </dd>
+            </div>
+          </dl>
+          {d.description && <p style={{ whiteSpace: 'pre-wrap', marginTop: 14 }}>{d.description}</p>}
+        </div>
         {open && (isAssignee || isReviewer) && (
           <section className="card card-pad stack">
             <Textarea

@@ -24,6 +24,9 @@ export type Role =
   | 'manager';
 
 export const platformRoles: Role[] = ['super_admin', 'platform_owner', 'support'];
+/** Biznes amallari faqat platforma egasida; texnik xodimlarni super admin boshqaradi (server ham tekshiradi). */
+export const isPlatformOwner = (role?: Role) => role === 'platform_owner';
+export const canManageStaff = (role?: Role) => role === 'super_admin';
 export const tenantRoles: Role[] = [
   'tenant_admin',
   'foreman',
@@ -108,55 +111,155 @@ export const pageRoutes: Record<Page, string> = {
   pricing: '/app/finance/pricing',
 };
 
-/** Kompaniya menyusi guruhlari; har band read ruxsati bo'lsa ko'rinadi. */
-export const tenantNav: {
-  group: string;
-  items: { page: Page; icon: string }[];
-}[] = [
-  {
-    group: 'nav.group.main',
-    items: [
-      { page: 'dashboard', icon: 'LayoutDashboard' },
-      { page: 'projects', icon: 'Building2' },
-      { page: 'estimates', icon: 'Calculator' },
-      { page: 'tasks', icon: 'ListChecks' },
-      { page: 'reports', icon: 'ClipboardList' },
-      { page: 'stock', icon: 'Boxes' },
-    ],
-  },
-  {
-    group: 'nav.group.finance',
-    items: [
-      { page: 'finance', icon: 'Wallet' },
-      { page: 'budgets', icon: 'PiggyBank' },
-      { page: 'allocations', icon: 'HandCoins' },
-      { page: 'payment_requests', icon: 'FileInput' },
-      { page: 'payment_calendar', icon: 'CalendarDays' },
-      { page: 'plan_actual', icon: 'GitCompare' },
-      { page: 'pricing', icon: 'Tags' },
-      { page: 'forecast', icon: 'TrendingUp' },
-      { page: 'accounting_documents', icon: 'FileText' },
-      { page: 'invoices', icon: 'Receipt' },
-      { page: 'bank_cash', icon: 'Landmark' },
-      { page: 'counterparties', icon: 'Users' },
-      { page: 'payroll', icon: 'BadgeDollarSign' },
-      { page: 'reconciliation', icon: 'Scale' },
-      { page: 'financial_reports', icon: 'BarChart3' },
-    ],
-  },
-  {
-    group: 'nav.group.admin',
-    items: [
-      { page: 'employees', icon: 'UserCog' },
-      { page: 'permissions', icon: 'ShieldCheck' },
-      { page: 'billing', icon: 'CreditCard' },
-      { page: 'camera', icon: 'Cctv' },
-      { page: 'integrations', icon: 'Plug' },
-      { page: 'audit', icon: 'ScrollText' },
-      { page: 'settings', icon: 'Settings' },
-    ],
-  },
-];
+/** Menyu bandi; `label` berilmasa yorliq `page.<page>` kalitidan, `to` berilmasa manzil `pageRoutes[page]` dan olinadi. */
+export type NavItem = { page: Page; icon: string; label?: string; to?: string };
+export type NavGroup = { group: string | null; items: NavItem[] };
+const item = (page: Page, icon: string, label?: string, to?: string): NavItem => ({ page, icon, label, to });
+/** Bitta sahifaning ichki bo'limiga (so'rov parametri bilan) olib boradigan band. */
+export const navHref = (it: NavItem) => it.to ?? pageRoutes[it.page];
+/**
+ * Band faolmi: yo'l mos kelsa va banddagi so'rov parametrlari joriy manzilda ham bo'lsa. So'rov parametrsiz band
+ * (masalan, "Ombor") faqat shu sahifaning boshqa bandlari mos kelmaganda faol — bir vaqtda bitta band yonadi.
+ */
+export const isNavActive = (it: NavItem, pathname: string, search: string, siblings: NavItem[]) => {
+  const [path, query = ''] = navHref(it).split('?');
+  if (pathname !== path && !(path !== '/app' && path !== '/app/finance' && pathname.startsWith(path + '/')))
+    return false;
+  const current = new URLSearchParams(search);
+  const matches = (q: string) => [...new URLSearchParams(q)].every(([k, v]) => current.get(k) === v);
+  const size = (q: string) => [...new URLSearchParams(q)].length;
+  const samePage = siblings.filter((s) => s !== it && navHref(s).split('?')[0] === path);
+  const queryOf = (s: NavItem) => navHref(s).split('?')[1] ?? '';
+  if (query) {
+    // "Omborlar" (tab=balances) va "Inventarizatsiya" (tab=balances&inventory=1): aniqrog'i (ko'proq parametr) yonadi
+    return matches(query) && !samePage.some((s) => size(queryOf(s)) > size(query) && matches(queryOf(s)));
+  }
+  return !samePage.some((s) => matches(queryOf(s)));
+};
+const flat = (...items: NavItem[]): NavGroup[] => [{ group: null, items }];
+const nav = {
+  dashboard: item('dashboard', 'LayoutDashboard'),
+  projects: item('projects', 'Building2'),
+  estimates: item('estimates', 'Calculator'),
+  tasks: item('tasks', 'ListChecks'),
+  reports: item('reports', 'ClipboardList'),
+  /** Dala rollari uchun ombor sahifasi "Xomashyolar" deb ataladi (Figma). */
+  materials: item('stock', 'Boxes', 'nav.materials'),
+  stock: item('stock', 'Boxes'),
+  employees: item('employees', 'UserCog'),
+  finance: item('finance', 'Wallet'),
+  budgets: item('budgets', 'PiggyBank'),
+  allocations: item('allocations', 'HandCoins'),
+  payment_requests: item('payment_requests', 'FileInput'),
+  payment_calendar: item('payment_calendar', 'CalendarDays'),
+  plan_actual: item('plan_actual', 'GitCompare'),
+  pricing: item('pricing', 'Tags'),
+  forecast: item('forecast', 'TrendingUp'),
+  accounting_documents: item('accounting_documents', 'FileText'),
+  invoices: item('invoices', 'Receipt'),
+  bank_cash: item('bank_cash', 'Landmark'),
+  counterparties: item('counterparties', 'Users'),
+  payroll: item('payroll', 'BadgeDollarSign'),
+  reconciliation: item('reconciliation', 'Scale'),
+  financial_reports: item('financial_reports', 'BarChart3'),
+};
+/**
+ * Kompaniya menyusi rol bo'yicha, Figma tartibida (D17, 2026-10-16): xodim rollarida tekis ro'yxat, adminda guruhlar.
+ * Har band read ruxsati bo'lsa ko'rinadi (ruxsat matritsasi bandni yashirishi mumkin). Figma'da bo'lmagan, lekin
+ * kodda bor sahifalar (Moliya markazi, Mablag' ajratish, Narx varaqasi, Fayllar, Audit, Integratsiyalar) faqat
+ * adminda; Narx varaqasi D8 bo'yicha finansistda ham. Ombor mudiri menyusida vazifa va hisobot yo'q (Figma).
+ */
+export const roleNav: Partial<Record<Role, NavGroup[]>> = {
+  foreman: flat(nav.dashboard, nav.projects, nav.estimates, nav.tasks, nav.materials, nav.reports),
+  manager: flat(
+    nav.dashboard,
+    nav.projects,
+    nav.estimates,
+    nav.tasks,
+    nav.materials,
+    nav.reports,
+    nav.employees,
+  ),
+  // Figma brigadir: "Material qabul" (jo'natmalarni qabul qilish) va "Material talabnomasi" — ombor sahifasining bo'limlari.
+  brigadier: flat(
+    nav.dashboard,
+    nav.tasks,
+    item('stock', 'Boxes', 'nav.material_accept', '/app/stock?tab=movements&kind=transfer'),
+    item('stock', 'FileInput', 'nav.material_request', '/app/stock?tab=requests'),
+    nav.reports,
+  ),
+  // Figma ombor mudiri: kirim/chiqim, omborlar (qoldiqlar), talabnomalar, transferlar, inventarizatsiya, materiallar.
+  // "Buyurtma" (yetkazuvchi buyurtmasi) va "Hisobdan chiqarish" ma'lumoti yo'q (D17).
+  warehouse_manager: flat(
+    nav.dashboard,
+    item('stock', 'ArrowLeftRight', 'nav.stock_movements', '/app/stock?tab=movements'),
+    item('stock', 'Boxes', 'nav.warehouses', '/app/stock?tab=balances'),
+    item('stock', 'FileInput', 'nav.requests', '/app/stock?tab=requests'),
+    item('stock', 'GitCompare', 'nav.transfers', '/app/stock?tab=movements&kind=transfer'),
+    item('stock', 'ClipboardList', 'nav.inventory', '/app/stock?tab=balances&inventory=1'),
+    item('stock', 'Package', 'nav.materials_catalog', '/app/stock?tab=materials'),
+  ),
+  financier: flat(
+    nav.dashboard,
+    nav.budgets,
+    nav.plan_actual,
+    nav.forecast,
+    nav.payment_requests,
+    nav.payment_calendar,
+    nav.financial_reports,
+    nav.pricing,
+  ),
+  accountant: flat(
+    nav.dashboard,
+    nav.accounting_documents,
+    nav.invoices,
+    nav.bank_cash,
+    nav.counterparties,
+    nav.payroll,
+    nav.reconciliation,
+    nav.financial_reports,
+    nav.allocations,
+  ),
+  tenant_admin: [
+    {
+      group: 'nav.group.main',
+      items: [nav.dashboard, nav.projects, nav.estimates, nav.tasks, nav.reports, nav.stock, nav.employees],
+    },
+    {
+      group: 'nav.group.finance',
+      items: [
+        nav.finance,
+        nav.budgets,
+        nav.plan_actual,
+        nav.forecast,
+        nav.payment_requests,
+        nav.payment_calendar,
+        nav.pricing,
+        nav.allocations,
+        nav.accounting_documents,
+        nav.invoices,
+        nav.bank_cash,
+        nav.counterparties,
+        nav.payroll,
+        nav.reconciliation,
+        nav.financial_reports,
+      ],
+    },
+    {
+      group: 'nav.group.admin',
+      items: [
+        item('permissions', 'ShieldCheck'),
+        item('billing', 'CreditCard'),
+        item('camera', 'Cctv'),
+        item('integrations', 'Plug'),
+        item('audit', 'ScrollText'),
+        item('files', 'FileText'),
+        item('settings', 'Settings'),
+      ],
+    },
+  ],
+};
+export const navFor = (role: Role): NavGroup[] => roleNav[role] ?? [];
 
 export type PlatformNavItem = {
   key: string;
@@ -169,31 +272,31 @@ export const platformNav: PlatformNavItem[] = [
     key: 'dashboard',
     to: '/admin',
     icon: 'LayoutDashboard',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'tenants',
     to: '/admin/tenants',
     icon: 'Building2',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'plans',
     to: '/admin/plans',
     icon: 'Package',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'billing',
     to: '/admin/billing',
     icon: 'CreditCard',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'debtors',
     to: '/admin/debtors',
     icon: 'AlertTriangle',
-    roles: ['platform_owner', 'super_admin'],
+    roles: ['platform_owner', 'super_admin', 'support'],
   },
   {
     key: 'support',
@@ -202,6 +305,7 @@ export const platformNav: PlatformNavItem[] = [
     roles: ['platform_owner', 'support', 'super_admin'],
   },
   { key: 'staff', to: '/admin/staff', icon: 'UserCog', roles: ['super_admin'] },
+  { key: 'audit', to: '/admin/audit', icon: 'ScrollText', roles: ['super_admin', 'platform_owner'] },
   {
     key: 'diagnostics',
     to: '/admin/diagnostics',
@@ -216,5 +320,5 @@ export const homeFor = (role: Role, mustChange: boolean) =>
     : platformRoles.includes(role)
       ? role === 'platform_owner' || role === 'super_admin'
         ? '/admin'
-        : '/admin/support'
+        : '/admin/tenants'
       : '/app';
