@@ -473,6 +473,44 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Oy tanlagich (type="month"): yil sarlavhasi va 3×4 oy katakchalari — kun kalendari bilan bir xil ko'rinish */
+.month-input {
+  cursor: pointer;
+}
+.cal-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.cal-month {
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  font-size: var(--fs-sm);
+}
+.cal-month:hover {
+  background: var(--brand-50);
+}
+.cal-month.today {
+  border-color: var(--brand-600);
+  color: var(--brand-700);
+  font-weight: 600;
+}
+.cal-month.sel {
+  background: var(--brand-700);
+  border-color: var(--brand-700);
+  color: #fff;
+  font-weight: 600;
+}
+.cal-month.sel:hover {
+  background: var(--brand-800);
+}
+.cal-month[aria-disabled='true'] {
+  color: var(--border-strong);
+  background: none;
+  cursor: not-allowed;
+}
 .field-error {
   font-size: var(--fs-xs);
   color: var(--danger);

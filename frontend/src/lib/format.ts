@@ -1,4 +1,6 @@
 import { toDisplay } from './currency-store';
+import { uz } from '@/locales/uz';
+import { ru } from '@/locales/ru';
 
 /** UZS, miqdor va sana formatlari. Pul qiymatlari API'dan string keladi; hisob-kitob qilinmaydi. */
 /**
@@ -68,6 +70,18 @@ export function formatRelative(value: string | Date, lang: 'uz' | 'ru' = 'uz') {
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
   if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
   return rtf.format(Math.round(diff / 86400), 'day');
+}
+/**
+ * Oy nomi lug'atdan (`ui.date.m1`…`m12`), brauzer Intl'iga bog'liq emas: ba'zi brauzerlar uz-UZ uchun
+ * "M10" qaytaradi. `month` — 1–12.
+ */
+export const monthName = (month: number, lang: 'uz' | 'ru' = 'uz') =>
+  (lang === 'ru' ? ru : uz)[`ui.date.m${month}`] ?? String(month);
+/** "YYYY-MM" yoki "YYYY-MM-DD…" → "Oktyabr 2026" (ru: "Октябрь 2026"). */
+export function formatMonth(value: string | null | undefined, lang: 'uz' | 'ru' = 'uz') {
+  if (!value) return '—';
+  const m = /^(\d{4})-(\d{2})/.exec(value);
+  return m ? `${monthName(Number(m[2]), lang)} ${m[1]}` : String(value);
 }
 export const todayIso = () => new Date().toISOString().slice(0, 10);
 export const monthStart = (d = new Date()) =>

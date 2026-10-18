@@ -573,6 +573,7 @@ POST /v1/platform/tenants/{id}/invites  POST /v1/platform/tenants/{id}/alias
 GET|POST  /v1/platform/plans            POST /v1/platform/subscriptions
 GET|POST  /v1/platform/billing/invoices POST /v1/platform/billing/entries
 GET  /v1/platform/billing/summary
+GET  /v1/platform/billing/debtors                             (qoplanmagan invoyslari bor kompaniyalar; overdue=true, q)
 GET  /v1/platform/support, PATCH /v1/platform/support/{id}   (support | platform_owner | super_admin)
 GET  /v1/platform/diagnostics                                 (super_admin | support)
 GET|POST /v1/platform/staff                                   (super_admin)

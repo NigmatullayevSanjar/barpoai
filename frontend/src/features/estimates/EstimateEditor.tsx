@@ -9,6 +9,7 @@ import { errorMessage, useT } from '@/lib/i18n';
 import { formatMoney, formatQuantity, monthStart } from '@/lib/format';
 import { Alert, Button, Input, Modal, PageHeader, Select } from '@/components/ui';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { MonthInput } from '@/components/ui/MonthInput';
 import { useToast } from '@/components/ui/Toast';
 import { useProjects } from '@/features/projects/ProjectsPage';
 import {
@@ -539,9 +540,9 @@ function MonthsModal({
       <div className="stack">
         {rows.map((r, i) => (
           <div key={i} className="row">
-            <input
-              type="month"
-              className="input"
+            <MonthInput
+              required
+              style={{ flex: 1, minWidth: 0 }}
               value={r.month.slice(0, 7)}
               onChange={(e) =>
                 setRows((rs) => rs.map((x, j) => (j === i ? { ...x, month: e.target.value + '-01' } : x)))

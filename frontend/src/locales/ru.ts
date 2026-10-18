@@ -224,6 +224,12 @@ export const ru: Record<string, string> = {
   'platform.tenants_trial': 'На пробном периоде',
   'platform.tenants_paid': 'Оплачено',
   'platform.tenants_overdue': 'Просрочено',
+  'debtors.sub': 'Компании с непокрытыми счетами; просроченная задолженность идёт первой',
+  'debtors.only_overdue': 'Только просроченные',
+  'debtors.invoice_count': 'Открытые счета',
+  'debtors.total': 'Всего долг',
+  'debtors.oldest_due': 'Самый ранний срок',
+  'debtors.empty': 'Должников нет',
   'platform.tenants_blocked': 'Заблокировано',
   'platform.tenants_pending': 'Не зарегистрированы',
   'platform.invoiced': 'Выставлено счетов',
@@ -456,6 +462,9 @@ export const ru: Record<string, string> = {
   'error.DATE_RANGE_INVALID': 'Дата окончания не может быть раньше начала.',
 
   // выбор даты
+  'ui.month.placeholder': 'Выберите месяц',
+  'ui.month.open': 'Выбрать месяц',
+  'ui.month.this': 'Текущий месяц',
   'ui.date.placeholder': 'ДД.ММ.ГГГГ',
   'ui.date.open': 'Открыть календарь',
   'ui.date.today': 'Сегодня',

@@ -109,6 +109,45 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
   });
   add({
     method: 'GET',
+    path: '/v1/platform/billing/debtors',
+    summary:
+      'Qarzdor kompaniyalar — qoplanmagan invoyslar bo‘yicha jami, muddati o‘tgan va joriy qarz, eng eski muddat; overdue=true — faqat muddati o‘tganlar; q — kompaniya nomi yoki kaliti',
+    platform: readers,
+    query: searchQuery.extend({ overdue: queryBool.optional() }),
+    handler: async ({ db, query }) => ({
+      items: (
+        await db.query(
+          // Qarz ta'rifi billing/summary (debt_split) bilan bir xil: invoys summasi minus to'lov/kredit (refund ayiriladi);
+          // muddati o'tgan — due_at<now(). Kompaniya holati (access_state) alohida — trial/paid_until bo'yicha.
+          `WITH d AS (
+             SELECT i.tenant_id,count(*)::int invoices,round(sum(i.amount-coalesce(c.covered,0)),2) debt,
+                    round(coalesce(sum(i.amount-coalesce(c.covered,0)) FILTER(WHERE i.due_at<now()),0),2) overdue,
+                    round(coalesce(sum(i.amount-coalesce(c.covered,0)) FILTER(WHERE i.due_at>=now()),0),2) current,
+                    min(i.due_at) FILTER(WHERE i.due_at<now()) oldest_due_at
+             FROM billing_invoices i
+             LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true
+             WHERE coalesce(c.covered,0)<i.amount GROUP BY i.tenant_id)
+           SELECT t.id tenant_id,t.legal_name,t.registration_key,t.status,t.trial_ends_at,t.paid_until,
+                  (SELECT p.code FROM subscriptions s JOIN plan_versions p ON p.id=s.plan_version_id WHERE s.tenant_id=t.id) plan_code,
+                  (SELECT display_name FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active LIMIT 1) admin_name,
+                  d.invoices,d.debt::text debt,d.overdue::text overdue,d.current::text current,d.oldest_due_at,
+                  CASE WHEN d.oldest_due_at IS NULL THEN 0 ELSE floor(extract(epoch FROM now()-d.oldest_due_at)/86400)::int END overdue_days
+           FROM d JOIN tenants t ON t.id=d.tenant_id
+           WHERE ($1::boolean IS NOT TRUE OR d.overdue>0)
+             AND ($4::text IS NULL OR t.legal_name ILIKE $4 ESCAPE '\\' OR t.registration_key ILIKE $4 ESCAPE '\\')
+           ORDER BY d.overdue DESC,d.debt DESC,t.legal_name,t.id LIMIT $2 OFFSET $3`,
+          [
+            query.overdue ?? false,
+            query.limit,
+            query.offset,
+            query.q ? likePattern(query.q) : null,
+          ],
+        )
+      ).rows.map((row) => ({ ...row, ...accessState(row) })),
+    }),
+  });
+  add({
+    method: 'GET',
     path: '/v1/platform/staff',
     summary: 'Platforma xodimlari ro‘yxati (Telegram ulanganligi bilan — 2FA holati)',
     platform: ['super_admin'],

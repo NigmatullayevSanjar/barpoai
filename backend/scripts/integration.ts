@@ -2168,6 +2168,32 @@ try {
   passed.push(
     'Platform invoice list: unpaid=false keeps paid invoices, unpaid=true hides them, q filters by company, other flag values are 400',
   );
+  const debtors = async (params = '') =>
+    (
+      await call('GET', `/v1/platform/billing/debtors${params ? `?${params}` : ''}`, undefined, ownerToken)
+    ).items as any[];
+  const debtor = (await debtors()).find((d) => d.tenant_id === t.id);
+  assert(debtor, 'tenant with unpaid invoices is listed as a debtor');
+  assert.equal(debtor.invoices, unpaidInvoices.length);
+  const unpaidRows = (
+    await call('GET', `/v1/platform/billing/invoices?tenant_id=${t.id}&unpaid=true`, undefined, ownerToken)
+  ).items as any[];
+  assert.equal(debtor.debt, unpaidRows.reduce((s, i) => s.add(i.outstanding), dec('0')).toFixed(2));
+  assert.equal(dec(debtor.overdue).add(debtor.current).toFixed(2), debtor.debt);
+  // Muddati o'tgan qism — faqat due_at<now() bo'lgan invoyslar (bu bosqichda davrlar kelajakda: odatda 0).
+  const overdueSum = unpaidRows
+    .filter((i) => new Date(i.due_at) < new Date())
+    .reduce((s, i) => s.add(i.outstanding), dec('0'))
+    .toFixed(2);
+  assert.equal(debtor.overdue, overdueSum);
+  assert.equal(Boolean(debtor.oldest_due_at), Number(overdueSum) > 0);
+  assert.equal(debtor.access_state, 'paid');
+  assert((await debtors('overdue=true')).every((d) => Number(d.overdue) > 0));
+  assert.deepEqual(await debtors('q=yoq'), []);
+  await call('GET', '/v1/platform/billing/debtors?overdue=yes', undefined, ownerToken, undefined, 400);
+  passed.push(
+    'Platform debtors: a paid-up company with unpaid invoices is listed, its debt equals the sum of its unpaid invoices, overdue+current=debt, overdue=true and q filter, other flag values are 400',
+  );
   const manual = await call(
     'POST',
     '/v1/platform/billing/invoices',
@@ -2766,6 +2792,38 @@ try {
   );
   passed.push(
     'Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)',
+  );
+  // Qarzdorlar: muddati 5 kun oldin o'tgan invoys — overdue summasi, kunlar soni, eng eski muddat; q — kalit bo'yicha.
+  const lateDue = new Date(Date.now() - 5 * dayMs);
+  const lateInvoice = await call(
+    'POST',
+    '/v1/platform/billing/invoices',
+    {
+      tenant_id: overdueTenantId,
+      plan_version_id: plan.id,
+      period_start: lateDue.toISOString(),
+      due_at: lateDue.toISOString(),
+    },
+    ownerToken,
+  );
+  const lateDebtor = (await debtors('overdue=true')).find((d) => d.tenant_id === overdueTenantId);
+  assert(lateDebtor, 'company with an overdue invoice is listed under overdue=true');
+  assert.equal(lateDebtor.overdue, dec(lateInvoice.amount).toFixed(2));
+  assert.equal(lateDebtor.current, '0.00');
+  assert.equal(lateDebtor.debt, lateDebtor.overdue);
+  assert.equal(lateDebtor.invoices, 1);
+  assert.equal(lateDebtor.overdue_days, 5);
+  assert.equal(new Date(lateDebtor.oldest_due_at).toISOString(), lateDue.toISOString());
+  assert.equal(lateDebtor.access_state, 'overdue');
+  const ordered = await debtors();
+  for (let i = 1; i < ordered.length; i++)
+    assert(Number(ordered[i - 1].overdue) >= Number(ordered[i].overdue), 'debtors sort by overdue amount first');
+  assert.deepEqual(
+    (await debtors('q=TEST-G6')).map((d) => d.tenant_id),
+    [overdueTenantId],
+  );
+  passed.push(
+    'Platform debtors: an overdue invoice lists the company first with overdue amount, days overdue and oldest due date; q matches the registration key',
   );
   // ---- Bosqich 2: CBU kursi. Xatoda oxirgi kurs qoladi, 0 yozilmaydi; endpoint har bir foydalanuvchiga ochiq
   const noRate = await call('GET', '/v1/exchange-rates/latest', undefined, adminAgain);
@@ -3368,7 +3426,7 @@ try {
     .access_token;
   // D15 (2026-10-13): super_admin va support o'qiydi; biznes amallari (tarif, obuna, invoys, bloklash) faqat egasida;
   // xodimlar va platforma auditi — super_admin; parol tiklash — egasi va super_admin.
-  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/billing/invoices', '/v1/platform/support', `/v1/platform/tenants/${t.id}`])
+  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/billing/invoices', '/v1/platform/billing/debtors', '/v1/platform/support', `/v1/platform/tenants/${t.id}`])
     for (const tok of [superToken, supportToken]) await call('GET', path, undefined, tok);
   await call('POST', '/v1/platform/plans', { code: 'tech', version: 1, monthly_price: '1.00' }, superToken, undefined, 403);
   await call('PATCH', `/v1/platform/tenants/${t.id}`, { status: 'blocked', version: 1, reason: 'Texnik sinov' }, superToken, undefined, 403);

@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, Inbox, Search, X } from 'lucide-react';
 import { useT } from '@/lib/i18n';
 import { DateInput } from './DateInput';
+import { MonthInput } from './MonthInput';
 import { SelectControl, type SelectControlProps } from './SelectControl';
 
 /* ---------------- Button ---------------- */
@@ -96,10 +97,22 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 ) {
   const auto = useId();
   const inputId = id ?? auto;
-  // type="date" ichki sana tanlagichga o'tadi: qiymat baribir ISO "YYYY-MM-DD" (yoki '').
+  // type="date" / "month" ichki tanlagichga o'tadi: qiymat baribir ISO "YYYY-MM-DD" / "YYYY-MM" (yoki '').
   const isDate = type === 'date';
+  const isMonth = type === 'month';
   const control = isDate ? (
     <DateInput
+      ref={ref}
+      id={inputId}
+      className={className}
+      aria-invalid={error ? 'true' : undefined}
+      required={required}
+      {...rest}
+      min={rest.min === undefined ? undefined : String(rest.min)}
+      max={rest.max === undefined ? undefined : String(rest.max)}
+    />
+  ) : isMonth ? (
+    <MonthInput
       ref={ref}
       id={inputId}
       className={className}
@@ -122,7 +135,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   );
   return (
     <Field label={label} error={error} hint={hint} required={required} id={inputId} className={wrapClassName}>
-      {!isDate && (icon || suffix) ? (
+      {!isDate && !isMonth && (icon || suffix) ? (
         <div className="input-wrap">
           {icon}
           {control}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
+import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney, monthStart } from '@/lib/format';
 import { displayCurrency } from '@/lib/currency-store';
@@ -10,8 +10,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { DonutChart, MonthlyChart } from '@/features/dashboard/charts';
 import { monthLabel } from '@/features/finance/model';
 import { useBillingSummary } from './dashboard';
-import { TenantsTable } from './tenants';
-import type { Tenant } from './pages';
+import type { AccessState } from './pages';
 
 /**
  * Figma F6 (2026-10-17) "Daromad va qarzdorlik": 6 oylik daromad dinamikasi, qarzdorlik taqsimoti (muddati o'tgan /
@@ -314,17 +313,175 @@ export function BillingPage() {
   );
 }
 
+/**
+ * Qarzdorlar — qoplanmagan invoyslari bor kompaniyalar (billing/debtors). Avval ro'yxat access_state bo'yicha
+ * ("overdue"/"blocked") filtrlanardi: kompaniya "paid"/"trial" holatida bo'lsa-da invoys qarzi bo'lishi mumkin,
+ * shuning uchun qarz bor kompaniya ko'rinmasdi. Endi qarz ta'rifi donut (debt_split) bilan bir xil.
+ */
+type DebtorRow = {
+  tenant_id: string;
+  legal_name: string;
+  registration_key: string;
+  plan_code: string | null;
+  admin_name: string | null;
+  invoices: number;
+  debt: string;
+  overdue: string;
+  current: string;
+  oldest_due_at: string | null;
+  overdue_days: number;
+  access_state: AccessState;
+};
+const stateTone: Record<AccessState, string> = {
+  pending: 'muted',
+  trial: 'active',
+  paid: 'active',
+  overdue: 'danger',
+  blocked: 'danger',
+  archived: 'muted',
+};
 export function DebtorsPage() {
-  const { t } = useT();
+  const { t, lang } = useT();
+  const navigate = useNavigate();
+  const list = useListState();
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const summary = useBillingSummary();
   const query = useQuery({
-    queryKey: ['platform-tenants'],
-    queryFn: () => apiAll<Tenant>('/v1/platform/tenants'),
+    queryKey: ['platform-debtors', list.q, list.offset, list.limit, onlyOverdue],
+    queryFn: () =>
+      api<ListResponse<DebtorRow>>(
+        `/v1/platform/billing/debtors${qs({ q: list.q, limit: list.limit, offset: list.offset, overdue: onlyOverdue })}`,
+      ),
   });
-  const rows = query.data?.items.filter((r) => r.access_state === 'overdue' || r.access_state === 'blocked');
+  const s = summary.data;
+  const money = (v: string) => formatMoney(v, lang, false);
+  const columns: Column<DebtorRow>[] = [
+    {
+      key: 'name',
+      header: t('tenants.legal_name'),
+      sortValue: (r) => r.legal_name,
+      render: (r) => (
+        <>
+          <div className="cell-main">{r.legal_name}</div>
+          <div className="cell-sub mono">{r.registration_key}</div>
+        </>
+      ),
+    },
+    {
+      key: 'plan',
+      header: t('tenants.plan'),
+      sortValue: (r) => r.plan_code ?? '',
+      render: (r) => r.plan_code ?? <span className="muted">—</span>,
+    },
+    {
+      key: 'invoices',
+      header: t('debtors.invoice_count'),
+      align: 'right',
+      sortValue: (r) => r.invoices,
+      render: (r) => <span className="mono">{r.invoices}</span>,
+    },
+    {
+      key: 'overdue',
+      header: t('billing.debt_overdue'),
+      align: 'right',
+      sortValue: (r) => Number(r.overdue),
+      render: (r) =>
+        Number(r.overdue) > 0 ? (
+          <>
+            <Badge tone="danger">{money(r.overdue)}</Badge>
+            {r.overdue_days > 0 && (
+              <div className="cell-sub">{t('tenants.days_overdue', { n: r.overdue_days })}</div>
+            )}
+          </>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'current',
+      header: t('billing.debt_current'),
+      align: 'right',
+      sortValue: (r) => Number(r.current),
+      render: (r) =>
+        Number(r.current) > 0 ? (
+          <span className="mono">{money(r.current)}</span>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'debt',
+      header: t('debtors.total'),
+      align: 'right',
+      sortValue: (r) => Number(r.debt),
+      render: (r) => <b className="mono">{formatMoney(r.debt, lang)}</b>,
+    },
+    {
+      key: 'due',
+      header: t('debtors.oldest_due'),
+      sortValue: (r) => r.oldest_due_at ?? '',
+      render: (r) =>
+        r.oldest_due_at ? (
+          <span className="mono">{formatDate(r.oldest_due_at, lang)}</span>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'state',
+      header: t('common.status'),
+      sortValue: (r) => r.access_state,
+      render: (r) => (
+        <span className={`status-text-${stateTone[r.access_state]}`}>
+          {t(`tenants.state.${r.access_state}`)}
+        </span>
+      ),
+    },
+  ];
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <PageHeader title={t('nav.debtors')} description={t('platform.tenants_overdue')} />
-      <TenantsTable rows={rows} loading={query.isLoading} error={query.error} refetch={query.refetch} />
+      <PageHeader title={t('nav.debtors')} description={t('debtors.sub')} />
+      <div className="grid-3">
+        <Stat label={t('platform.debt')} value={s ? money(s.debt) : '—'} sub={displayCurrency()} />
+        <Stat
+          label={t('billing.debt_overdue')}
+          value={s ? money(s.debt_split.overdue) : '—'}
+          sub={displayCurrency()}
+          tone={s && Number(s.debt_split.overdue) > 0 ? 'danger' : undefined}
+        />
+        <Stat
+          label={t('billing.debt_current')}
+          value={s ? money(s.debt_split.current) : '—'}
+          sub={displayCurrency()}
+        />
+      </div>
+      <section className="card">
+        <div className="toolbar" style={{ padding: '12px 16px' }}>
+          <SearchInput value={list.search} onChange={list.setSearch} />
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={onlyOverdue}
+              onChange={(e) => {
+                setOnlyOverdue(e.target.checked);
+                list.setOffset(0);
+              }}
+            />{' '}
+            {t('debtors.only_overdue')}
+          </label>
+        </div>
+        <DataTable
+          columns={columns}
+          rows={query.data?.items}
+          rowKey={(r) => r.tenant_id}
+          loading={query.isLoading}
+          error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
+          onRetry={query.refetch}
+          onRowClick={(r) => navigate(`/admin/tenants/${r.tenant_id}`)}
+          pagination={list.pagination}
+          empty={{ title: t('debtors.empty') }}
+        />
+      </section>
     </div>
   );
 }
