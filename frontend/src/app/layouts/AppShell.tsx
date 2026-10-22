@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Lock, LogOut, Menu, UserRound } from 'lucide-react';
@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { useCurrency } from '@/lib/currency';
 import { useT, type Lang } from '@/lib/i18n';
 import { api } from '@/lib/api';
-import { pageRoutes, platformNav, tenantNav, type Page } from '@/lib/permissions';
+import { isNavActive, navFor, navHref, platformNav } from '@/lib/permissions';
 import { formatDate, formatMoney, formatRelative } from '@/lib/format';
 import { Avatar, Button } from '@/components/ui';
 import { Logo } from '@/components/ui/Logo';
@@ -197,33 +197,30 @@ function UserMenu() {
   );
 }
 
-export function AppShell({ title }: { title?: ReactNode }) {
+/**
+ * Qobiq (Figma, D17): chap tomonda bordo sidebar — logotip, rolga xos menyu (ruxsat bilan filtrlangan), pastda
+ * til/valyuta almashtirgich va foydalanuvchi kartasi; o'ngda yuqori qatorda faqat qo'ng'iroq (va mobil menyu),
+ * sahifa sarlavhasi va izohi har sahifaning o'zida (PageHeader).
+ */
+export function AppShell() {
   const { me, can, isPlatform, issue } = useAuth();
   const { t } = useT();
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
-  useEffect(() => setNavOpen(false), [location.pathname]);
+  // Ombor bo'limlari bir sahifada (?tab=…): mobil menyu so'rov parametri o'zgarganda ham yopiladi.
+  useEffect(() => setNavOpen(false), [location.pathname, location.search]);
   if (!me) return null;
 
-  const tenantGroups = tenantNav
+  const tenantGroups = navFor(me.role)
     .map((g) => ({ ...g, items: g.items.filter((it) => can(it.page)) }))
     .filter((g) => g.items.length > 0);
   const platformItems = platformNav.filter((it) => it.roles.includes(me.role));
-  const currentTitle =
-    title ??
-    (isPlatform
-      ? t(
-          `nav.${platformItems.find((it) => (it.to === '/admin' ? location.pathname === '/admin' : location.pathname.startsWith(it.to)))?.key ?? 'dashboard'}`,
-        )
-      : t(
-          `page.${(Object.entries(pageRoutes).find(([, r]) => (r === '/app' ? location.pathname === '/app' : location.pathname.startsWith(r)))?.[0] as Page) ?? 'dashboard'}`,
-        ));
 
   return (
     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
       <aside className="sidebar">
         <Link className="sidebar-brand" to={isPlatform ? '/admin' : '/app'}>
-          <Logo height={48} />
+          <Logo height={44} />
         </Link>
         <div className="sidebar-tenant">{isPlatform ? t('nav.group.platform') : me.tenant_name}</div>
         <nav aria-label="Main">
@@ -239,20 +236,25 @@ export function AppShell({ title }: { title?: ReactNode }) {
                   {t(`nav.${it.key}`)}
                 </NavLink>
               ))
-            : tenantGroups.map((g) => (
-                <div key={g.group}>
-                  <div className="nav-group">{t(g.group)}</div>
-                  {g.items.map((it) => (
-                    <NavLink
-                      key={it.page}
-                      to={pageRoutes[it.page]}
-                      end={it.page === 'dashboard' || it.page === 'finance'}
-                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                    >
-                      <Icon name={it.icon} />
-                      {t(`page.${it.page}`)}
-                    </NavLink>
-                  ))}
+            : tenantGroups.map((g, i) => (
+                <div key={g.group ?? i}>
+                  {g.group && <div className="nav-group">{t(g.group)}</div>}
+                  {g.items.map((it) => {
+                    // NavLink emas: u so'rov parametrlarini hisobga olmaydi va "/app" ni har sahifada faol qiladi —
+                    // natijada bir nechta band birga yonardi. Faollik faqat isNavActive bilan (bitta band).
+                    const active = isNavActive(it, location.pathname, location.search, g.items);
+                    return (
+                      <Link
+                        key={navHref(it)}
+                        to={navHref(it)}
+                        className={`nav-link${active ? ' active' : ''}`}
+                        aria-current={active ? 'page' : undefined}
+                      >
+                        <Icon name={it.icon} />
+                        {t(it.label ?? `page.${it.page}`)}
+                      </Link>
+                    );
+                  })}
                 </div>
               ))}
           {!isPlatform && issue && (
@@ -273,12 +275,9 @@ export function AppShell({ title }: { title?: ReactNode }) {
       </aside>
       <div className="main">
         <header className="topbar">
-          <div className="row">
-            <button className="icon-btn menu-btn" aria-label="Menu" onClick={() => setNavOpen((v) => !v)}>
-              <Menu />
-            </button>
-            <span className="title">{currentTitle}</span>
-          </div>
+          <button className="icon-btn menu-btn" aria-label="Menu" onClick={() => setNavOpen((v) => !v)}>
+            <Menu />
+          </button>
           <div className="topbar-tools">
             <NotificationsBell />
           </div>

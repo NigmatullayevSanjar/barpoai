@@ -18,6 +18,8 @@ export type EstimateSummary = {
   material_total: string;
   work_total: string;
 };
+/** Obyekt bo'yicha smetalar jami (sahifalashsiz); pul maydonlari narx huquqisiz kelmaydi. */
+export type EstimatesSummary = { count: number; line_count: number; total?: string; material_total?: string };
 export type EstimateGroupTotal = { key: string; count: number; total?: string; value?: string };
 export type EstimateTotals = {
   total?: string;

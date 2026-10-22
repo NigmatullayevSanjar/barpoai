@@ -10,9 +10,8 @@ import { displayCurrency, toDisplay } from '@/lib/currency-store';
  */
 export type Series = { key: string; label: string; color: string; kind: 'bar' | 'line' };
 
-/** Ko'rsatish valyutasida "chiroyli" o'q qadamlari (USD rejimida ham butun dollarlar). */
-function ticks(maxUzs: number) {
-  const top = Number(toDisplay(String(maxUzs))?.amount ?? 0);
+/** "Chiroyli" o'q qadamlari; `top` — allaqachon ko'rsatish birligidagi eng katta qiymat. */
+function ticks(top: number) {
   if (!(top > 0)) return { values: [0], top: 1 };
   const raw = top / 4;
   const p = 10 ** Math.floor(Math.log10(raw));
@@ -39,23 +38,31 @@ function Legend({
   );
 }
 
-/** Oylar bo'yicha guruhlangan ustunlar (+ ixtiyoriy chiziq seriya), bitta o'q. */
+/**
+ * Oylar bo'yicha guruhlangan ustunlar (+ ixtiyoriy chiziq seriya), bitta o'q.
+ * `unit='money'` — UZS summalar, ko'rsatish valyutasiga formatMoney orqali o'tadi; `unit='count'` — oddiy sonlar.
+ */
 export function MonthlyChart({
   rows,
   series,
   monthLabel,
   title,
+  unit = 'money',
 }: {
   rows: (Record<string, string> & { month: string })[];
   series: Series[];
   monthLabel: (month: string) => string;
   title: string;
+  unit?: 'money' | 'count';
 }) {
   const { lang } = useT();
   const [hover, setHover] = useState<number | null>(null);
   const pin = displayCurrency();
-  const money = (v: string | number) => formatMoney(v, lang, false);
-  const max = Math.max(0, ...rows.flatMap((r) => series.map((s) => Number(r[s.key]))));
+  const money = (v: string | number) =>
+    unit === 'count' ? String(Math.round(Number(v))) : formatMoney(v, lang, false);
+  const axis = (v: number) => (unit === 'count' ? String(v) : formatMoney(v, lang, false, pin));
+  const displayOf = (v: string) => (unit === 'count' ? Number(v) : Number(toDisplay(v)?.amount ?? 0));
+  const max = Math.max(0, ...rows.flatMap((r) => series.map((s) => displayOf(r[s.key]!))));
   const scale = ticks(max);
   const W = 640,
     H = 240,
@@ -68,8 +75,7 @@ export function MonthlyChart({
   const band = plotW / Math.max(1, rows.length);
   const bars = series.filter((s) => s.kind === 'bar');
   const barW = Math.min(18, (band * 0.7) / Math.max(1, bars.length));
-  const displayOf = (uzs: string) => Number(toDisplay(uzs)?.amount ?? 0);
-  const y = (uzs: string) => top + plotH - (Math.max(0, displayOf(uzs)) / scale.top) * plotH;
+  const y = (v: string) => top + plotH - (Math.max(0, displayOf(v)) / scale.top) * plotH;
   const cx = (i: number) => left + band * i + band / 2;
   return (
     <figure className="chart" aria-label={title}>
@@ -82,7 +88,7 @@ export function MonthlyChart({
               <g key={v}>
                 <line x1={left} x2={W - right} y1={yy} y2={yy} className="chart-grid" />
                 <text x={left - 8} y={yy} className="chart-axis" textAnchor="end" dominantBaseline="middle">
-                  {formatMoney(v, lang, false, pin)}
+                  {axis(v)}
                 </text>
               </g>
             );

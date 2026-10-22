@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { login, registerInvite, issueSession, publicUser } from './auth.js';
+import { login, verifyLoginCode, registerInvite, issueSession, publicUser } from './auth.js';
 import { digest, hashPassword, verifyPassword, verifyTelegram } from './security.js';
 import {
   password,
@@ -31,6 +31,21 @@ export function authRoutes(add: (r: Endpoint) => void) {
     body: z.strictObject({ login: identifier, password: z.string().min(1).max(128) }),
     handler: async ({ db, body }) =>
       login(db, body as { login: string; password: string }, 'cookie'),
+  });
+  add({
+    method: 'POST',
+    path: '/v1/auth/login/verify',
+    summary:
+      'Ikki bosqichli kirish: Telegram botga kelgan 6 xonali kod bilan sessiya olish (challenge 5 daqiqa, 5 urinish)',
+    public: true,
+    session: 'set',
+    rateLimit: authLimit(20),
+    body: z.strictObject({
+      challenge: z.string().min(32).max(100),
+      code: z.string().regex(/^\d{6}$/),
+    }),
+    handler: async ({ db, pool, body }) =>
+      verifyLoginCode(db, pool, body as { challenge: string; code: string }),
   });
   add({
     method: 'POST',

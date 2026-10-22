@@ -22,7 +22,7 @@ const TZ = 'Asia/Tashkent';
 const todaySql = (col: string) =>
   `(${col} AT TIME ZONE '${TZ}')::date=(now() AT TIME ZONE '${TZ}')::date`;
 /** Ish qatori bo'yicha tasdiqlangan progress (tuzatishlar bilan). */
-const workFactSql = `(coalesce((SELECT sum(pe.quantity) FROM progress_entries pe WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0)
+export const workFactSql = `(coalesce((SELECT sum(pe.quantity) FROM progress_entries pe WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0)
   +coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))`;
 /** Rol doirasidagi stock hisoblari (ombor mudiri — biriktirilgan omborlar, brigadir — o'z hisobi). */
 const accountScopeSql = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
@@ -92,13 +92,18 @@ async function dashboard(db: Db, actor: Row, query: Row) {
     tasks: null,
     reports: null,
     stock: null,
+    costs: null,
     finance: null,
     employees: null,
   };
   if (canProjects) {
     const items = (
       await db.query(
-        `SELECT p.id,p.name,p.code,p.status,p.planned_end,p.forecast_end,
+        `SELECT p.id,p.name,p.code,p.status,p.planned_start,p.actual_start,p.planned_end,p.forecast_end,
+                /* Mas'ul: obyektga biriktirilgan prorab, bo'lmasa menejer (Figma "Mas'ul shaxs" ustuni) */
+                (SELECT u.display_name FROM project_assignments a JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.user_id
+                  WHERE a.tenant_id=p.tenant_id AND a.project_id=p.id AND u.active AND u.role IN ('foreman','manager')
+                  ORDER BY (u.role='foreman') DESC,u.display_name LIMIT 1) responsible_name,
                 (SELECT count(*)::int FROM tasks t WHERE t.tenant_id=p.tenant_id AND t.project_id=p.id AND t.archived_at IS NULL AND t.status<>'accepted') open_tasks,
                 (SELECT count(*)::int FROM tasks t WHERE t.tenant_id=p.tenant_id AND t.project_id=p.id AND t.archived_at IS NULL AND t.status<>'accepted' AND t.deadline<now()) overdue_tasks,
                 (SELECT count(*)::int FROM reports r WHERE r.tenant_id=p.tenant_id AND r.project_id=p.id AND r.archived_at IS NULL AND r.status='submitted') pending_reports,
@@ -121,7 +126,9 @@ async function dashboard(db: Db, actor: Row, query: Row) {
   if (canTasks) {
     const counts = await one(
       db,
-      `SELECT count(*) FILTER(WHERE status<>'accepted')::int open,
+      `SELECT count(*)::int total,
+              count(*) FILTER(WHERE status='accepted')::int accepted,
+              count(*) FILTER(WHERE status<>'accepted')::int open,
               count(*) FILTER(WHERE status<>'accepted' AND deadline<now())::int overdue,
               count(*) FILTER(WHERE status<>'accepted' AND ${todaySql('deadline')})::int due_today,
               count(*) FILTER(WHERE status='submitted' AND reviewer_id=$3)::int awaiting_my_review,
@@ -190,13 +197,46 @@ async function dashboard(db: Db, actor: Row, query: Row) {
         params,
       )
     ).rows;
+    // Oylik kirim/chiqim soni (ombor mudiri grafigi): rol doirasidagi hisoblar, Toshkent sanasi. Kirim — ombor/hisobga
+    // kirgan kirim, boshlang'ich qoldiq va qaytarish; chiqim — hisobdan jo'natish va sarf. Summalar emas, sonlar.
+    const stockMonthly = (
+      await db.query(
+        `WITH acc AS (SELECT a.id FROM stock_accounts a WHERE a.tenant_id=$1 AND a.project_id=ANY($2::uuid[]) AND ${accountScopeSql}),
+              m AS (SELECT generate_series($5::date,$6::date-1,interval '1 month')::date AS month),
+              c AS (SELECT c.kind,c.status,c.from_account_id,c.to_account_id,date_trunc('month',(c.created_at AT TIME ZONE '${TZ}'))::date AS month
+                    FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]))
+         SELECT to_char(m.month,'YYYY-MM-DD') AS month,
+                (SELECT count(*)::int FROM c WHERE c.month=m.month AND c.kind IN ('receipt','opening','return') AND c.status='posted' AND c.to_account_id IN (SELECT id FROM acc)) receipts,
+                (SELECT count(*)::int FROM c WHERE c.month=m.month AND c.kind IN ('transfer','consumption') AND c.status IN ('posted','partial') AND c.from_account_id IN (SELECT id FROM acc)) issues
+         FROM m ORDER BY m.month`,
+        [...params, period.from, period.until],
+      )
+    ).rows;
+    const recent = (
+      await db.query(
+        `WITH acc AS (SELECT a.id FROM stock_accounts a WHERE a.tenant_id=$1 AND a.project_id=ANY($2::uuid[]) AND ${accountScopeSql})
+         SELECT c.id,c.kind,c.status,c.quantity::text quantity,m.name material_name,m.unit_id,c.created_at,p.name project_name,
+                coalesce(wf.name,uf.display_name) from_name,coalesce(wt.name,ut.display_name) to_name,cb.display_name created_by_name
+         FROM stock_commands c JOIN materials m ON m.id=c.material_id JOIN projects p ON p.id=c.project_id
+              LEFT JOIN stock_accounts af ON af.id=c.from_account_id LEFT JOIN warehouses wf ON wf.id=af.warehouse_id LEFT JOIN users uf ON uf.id=af.custodian_id
+              LEFT JOIN stock_accounts at ON at.id=c.to_account_id LEFT JOIN warehouses wt ON wt.id=at.warehouse_id LEFT JOIN users ut ON ut.id=at.custodian_id
+              LEFT JOIN users cb ON cb.id=c.created_by
+         WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[])
+           AND (c.from_account_id IN (SELECT id FROM acc) OR c.to_account_id IN (SELECT id FROM acc))
+         ORDER BY c.created_at DESC,c.id LIMIT 6`,
+        params,
+      )
+    ).rows;
     result.stock = {
       ...counts,
       inventory_value: prices ? money(counts.inventory_value) : null,
       low_items: low,
+      monthly: stockMonthly,
+      recent,
     };
   }
-  if (canFinance) {
+  // Xarajat bloki (`costs`): narx huquqi bo'lganlarga (bosh muhandis ham); `finance` (kassa, qarz, to'lovlar) faqat finance.read bilan.
+  if (canFinance || prices) {
     const journal = await one(
       db,
       `SELECT coalesce(sum(amount) FILTER(WHERE account='expense'),0)::text actual_cost,
@@ -216,16 +256,6 @@ async function dashboard(db: Db, actor: Row, query: Row) {
       db,
       `SELECT coalesce(sum(l.total),0)::text total FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id WHERE l.tenant_id=$1 AND l.project_id=ANY($2::uuid[]) AND l.archived_at IS NULL AND e.archived_at IS NULL`,
       scope,
-    );
-    const requests = await one(
-      db,
-      `SELECT count(*) FILTER(WHERE status='pending')::int pending,count(*) FILTER(WHERE status='approved')::int approved FROM payment_requests WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])`,
-      scope,
-    );
-    const overdue = await one(
-      db,
-      `SELECT coalesce(sum(${outstandingSql}),0)::text amount,count(*)::int count FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($3::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date<current_date`,
-      [...scope, payableKinds],
     );
     // Oylar: reja (smeta oylik taqsimoti), budjet va fakt xarajat (hisob sanasi bo'yicha).
     const monthly = (
@@ -291,23 +321,39 @@ async function dashboard(db: Db, actor: Row, query: Row) {
       actual: money(r.actual),
       over: money(dec(r.actual).minus(r.budget)),
     }));
-    result.finance = {
+    const costs = {
       budget_total: money(budget.total),
       period_budget: money(budget.period),
       plan_total: money(plan.total),
       actual_cost: money(journal.actual_cost),
       period_expense: money(periodExpense),
       remaining_budget: money(dec(budget.total).minus(journal.actual_cost)),
-      net_cash_flow: money(journal.net_cash_flow),
-      supplier_debt: money(journal.supplier_debt),
-      advances: money(journal.advances),
-      income: money(journal.income),
-      payment_requests: requests,
-      overdue_payables: { count: overdue.count, amount: money(overdue.amount) },
       monthly,
       by_kind: byKind,
       over_budget: overBudget,
     };
+    if (prices) result.costs = costs;
+    if (canFinance) {
+      const requests = await one(
+        db,
+        `SELECT count(*) FILTER(WHERE status='pending')::int pending,count(*) FILTER(WHERE status='approved')::int approved FROM payment_requests WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])`,
+        scope,
+      );
+      const overdue = await one(
+        db,
+        `SELECT coalesce(sum(${outstandingSql}),0)::text amount,count(*)::int count FROM finance_documents f WHERE f.tenant_id=$1 AND f.project_id=ANY($2::uuid[]) AND f.kind=ANY($3::text[]) AND ${notReversedSql} AND ${outstandingSql}>0 AND f.due_date<current_date`,
+        [...scope, payableKinds],
+      );
+      result.finance = {
+        ...costs,
+        net_cash_flow: money(journal.net_cash_flow),
+        supplier_debt: money(journal.supplier_debt),
+        advances: money(journal.advances),
+        income: money(journal.income),
+        payment_requests: requests,
+        overdue_payables: { count: overdue.count, amount: money(overdue.amount) },
+      };
+    }
   }
   if (canEmployees) {
     const rows = (
@@ -387,7 +433,7 @@ export function dashboardRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/dashboard',
     summary:
-      'Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, moliya va xodimlar bloklari — faqat ruxsat bo‘lgan bloklar, qolganlari null; obyekt va davr (3/6/12 oy) filtri',
+      'Bosh sahifa: obyektlar, vazifalar, hisobotlar, ombor, xarajat (narx huquqi), moliya va xodimlar bloklari — faqat ruxsat bo‘lgan bloklar, qolganlari null; obyekt va davr (3/6/12 oy) filtri',
     query: dashboardQuery,
     handler: ({ db, actor, query }) => dashboard(db, actor, query),
   });

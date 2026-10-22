@@ -1,20 +1,14 @@
 export const erpUz: Record<string, string> = {
-  // dashboard
-  'dash.title': 'Bosh sahifa',
-  'dash.sub': 'Kompaniya bo‘yicha umumiy holat',
-  'dash.projects': 'Obyektlar',
-  'dash.projects_active': 'Faol obyektlar',
-  'dash.employees': 'Faol xodimlar',
-  'dash.unread': 'O‘qilmagan bildirishnomalar',
-  'dash.my_projects': 'Mening obyektlarim',
-  'dash.no_projects': 'Sizga biriktirilgan obyekt yo‘q',
-  'dash.no_projects_admin': 'Hali obyekt yaratilmagan. Birinchi obyektni qo‘shing.',
-  'dash.recent_notifications': 'So‘nggi bildirishnomalar',
-  'dash.welcome': 'Xush kelibsiz, {name}',
-
   // obyektlar
-  'projects.title': 'Obyektlar',
-  'projects.sub': 'Qurilish obyektlari, zonalar, biriktirilgan xodimlar va omborlar',
+  'projects.title': 'Obyektlar va loyihalar nazorati',
+  'projects.sub': 'Faol va rejalashtirilgan qurilish obyektlari',
+  'projects.search': 'Obyektlarni qidirish…',
+  'projects.filter_all': 'Barchasi',
+  'projects.progress': 'Progress',
+  'projects.no_progress': 'Ish qatorlari yo‘q',
+  'projects.plan_vs_actual': 'Smeta / xarajat',
+  'projects.no_responsible': 'Mas’ul biriktirilmagan',
+  'projects.facts': 'Obyekt ma’lumotlari',
   'projects.new': 'Obyekt qo‘shish',
   'projects.edit': 'Obyektni tahrirlash',
   'projects.name': 'Obyekt nomi',
@@ -86,7 +80,12 @@ export const erpUz: Record<string, string> = {
 
   // xodimlar
   'employees.title': 'Xodimlar',
-  'employees.sub': 'Kompaniya foydalanuvchilari, rollar, obyekt biriktirishlari va individual ruxsatlar',
+  'employees.sub': 'Xodimlarga oid ma’lumotlar va boshqaruv',
+  'employees.kpi.total': 'Jami xodimlar',
+  'employees.kpi.active': 'Faol',
+  'employees.kpi.inactive': 'Nofaol',
+  'employees.search': 'Kompaniya bo‘yicha qidiruv',
+  'employees.phone': 'Telefon',
   'employees.new': 'Xodim qo‘shish',
   'employees.edit': 'Xodim kartasi',
   'employees.name': 'Ism va familiya',

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, KeyRound, Phone, UserRound } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { isChallenge, useAuth, type Me } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { homeFor } from '@/lib/permissions';
 import { Alert, Button, Input } from '@/components/ui';
@@ -54,7 +54,7 @@ const takeNotice = () => {
 
 export function LoginPage() {
   const { t } = useT();
-  const { login } = useAuth();
+  const { login, verifyCode } = useAuth();
   const navigate = useNavigate();
   const location = useLocation() as {
     state?: { from?: string; notice?: string };
@@ -69,21 +69,101 @@ export function LoginPage() {
   });
   const [error, setError] = useState('');
   const [notice] = useState(() => takeNotice() ?? location.state?.notice ?? '');
+  const [step, setStep] = useState<{ challenge: string; expiresAt: number } | null>(null);
+  const [code, setCode] = useState('');
+  const [left, setLeft] = useState(0);
+  const [verifying, setVerifying] = useState(false);
+  useEffect(() => {
+    if (!step) return;
+    const tick = () => setLeft(Math.max(0, Math.ceil((step.expiresAt - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [step]);
+  const done = (me: Me) => {
+    const from = location.state?.from;
+    navigate(
+      from && from !== '/change-password' && !me.must_change_password
+        ? from
+        : homeFor(me.role, me.must_change_password),
+      { replace: true },
+    );
+  };
   const submit = form.handleSubmit(async (values) => {
     setError('');
     try {
-      const me = await login(values.login, values.password);
-      const from = location.state?.from;
-      navigate(
-        from && from !== '/change-password' && !me.must_change_password
-          ? from
-          : homeFor(me.role, me.must_change_password),
-        { replace: true },
-      );
+      const result = await login(values.login, values.password);
+      if (isChallenge(result)) {
+        setCode('');
+        setStep({ challenge: result.challenge, expiresAt: Date.now() + result.expires_in * 1000 });
+        return;
+      }
+      done(result);
     } catch (e) {
       setError(errorMessage(t, (e as ApiError).code, (e as ApiError).status));
     }
   });
+  const backToLogin = () => {
+    setStep(null);
+    setCode('');
+    setError('');
+  };
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!step || code.length !== 6) return;
+    setError('');
+    setVerifying(true);
+    try {
+      done(await verifyCode(step.challenge, code));
+    } catch (err) {
+      const apiError = err as ApiError;
+      const message = errorMessage(t, apiError.code, apiError.status);
+      if (apiError.code === 'LOGIN_CODE_EXPIRED') backToLogin();
+      setError(message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+  if (step)
+    return (
+      <>
+        <h2>{t('auth.code_title')}</h2>
+        <p className="sub">{t('auth.code_sub')}</p>
+        {left > 0 ? (
+          <form onSubmit={submitCode} noValidate>
+            <Input
+              label={t('auth.code')}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              autoFocus
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            />
+            <p className="muted text-sm">
+              {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+            </p>
+            {error && <Alert tone="danger">{error}</Alert>}
+            <Button type="submit" block loading={verifying} disabled={code.length !== 6}>
+              {t('auth.verify')}
+            </Button>
+          </form>
+        ) : (
+          <Alert tone="danger">{t('auth.code_expired')}</Alert>
+        )}
+        <div className="auth-links">
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              backToLogin();
+            }}
+          >
+            {t('auth.code_back')}
+          </a>
+        </div>
+      </>
+    );
   return (
     <>
       <h2>{t('auth.login_title')}</h2>

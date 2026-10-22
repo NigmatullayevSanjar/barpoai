@@ -15,15 +15,31 @@ import {
   likePattern,
   password,
   loginName,
+  phone,
+  date,
 } from './schemas.js';
 import { token, digest, hashPassword } from './security.js';
 import { invariant } from './errors.js';
 import { dec } from './money.js';
 import { accessState } from './auth.js';
 import { issueInvoice, applyCredit, recomputeCoverage, periodEnd } from './billing.js';
-import { telegramConfigured } from './telegram.js';
-// super_admin platforma egasining barcha huquqlariga ega (egasi qarori, 2026-10-12).
-const owner = ['platform_owner', 'super_admin'];
+import { telegramConfigured, botHealth } from './telegram.js';
+// Rollar (egasi qarori, 2026-10-13, D15): egasi — biznes amallari (tarif, obuna, invoys, to'lov, bloklash);
+// super_admin — texnik rol: o'qish, parol tiklash, xodimlar, diagnostika, audit; support — faqat o'qish va murojaatlar.
+const owner = ['platform_owner'];
+const readers = ['platform_owner', 'super_admin', 'support'];
+const technical = ['platform_owner', 'super_admin'];
+/** tenants.phone CHECK (+998XXXXXXXXX): schemas.phone 9 raqamga keltiradi, prefiks shu yerda qo'shiladi. */
+const e164 = (p: string) => '+998' + p.replace(/^\+?998/, '');
+const legalForm = z.enum(['mchj', 'aj', 'yatt', 'qk', 'other']);
+/** Figma F6 kompaniya profili maydonlari (yaratish va tahrirlashda bir xil). */
+const tenantProfile = {
+  contact_name: z.string().trim().max(200).optional(),
+  email: z.email().max(200).optional(),
+  phone: phone.optional(),
+  address: z.string().trim().max(500).optional(),
+  legal_form: legalForm.optional(),
+};
 export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -63,9 +79,11 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/tenants',
     summary:
       'Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q); q — nom, kalit, alias; state — access_state filtri',
-    platform: owner,
+    platform: readers,
     query: searchQuery.extend({
       state: z.enum(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived']).optional(),
+      // Figma F6 "Kompaniyalar": tarif kodi bo'yicha filtr
+      plan: text.optional(),
     }),
     handler: async ({ db, actor, query }) => ({
       items: (
@@ -79,6 +97,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
                   OR EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active AND u.display_name ILIKE $4 ESCAPE '\\'))
              AND ($5::text IS NULL OR (CASE WHEN t.status<>'active' THEN t.status WHEN t.trial_ends_at IS NULL THEN 'pending'
                   WHEN t.paid_until>now() THEN 'paid' WHEN t.trial_ends_at>now() THEN 'trial' ELSE 'overdue' END)=$5)
+             AND ($6::text IS NULL OR EXISTS(SELECT 1 FROM subscriptions s JOIN plan_versions p ON p.id=s.plan_version_id WHERE s.tenant_id=t.id AND p.code=$6))
            ORDER BY t.created_at,t.id LIMIT $2 OFFSET $3`,
           [
             actor.id,
@@ -86,6 +105,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
             query.offset,
             query.q ? likePattern(query.q) : null,
             query.state ?? null,
+            query.plan ?? null,
           ],
         )
       ).rows.map((row) => ({ ...row, ...accessState(row) })),
@@ -94,16 +114,90 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/platform/tenants',
-    summary: 'Yangi korxona yaratish; trial signupda boshlanadi',
+    summary:
+      'Yangi korxona yaratish (Figma F6 uch qadam: profil, alias, boshlang‘ich tarif — bitta so‘rovda); trial signupda boshlanadi',
     platform: owner,
-    body: z.strictObject({ legal_name: text, registration_key: text }),
+    body: z.strictObject({
+      legal_name: text,
+      registration_key: text,
+      ...tenantProfile,
+      alias: text.optional(),
+      plan_version_id: uuid.optional(),
+      next_period_start: timestamp.optional(),
+    }),
     handler: async ({ db, actor, body }) => {
       const row = await one(
         db,
-        'INSERT INTO tenants(legal_name,registration_key) VALUES($1,$2) RETURNING *',
-        [body.legal_name, body.registration_key],
+        'INSERT INTO tenants(legal_name,registration_key,contact_name,email,phone,address,legal_form) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        [
+          body.legal_name,
+          body.registration_key,
+          body.contact_name || null,
+          body.email || null,
+          body.phone ? e164(body.phone) : null,
+          body.address || null,
+          body.legal_form ?? null,
+        ],
       );
+      if (body.alias)
+        await db.query(
+          'INSERT INTO tenant_aliases(owner_id,tenant_id,alias) VALUES($1,$2,$3) ON CONFLICT(owner_id,tenant_id) DO UPDATE SET alias=excluded.alias',
+          [actor.id, row.id, body.alias],
+        );
+      if (body.plan_version_id) {
+        await db.query(
+          'INSERT INTO subscriptions(tenant_id,plan_version_id,next_period_start) VALUES($1,$2,$3)',
+          [row.id, body.plan_version_id, body.next_period_start ?? new Date().toISOString()],
+        );
+        await audit(db, actor, 'subscription.set', row.id);
+      }
       await audit(db, actor, 'tenant.create', row.id);
+      return row;
+    },
+  });
+  add({
+    method: 'PATCH',
+    path: '/v1/platform/tenants/:id/profile',
+    summary:
+      'Kompaniya profilini tahrirlash (Figma F6): nom, mas‘ul shaxs, e-mail, telefon, manzil, shakl, alias',
+    platform: owner,
+    params: idParams,
+    body: z.strictObject({
+      version,
+      legal_name: text,
+      ...tenantProfile,
+      alias: z.string().trim().max(500).optional(),
+    }),
+    handler: async ({ db, actor, params, body }) => {
+      const t = await one(db, 'SELECT * FROM tenants WHERE id=$1 FOR UPDATE', [params.id]);
+      invariant(t.version === body.version, 'VERSION_CONFLICT');
+      const row = await one(
+        db,
+        `UPDATE tenants SET legal_name=$2,contact_name=$3,email=$4,phone=$5,address=$6,legal_form=$7,version=version+1
+         WHERE id=$1 RETURNING *`,
+        [
+          params.id,
+          body.legal_name,
+          body.contact_name || null,
+          body.email || null,
+          body.phone ? e164(body.phone) : null,
+          body.address || null,
+          body.legal_form ?? null,
+        ],
+      );
+      if (body.alias !== undefined) {
+        if (body.alias)
+          await db.query(
+            'INSERT INTO tenant_aliases(owner_id,tenant_id,alias) VALUES($1,$2,$3) ON CONFLICT(owner_id,tenant_id) DO UPDATE SET alias=excluded.alias',
+            [actor.id, params.id, body.alias],
+          );
+        else
+          await db.query('DELETE FROM tenant_aliases WHERE owner_id=$1 AND tenant_id=$2', [
+            actor.id,
+            params.id,
+          ]);
+      }
+      await audit(db, actor, 'tenant.profile', params.id);
       return row;
     },
   });
@@ -203,10 +297,17 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/plans',
-    summary: 'Tarif versiyalari',
-    platform: owner,
+    summary:
+      'Tarif versiyalari; har versiya bo‘yicha kompaniyalar va faol foydalanuvchilar soni (Figma F6 kartalar)',
+    platform: readers,
     handler: async ({ db }) => ({
-      items: (await db.query('SELECT * FROM plan_versions ORDER BY code,version')).rows,
+      items: (
+        await db.query(
+          `SELECT p.*,(SELECT count(*)::int FROM subscriptions s WHERE s.plan_version_id=p.id) tenants,
+                  (SELECT count(*)::int FROM users u JOIN subscriptions s ON s.tenant_id=u.tenant_id WHERE s.plan_version_id=p.id AND u.active) users
+           FROM plan_versions p ORDER BY p.code,p.version`,
+        )
+      ).rows,
     }),
   });
   add({
@@ -242,7 +343,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/users/:id/reset',
     summary:
       'Istalgan foydalanuvchiga (kompaniya admini ham) bir martalik 30 daqiqalik reset havolasi; platforma egasini faqat egasi tiklaydi',
-    platform: owner,
+    platform: technical,
     params: idParams,
     handler: async ({ db, actor, params }) => {
       const user = await one(db, 'SELECT id,role FROM users WHERE id=$1 AND active', [params.id]);
@@ -378,17 +479,87 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/platform/billing/summary',
-    summary: 'Invoys, pul tushumi, qarz (invoys kesimida) va kompaniyalar kredit qoldig‘i alohida',
-    platform: owner,
-    handler: async ({ db }) =>
-      one(
+    summary:
+      'Invoys, pul tushumi, qarz va kredit qoldig‘i; Figma F6: kompaniya sonlari, 6 oylik dinamika, qarz taqsimoti, so‘nggi operatsiyalar, xodimlar taqsimoti',
+    platform: readers,
+    handler: async ({ db }) => {
+      const base = await one(
         db,
         `WITH inv AS(SELECT coalesce(sum(i.amount),0) amount,coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))),0) debt
                   FROM billing_invoices i LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true),
               e AS(SELECT coalesce(sum(amount) FILTER(WHERE kind='payment'),0) payment,coalesce(sum(amount) FILTER(WHERE kind='refund'),0) refund FROM billing_entries),
               cr AS(SELECT coalesce(sum(amount),0) balance FROM billing_credits)
          SELECT inv.amount::text invoiced,e.payment::text cash_received,e.refund::text refunded,inv.debt::text debt,cr.balance::text credit_balance,NULL::text profit FROM inv,e,cr`,
-      ),
+      );
+      // Holatlar auth.ts accessState() tartibida: faol bo'lmasa — status; trial yo'q — pending; to'langan; sinov; muddati o'tgan.
+      const counts = await one(
+        db,
+        `SELECT count(*)::int tenants,
+                (SELECT count(*)::int FROM users u WHERE u.active AND u.tenant_id IS NOT NULL) employees,
+                count(*) FILTER(WHERE status='active' AND trial_ends_at IS NOT NULL AND paid_until>now())::int paid,
+                count(*) FILTER(WHERE status='active' AND trial_ends_at IS NOT NULL AND NOT coalesce(paid_until>now(),false) AND trial_ends_at>now())::int trial,
+                count(*) FILTER(WHERE status='active' AND trial_ends_at IS NULL)::int pending,
+                count(*) FILTER(WHERE status='active' AND trial_ends_at IS NOT NULL AND NOT coalesce(paid_until>now(),false) AND trial_ends_at<=now())::int overdue,
+                count(*) FILTER(WHERE status='blocked')::int blocked
+         FROM tenants`,
+      );
+      const monthly = (
+        await db.query(
+          `WITH months AS (SELECT generate_series(date_trunc('month',now())-interval '5 months',date_trunc('month',now()),interval '1 month') m)
+           SELECT to_char(m,'YYYY-MM-01') AS month,
+                  coalesce((SELECT sum(i.amount) FROM billing_invoices i WHERE date_trunc('month',i.period_start)=m),0)::text invoiced,
+                  coalesce((SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) FROM billing_entries e WHERE e.kind IN ('payment','refund') AND date_trunc('month',e.created_at)=m),0)::text received
+           FROM months ORDER BY m`,
+        )
+      ).rows;
+      const debtSplit = await one(
+        db,
+        `SELECT coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at<now()),0)::text overdue,
+                coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at>=now()),0)::text current,
+                CASE WHEN sum(greatest(0,i.amount-coalesce(c.covered,0)))>0 THEN round(100*coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at<now()),0)/sum(greatest(0,i.amount-coalesce(c.covered,0))),1)::text END overdue_share,
+                CASE WHEN sum(greatest(0,i.amount-coalesce(c.covered,0)))>0 THEN round(100*coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at>=now()),0)/sum(greatest(0,i.amount-coalesce(c.covered,0))),1)::text END current_share
+         FROM billing_invoices i LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true`,
+      );
+      const recent = (
+        await db.query(
+          `SELECT e.id,e.kind,e.amount::text,e.created_at,t.legal_name FROM billing_entries e JOIN tenants t ON t.id=e.tenant_id ORDER BY e.created_at DESC LIMIT 8`,
+        )
+      ).rows;
+      const roles = (
+        await db.query(
+          `SELECT role,count(*)::int count FROM users WHERE active AND tenant_id IS NOT NULL GROUP BY role ORDER BY 2 DESC,1`,
+        )
+      ).rows;
+      return { ...base, counts, monthly, debt_split: debtSplit, recent, roles };
+    },
+  });
+  add({
+    method: 'GET',
+    path: '/v1/platform/billing/report',
+    summary:
+      'Oylik buxgalter hisoboti (Figma F6): oy ichidagi to‘lov/kredit/qaytarish yozuvlari yurib boruvchi qoldiq bilan va daromad–zarar jami',
+    platform: readers,
+    query: z.object({ month: date }),
+    handler: async ({ db, query }) => {
+      const entries = (
+        await db.query(
+          `SELECT e.id,e.created_at,e.kind,e.amount::text,e.external_ref,e.reason,t.legal_name,
+                  sum(CASE WHEN e.kind='payment' THEN e.amount WHEN e.kind='refund' THEN -e.amount ELSE 0 END) OVER (ORDER BY e.created_at,e.id)::text running
+           FROM billing_entries e JOIN tenants t ON t.id=e.tenant_id
+           WHERE e.created_at>=date_trunc('month',$1::date) AND e.created_at<date_trunc('month',$1::date)+interval '1 month'
+           ORDER BY e.created_at,e.id`,
+          [query.month],
+        )
+      ).rows;
+      const totals = await one(
+        db,
+        `WITH s AS (SELECT coalesce(sum(amount) FILTER(WHERE kind='payment'),0) income,coalesce(sum(amount) FILTER(WHERE kind='refund'),0) expense
+                    FROM billing_entries WHERE created_at>=date_trunc('month',$1::date) AND created_at<date_trunc('month',$1::date)+interval '1 month')
+         SELECT income::text,expense::text,(income-expense)::text net,CASE WHEN income>0 THEN round(100*(income-expense)/income,1)::text END margin FROM s`,
+        [query.month],
+      );
+      return { month: query.month, entries, totals };
+    },
   });
   add({
     method: 'GET',
@@ -474,6 +645,35 @@ export function platformRoutes(add: (r: Endpoint) => void) {
       );
       const telegram = await one(db, 'SELECT count(*)::int linked FROM telegram_accounts', []);
       const byStatus = (status: string) => tenants.filter((t) => t.status === status).length;
+      // Figma F6 "Xatoliklar" va "Integratsiyalar": haftalik dinamika, kod bo'yicha jurnal, tashqi xizmatlar holati.
+      const daily = (
+        await db.query(
+          `WITH d AS (SELECT generate_series(current_date-6,current_date,interval '1 day')::date AS day)
+           SELECT to_char(d.day,'YYYY-MM-DD') AS day,(SELECT count(*)::int FROM error_events e WHERE e.created_at::date=d.day) count FROM d ORDER BY d.day`,
+        )
+      ).rows;
+      const byCode = (
+        await db.query(
+          `SELECT code,count(*)::int count,max(created_at) last_at,(array_agg(path ORDER BY created_at DESC))[1] path,(array_agg(message ORDER BY created_at DESC))[1] message
+           FROM error_events WHERE created_at>now()-interval '7 days' GROUP BY code ORDER BY 2 DESC,1 LIMIT 20`,
+        )
+      ).rows;
+      const cbu = await one(
+        db,
+        "SELECT max(rate_date)::text last_date,coalesce(max(rate_date)>=current_date-7,false) ok FROM exchange_rates WHERE currency='USD'",
+        [],
+      );
+      const bot = telegramConfigured() ? await botHealth(db) : null;
+      const integrations = [
+        {
+          key: 'telegram',
+          configured: telegramConfigured(),
+          ok: Boolean(bot && bot.polling_ok && !bot.conflict),
+          last_at: bot?.last_ok_at ?? null,
+          detail: bot?.last_error ?? null,
+        },
+        { key: 'cbu', configured: true, ok: cbu.ok, last_at: cbu.last_date, detail: null },
+      ];
       return {
         database: {
           ok: true,
@@ -482,9 +682,10 @@ export function platformRoutes(add: (r: Endpoint) => void) {
           last_migration: dbRow.last_migration,
         },
         worker: { ...worker, failed_jobs: deadJobs.slice(0, 20) },
-        errors: { ...errors, items: recentErrors },
+        errors: { ...errors, items: recentErrors, daily, by_code: byCode },
         sessions_active: sessions.active,
-        telegram: { configured: telegramConfigured(), linked_accounts: telegram.linked },
+        telegram: { configured: telegramConfigured(), linked_accounts: telegram.linked, bot },
+        integrations,
         tenants: {
           active: byStatus('active'),
           pending: byStatus('pending'),

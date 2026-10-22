@@ -170,6 +170,7 @@ try {
     foreman = await employee('foreman'),
     warehouseManager = await employee('warehouse_manager'),
     financier = await employee('financier'),
+    accountant = await employee('accountant'),
     manager = await employee('manager');
   passed.push('Employee first login requires password change; sessions revoked');
   // ---- 1.1: ro'yxat qidiruvi va filtrlari serverda (sahifalash bilan birga ishlashi uchun)
@@ -467,6 +468,7 @@ try {
       role: 'manager',
       phone: '+998901234567',
       position: 'Sayt muhandisi',
+      hired_at: '2026-10-10',
     },
     adminToken,
   );
@@ -501,8 +503,27 @@ try {
   assert(!(await empIds('active=true&limit=100')).includes(searcher.id));
   assert((await empIds('active=true&limit=100')).includes(foreman.id));
   assert.deepEqual(await empIds('active=0'), await empIds('active=false'));
+  // Kartadagi qiymatlarni o'zgartirmasdan qaytarib saqlash (UI shunday qiladi): `date` ustuni YYYY-MM-DD matn bo'lib keladi,
+  // aks holda pg Date ni ISO vaqtga aylantirib, PATCH VALIDATION_ERROR berardi (2026-10-17 egasi xabari).
+  const empCard = await call('GET', `/v1/employees/${searcher.id}`, undefined, adminToken);
+  assert.equal(empCard.hired_at, '2026-10-10');
+  await call(
+    'PATCH',
+    `/v1/employees/${searcher.id}`,
+    {
+      version: empCard.version,
+      display_name: empCard.display_name,
+      role: 'foreman',
+      active: empCard.active,
+      phone: empCard.phone,
+      position: empCard.position,
+      hired_at: empCard.hired_at,
+    },
+    adminToken,
+  );
+  assert.equal((await call('GET', `/v1/employees/${searcher.id}`, undefined, adminToken)).role, 'foreman');
   passed.push(
-    'Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server',
+    'Employee q matches phone and position, the list never exposes password hashes and active=false/0 and true filter on the server; an employee card with a hire date is saved back unchanged (date columns are YYYY-MM-DD text)',
   );
   const financierPages = await call('GET', '/v1/me/permissions', undefined, financier.token);
   assert.equal(financierPages.pages.bank_cash.create, false);
@@ -525,11 +546,13 @@ try {
     { project_id: project.id, custodian_id: brigadier.id },
     adminToken,
   );
+  // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; yaratishni ombor mudiri qiladi
+  await call('POST', '/v1/materials', { name: 'Admin materiali', unit_id: 'kg' }, adminToken, undefined, 403);
   const material = await call(
     'POST',
     '/v1/materials',
     { name: 'Sement', unit_id: 'kg' },
-    adminToken,
+    warehouseManager.token,
   );
   const materialSearch = await call('GET', '/v1/materials?q=SEM', undefined, foreman.token);
   assert(materialSearch.items.some((m: any) => m.id === material.id));
@@ -542,7 +565,7 @@ try {
   const numbered = Array.from({ length: 120 }, (_, i) => `Material ${String(i + 1).padStart(3, '0')}`);
   const materialNames = [...numbered, 'AAA takror', 'AAA takror', 'AAA takror', 'Qum_mayda'];
   for (const materialName of materialNames)
-    await call('POST', '/v1/materials', { name: materialName, unit_id: 'kg' }, adminToken);
+    await call('POST', '/v1/materials', { name: materialName, unit_id: 'kg' }, warehouseManager.token);
   const total = materialNames.length + 1;
   const matIds = async (query: string) =>
     (await call('GET', `/v1/materials?${query}`, undefined, foreman.token)).items.map(
@@ -1636,7 +1659,10 @@ try {
   const brigadierUser = await transaction(appPool!, null, (db) =>
     consumeLinkToken(db, brigadierLink.url.split('start=')[1], tgBrigadier),
   );
-  await call('POST', '/v1/materials', { name: 'Armatura 12', unit_id: 'kg' }, adminAgain);
+  // Admin material yaratmaydi (2026-10-16); ombor mudiri (kirim huquqi) yangi sessiya bilan yaratadi
+  const whTg = (await call('POST', '/v1/auth/login', { login: 'warehouse_manager', password: pass + '2' }))
+    .access_token;
+  await call('POST', '/v1/materials', { name: 'Armatura 12', unit_id: 'kg' }, whTg);
   const step1 = await startMaterialRequest(appPool!, brigadierUser, 'uz');
   assert.match(step1, /Materialni tanlang/);
   assert.equal(hasFlow(await loadState(appPool!, '515151')), true);
@@ -1690,15 +1716,24 @@ try {
     adminAgain,
   );
   assert.equal(requests.items.length, 1);
-  const fulfilled = await call(
+  // Talabnomani faqat ombor mudiri hal qiladi (2026-10-16); admin faqat ko'radi
+  await call(
     'POST',
     `/v1/stock/requests/${requests.items[0].id}/actions`,
     { version: 1, action: 'reject', note: 'Sinov: rad etish' },
     adminAgain,
+    undefined,
+    403,
+  );
+  const fulfilled = await call(
+    'POST',
+    `/v1/stock/requests/${requests.items[0].id}/actions`,
+    { version: 1, action: 'reject', note: 'Sinov: rad etish' },
+    whTg,
   );
   assert.equal(fulfilled.status, 'rejected');
   passed.push(
-    'Telegram multi-step material request creates a pending request; admin resolves it via API',
+    'Telegram multi-step material request creates a pending request; the admin only reads it, the warehouse manager resolves it via API',
   );
   // Telegram progress oqimi: obyekt bitta → ish qatori → miqdor → matn → rasmsiz → kunlik hisobot
   const p1 = await startProgressReport(appPool!, brigadierUser, 'uz');
@@ -2218,11 +2253,21 @@ try {
   };
   const tenantB = await newTenant('Begona korxona', 'TEST-G2', 'adminb');
   const adminBToken = tenantB.token;
+  // Admin material yaratmaydi (2026-10-16): B korxonada ombor mudiri yaratadi (nomi "begona" qidiruviga tushmasin)
+  await call(
+    'POST',
+    '/v1/employees',
+    { login: 'wm_b', display_name: 'Omborchi B', password: pass, role: 'warehouse_manager' },
+    adminBToken,
+  );
+  const wmBFirst = (await call('POST', '/v1/auth/login', { login: 'wm_b', password: pass })).access_token;
+  await call('POST', '/v1/auth/password', { current_password: pass, new_password: pass + '2' }, wmBFirst);
+  const wmBToken = (await call('POST', '/v1/auth/login', { login: 'wm_b', password: pass + '2' })).access_token;
   const bMaterial = await call(
     'POST',
     '/v1/materials',
     { name: 'Begona material', unit_id: 'kg' },
-    adminBToken,
+    wmBToken,
   );
   const bCounterparty = await call(
     'POST',
@@ -2892,6 +2937,8 @@ try {
   // Egasi qarori (2026-10-11, 1-savol): zonasiz, lekin smeta qatoriga bog'langan sarf qator zonasiga tushadi.
   // Reja A 100, sarf 80 (zonasiz, A qatoriga bog'langan) → A prognozi 100, umumiy guruh 0.
   const brigP = (await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })).access_token;
+  // Ombor mudiri: material yaratish va ombor amallari (admin faqat ko'radi, 2026-10-16)
+  const whP = (await call('POST', '/v1/auth/login', { login: 'warehouse_manager', password: pass + '2' })).access_token;
   const projectQ = await call('POST', '/v1/projects', { name: 'Sarf zonasi obyekti' }, adminAgain);
   const qBlock = await call('POST', `/v1/projects/${projectQ.id}/zones`, { name: 'Blok Q', kind: 'block' }, adminAgain);
   await call(
@@ -2900,7 +2947,7 @@ try {
     { number: '1', kind: 'apartment', zone_id: qBlock.id, floor: null, rooms: null, area_m2: '10' },
     adminAgain,
   );
-  const brick = await call('POST', '/v1/materials', { name: 'G‘isht', unit_id: 'pcs' }, adminAgain);
+  const brick = await call('POST', '/v1/materials', { name: 'G‘isht', unit_id: 'pcs' }, whP);
   const qEstimate = await call(
     'POST',
     '/v1/estimates',
@@ -2916,17 +2963,22 @@ try {
   await call('POST', `/v1/employees/${brigadier.id}/assignments`, { project_id: projectQ.id }, adminAgain);
   const qWarehouse = await call('POST', '/v1/warehouses', { project_id: projectQ.id, name: 'Ombor Q' }, adminAgain);
   const qCustody = await call('POST', '/v1/stock/custody', { project_id: projectQ.id, custodian_id: brigadier.id }, adminAgain);
+  // Admin ombor amallarini bajarmaydi (2026-10-16): ombor mudiri va prorab obyektga biriktiriladi
   await call(
     'POST',
-    '/v1/stock/commands',
-    { project_id: projectQ.id, kind: 'opening', material_id: brick.id, to_account_id: qWarehouse.account.id, quantity: '1', unit_cost: '80', reason: 'Boshlang‘ich qoldiq' },
+    `/v1/employees/${warehouseManager.id}/assignments`,
+    { project_id: projectQ.id, warehouse_id: qWarehouse.warehouse.id },
     adminAgain,
   );
+  await call('POST', `/v1/employees/${foreman.id}/assignments`, { project_id: projectQ.id }, adminAgain);
+  const qOpeningBody = { project_id: projectQ.id, kind: 'opening', material_id: brick.id, to_account_id: qWarehouse.account.id, quantity: '1', unit_cost: '80', reason: 'Boshlang‘ich qoldiq' };
+  await call('POST', '/v1/stock/commands', qOpeningBody, adminAgain, undefined, 403);
+  await call('POST', '/v1/stock/commands', qOpeningBody, whP);
   const qTransfer = await call(
     'POST',
     '/v1/stock/commands',
     { project_id: projectQ.id, kind: 'transfer', material_id: brick.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '1', reason: 'Brigadirga' },
-    adminAgain,
+    whP,
   );
   await call('POST', `/v1/stock/commands/${qTransfer.id}/actions`, { version: 1, action: 'accept', quantity: '1' }, brigP);
   const qConsumption = await call(
@@ -2935,7 +2987,8 @@ try {
     { project_id: projectQ.id, kind: 'consumption', material_id: brick.id, from_account_id: qCustody.id, quantity: '1', estimate_line_id: qEstimate.lines[0].id, reason: 'Zonasiz sarf' },
     brigP,
   );
-  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, adminAgain);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, adminAgain, undefined, 403);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, foreP);
   const vQ = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
   assert.deepEqual(
     vQ.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
@@ -2946,7 +2999,8 @@ try {
   );
   assert.equal(vQ.forecast_total, '100.00');
   // Sarf reversal (zona va qator nusxalanmaydi) ham asl buyruq orqali Blok Q da kamayadi
-  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, adminAgain);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, adminAgain, undefined, 403);
+  await call('POST', `/v1/stock/commands/${qConsumption.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, whP);
   const vQ2 = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
   assert.deepEqual(
     vQ2.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
@@ -3082,8 +3136,8 @@ try {
     unit_cost: '15',
     reason: 'Yetkazib beruvchidan kirim',
   };
-  const matchedReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
-  const freeReceipt = await call('POST', '/v1/stock/commands', receiptBody, adminAgain);
+  const matchedReceipt = await call('POST', '/v1/stock/commands', receiptBody, whP);
+  const freeReceipt = await call('POST', '/v1/stock/commands', receiptBody, whP);
   await call(
     'POST',
     '/v1/finance/documents',
@@ -3116,6 +3170,19 @@ try {
     (await receiptIds(`&unmatched=true&q=${encodeURIComponent(material.name)}`)).includes(freeReceipt.id),
   );
   assert.deepEqual(await receiptIds('&unmatched=true&q=mavjud-emas-xyz'), []);
+  // Buxgalter invoysni o'zi yaratadi: bog'lanmagan kirimlarni ko'radi (stock.read), lekin kirim yarata olmaydi.
+  // Boshlang'ich token bu bo'limgacha eskiradi — boshqa bo'limlardagidek yangi login.
+  const accP = (await call('POST', '/v1/auth/login', { login: 'accountant', password: pass + '2' })).access_token;
+  const accountantReceipts = (
+    await call(
+      'GET',
+      `/v1/stock/commands?project_id=${project.id}&kind=receipt&status=posted&unmatched=true&limit=100`,
+      undefined,
+      accP,
+    )
+  ).items.map((r: any) => r.id);
+  assert(accountantReceipts.includes(freeReceipt.id) && !accountantReceipts.includes(matchedReceipt.id));
+  await call('POST', '/v1/stock/commands', receiptBody, accP, undefined, 403);
   await call(
     'GET',
     `/v1/stock/commands?project_id=${project.id}&unmatched=yes`,
@@ -3125,7 +3192,7 @@ try {
     400,
   );
   passed.push(
-    'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name',
+    'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name; the accountant lists unmatched receipts but cannot post stock',
   );
   // O7: moliya yig'masi yozuv bo'lmasa ham 2 xonali summa qaytaradi ('0' emas, '0.00')
   const emptyProject = await call('POST', '/v1/projects', { name: 'Bo‘sh yig‘ma' }, adminAgain);
@@ -3299,9 +3366,15 @@ try {
   );
   const superToken = (await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass }))
     .access_token;
-  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/support'])
-    await call('GET', path, undefined, superToken);
-  await call('GET', '/v1/platform/tenants', undefined, supportToken, undefined, 403);
+  // D15 (2026-10-13): super_admin va support o'qiydi; biznes amallari (tarif, obuna, invoys, bloklash) faqat egasida;
+  // xodimlar va platforma auditi — super_admin; parol tiklash — egasi va super_admin.
+  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/billing/invoices', '/v1/platform/support', `/v1/platform/tenants/${t.id}`])
+    for (const tok of [superToken, supportToken]) await call('GET', path, undefined, tok);
+  await call('POST', '/v1/platform/plans', { code: 'tech', version: 1, monthly_price: '1.00' }, superToken, undefined, 403);
+  await call('PATCH', `/v1/platform/tenants/${t.id}`, { status: 'blocked', version: 1, reason: 'Texnik sinov' }, superToken, undefined, 403);
+  await call('POST', '/v1/platform/tenants', { legal_name: 'Support yaratmaydi', registration_key: 'SUP-1' }, supportToken, undefined, 403);
+  await call('GET', '/v1/platform/staff', undefined, supportToken, undefined, 403);
+  await call('GET', '/v1/platform/audit', undefined, supportToken, undefined, 403);
   const tenantAdminId = (await admin.query("SELECT id FROM users WHERE tenant_id=$1 AND role='tenant_admin'", [t.id]))
     .rows[0].id;
   const ownerId = (await admin.query("SELECT id FROM users WHERE login='owner'")).rows[0].id;
@@ -3309,7 +3382,75 @@ try {
   await call('POST', `/v1/platform/users/${ownerId}/reset`, undefined, superToken, undefined, 403);
   await call('POST', `/v1/platform/users/${superId}/reset`, undefined, superToken, undefined, 403);
   await call('POST', `/v1/platform/users/${tenantAdminId}/reset`, undefined, supportToken, undefined, 403);
-  passed.push('super_admin opens every platform-owner page; support does not; nobody resets their own or the owner’s password through a reset link');
+  passed.push('D15: super_admin and support read tenants/plans/billing; business actions, staff and audit stay with the owner/super_admin; nobody resets their own or the owner’s password');
+  // ---- Xodimlar: super_admin faolsizlantiradi va rolini o'zgartiradi (sessiya bekor), o'zini va egasini emas
+  const helper = await call('POST', '/v1/platform/staff', { login: 'helper2', password: pass, display_name: 'Yordamchi', role: 'support' }, superToken);
+  const staffList = await call('GET', '/v1/platform/staff', undefined, superToken);
+  assert.equal(staffList.items.find((s: any) => s.id === helper.id).telegram_linked, false);
+  // Yangi xodim birinchi kirishda parolni almashtiradi (must_change_password), keyin ishlaydi.
+  const helperFirst = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass })).access_token;
+  await call('POST', '/v1/auth/password', { current_password: pass, new_password: pass + '2' }, helperFirst);
+  const helperToken = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' })).access_token;
+  await call('GET', '/v1/platform/support', undefined, helperToken);
+  await call('PATCH', `/v1/platform/staff/${helper.id}`, { active: true, role: 'super_admin' }, superToken);
+  await call('GET', '/v1/platform/support', undefined, helperToken, undefined, 401);
+  const helperToken2 = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' })).access_token;
+  await call('GET', '/v1/platform/staff', undefined, helperToken2);
+  await call('PATCH', `/v1/platform/staff/${helper.id}`, { active: false, role: 'super_admin' }, superToken);
+  await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' }, undefined, undefined, 401);
+  await call('PATCH', `/v1/platform/staff/${superId}`, { active: false, role: 'support' }, superToken, undefined, 403);
+  await call('PATCH', `/v1/platform/staff/${ownerId}`, { active: false, role: 'support' }, superToken, undefined, 403);
+  passed.push('Staff: role change and deactivation revoke sessions and block login; a super_admin cannot change itself or the owner');
+  // ---- Platforma auditi: egasi va super_admin ko'radi, action filtri ishlaydi
+  const pAudit = await call('GET', '/v1/platform/audit?action=platform.staff', undefined, superToken);
+  assert(pAudit.items.length >= 3 && pAudit.items.every((a: any) => a.action.startsWith('platform.staff')));
+  assert(pAudit.items.every((a: any) => a.actor_role === 'super_admin'));
+  assert.equal(typeof pAudit.total, 'number');
+  await call('GET', '/v1/platform/audit?limit=1', undefined, ownerToken);
+  passed.push('Platform audit lists platform-staff actions with actor role and filters by action prefix');
+  // ---- Yangi murojaat → platforma xodimlariga bildirishnoma (super_admin, support, egasi)
+  const srNew = await call('POST', '/v1/support-requests', { kind: 'plan_change', message: 'Tarifni kattaroqqa almashtiring' }, adminAgain);
+  for (const tok of [superToken, supportToken, ownerToken]) {
+    const n = await call('GET', '/v1/me/notifications?unread=true', undefined, tok);
+    assert(n.items.some((x: any) => x.kind === 'support.request' && x.payload.support_request_id === srNew.id), 'support.request notification missing');
+  }
+  passed.push('A new support request notifies every active platform staff member');
+  // ---- 2FA: Telegram ulangan super_admin uchun kirish kod bilan; kod botga global fetch orqali ketadi (bu yerda ushlanadi)
+  const saLink = await transaction(appPool!, null, (db) => createLinkToken(db, { id: superId, tenant_id: null, role: 'super_admin' }));
+  await transaction(appPool!, null, (db) => consumeLinkToken(db, saLink.url.split('start=')[1]!, { id: '777001', first_name: 'SA' } as any));
+  const realFetch = globalThis.fetch;
+  const sent: string[] = [];
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.includes('api.telegram.org')) {
+      sent.push(JSON.parse(init.body).text);
+      return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const challengeRes = await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass });
+    assert.equal(challengeRes.two_factor, true);
+    assert(!challengeRes.access_token && challengeRes.challenge.length >= 32);
+    const code = /kirish kodi: (\d{6})/.exec(sent.at(-1) ?? '')![1]!;
+    assert.equal((await call('POST', '/v1/auth/login/verify', { challenge: challengeRes.challenge, code: '000000' }, undefined, undefined, 401)).error.code, 'LOGIN_CODE_INVALID');
+    const session2fa = await call('POST', '/v1/auth/login/verify', { challenge: challengeRes.challenge, code });
+    assert(session2fa.access_token);
+    await call('GET', '/v1/platform/staff', undefined, session2fa.access_token);
+    assert.equal((await call('POST', '/v1/auth/login/verify', { challenge: challengeRes.challenge, code }, undefined, undefined, 410)).error.code, 'LOGIN_CODE_EXPIRED');
+    // 5 ta xato urinish — challenge bekor
+    const c2 = await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass });
+    for (let i = 0; i < 4; i++) await call('POST', '/v1/auth/login/verify', { challenge: c2.challenge, code: '111111' }, undefined, undefined, 401);
+    await call('POST', '/v1/auth/login/verify', { challenge: c2.challenge, code: '111111' }, undefined, undefined, 410);
+    // support uchun 2FA yo'q (Telegram ulangan bo'lsa ham oddiy kirish)
+    const techId = (await admin.query("SELECT id FROM users WHERE login='tech'")).rows[0].id;
+    const supLink = await transaction(appPool!, null, (db) => createLinkToken(db, { id: techId, tenant_id: null, role: 'support' }));
+    await transaction(appPool!, null, (db) => consumeLinkToken(db, supLink.url.split('start=')[1]!, { id: '777002', first_name: 'Sup' } as any));
+    assert((await call('POST', '/v1/auth/login', { login: 'tech', password: pass })).access_token);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  passed.push('2FA: a Telegram-linked super_admin gets a 6-digit code instead of a session, wrong codes are limited to 5, a used or expired challenge is rejected, support logs in without a code');
   // ---- Blok kartasi: maydon, sanalar, mas'ullar, rasm; holat sanalardan; smeta jami blok zonalaridan
   const blockImage = await call(
     'POST',

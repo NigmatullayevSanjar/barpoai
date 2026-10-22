@@ -8,6 +8,7 @@ import { Check, Copy, KeyRound, Link2, Pencil, Plus, ShieldBan, ShieldCheck, Arc
 import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
+import { canManageStaff, isPlatformOwner } from '@/lib/permissions';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { displayCurrency } from '@/lib/currency-store';
@@ -16,6 +17,7 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  EmptyState,
   Input,
   Modal,
   PageHeader,
@@ -29,8 +31,9 @@ import {
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 
-type AccessState = 'pending' | 'trial' | 'paid' | 'overdue' | 'blocked' | 'archived';
-type Tenant = {
+export type AccessState = 'pending' | 'trial' | 'paid' | 'overdue' | 'blocked' | 'archived';
+export type LegalForm = 'mchj' | 'aj' | 'yatt' | 'qk' | 'other';
+export type Tenant = {
   id: string;
   legal_name: string;
   registration_key: string;
@@ -49,16 +52,26 @@ type Tenant = {
   admin_name: string | null;
   plan_code: string | null;
   block_reason: string | null;
+  /** Figma F6 kompaniya profili (migratsiya 012 va 023) */
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  legal_form: LegalForm | null;
 };
-type Plan = {
+export type Plan = {
   id: string;
   code: string;
   version: number;
   monthly_price: string;
   limits: Record<string, number>;
   created_at: string;
+  /** Shu versiyadagi kompaniyalar va ularning faol foydalanuvchilari (serverdan) */
+  tenants?: number;
+  users?: number;
 };
-const stateTone: Record<AccessState, Tone> = {
+export const legalForms: LegalForm[] = ['mchj', 'aj', 'yatt', 'qk', 'other'];
+export const stateTone: Record<AccessState, Tone> = {
   pending: 'neutral',
   trial: 'info',
   paid: 'success',
@@ -67,7 +80,7 @@ const stateTone: Record<AccessState, Tone> = {
   archived: 'neutral',
 };
 
-function useApiError() {
+export function useApiError() {
   const { t } = useT();
   const toast = useToast();
   return (e: unknown) => toast.error(errorMessage(t, (e as ApiError).code, (e as ApiError).status));
@@ -89,287 +102,7 @@ export function AccessBadge({ row }: { row: Pick<Tenant, 'access_state' | 'days_
   );
 }
 
-/* ---------------- Dashboard ---------------- */
-export function PlatformDashboard() {
-  const { t, lang } = useT();
-  const tenants = useQuery({
-    queryKey: ['platform-tenants'],
-    queryFn: () => apiAll<Tenant>('/v1/platform/tenants'),
-  });
-  const summary = useQuery({
-    queryKey: ['platform-summary'],
-    queryFn: () =>
-      api<{
-        invoiced: string;
-        cash_received: string;
-        refunded: string;
-        debt: string;
-        credit_balance: string;
-        profit: null;
-      }>('/v1/platform/billing/summary'),
-  });
-  const count = (s: AccessState) => tenants.data?.items.filter((x) => x.access_state === s).length ?? 0;
-  return (
-    <div className="stack" style={{ gap: 18 }}>
-      <PageHeader title={t('platform.dashboard_title')} description={t('platform.dashboard_sub')} />
-      <div className="grid-4">
-        <Stat
-          accent
-          to="/admin/tenants"
-          label={t('platform.tenants_total')}
-          value={tenants.data?.items.length ?? '—'}
-        />
-        <Stat label={t('platform.tenants_trial')} value={count('trial')} />
-        <Stat label={t('platform.tenants_paid')} value={count('paid')} />
-        <Stat
-          label={t('platform.tenants_overdue')}
-          value={count('overdue')}
-          sub={`${t('platform.tenants_blocked')}: ${count('blocked')} · ${t('platform.tenants_pending')}: ${count('pending')}`}
-        />
-      </div>
-      <div className="grid-4">
-        <Stat
-          label={t('platform.invoiced')}
-          value={summary.data ? formatMoney(summary.data.invoiced, lang, false) : '—'}
-          sub={displayCurrency()}
-        />
-        <Stat
-          label={t('platform.cash_received')}
-          value={summary.data ? formatMoney(summary.data.cash_received, lang, false) : '—'}
-          sub={displayCurrency()}
-        />
-        <Stat
-          label={t('platform.debt')}
-          value={summary.data ? formatMoney(summary.data.debt, lang, false) : '—'}
-          sub={displayCurrency()}
-        />
-        <Stat
-          label={t('platform.refunded')}
-          value={summary.data ? formatMoney(summary.data.refunded, lang, false) : '—'}
-          sub={`${t('platform.credit_balance')}: ${summary.data ? formatMoney(summary.data.credit_balance, lang, false) : '—'} · ${t('platform.profit_note')}`}
-        />
-      </div>
-      <section>
-        <h2 style={{ marginBottom: 10 }}>{t('nav.debtors')}</h2>
-        <TenantsTable
-          rows={tenants.data?.items.filter((x) => x.access_state === 'overdue')}
-          loading={tenants.isLoading}
-          error={tenants.error}
-          refetch={tenants.refetch}
-          emptyTitle={t('common.empty')}
-        />
-      </section>
-    </div>
-  );
-}
-
-function TenantsTable({
-  rows,
-  loading,
-  error,
-  refetch,
-  pagination,
-  emptyTitle,
-  action,
-}: {
-  rows?: Tenant[];
-  loading: boolean;
-  error: unknown;
-  refetch: () => void;
-  pagination?: React.ComponentProps<typeof DataTable<Tenant>>['pagination'];
-  emptyTitle?: string;
-  action?: React.ReactNode;
-}) {
-  const { t, lang } = useT();
-  const navigate = useNavigate();
-  const columns: Column<Tenant>[] = [
-    {
-      key: 'name',
-      header: t('tenants.legal_name'),
-      sortValue: (r) => r.legal_name,
-      render: (r) => (
-        <>
-          <div className="cell-main">
-            {r.alias ? `${r.alias} · ` : ''}
-            {r.legal_name}
-          </div>
-          <div className="cell-sub mono">{r.registration_key}</div>
-        </>
-      ),
-    },
-    {
-      key: 'admin',
-      header: t('tenants.admin'),
-      render: (r) => r.admin_name ?? <span className="muted">—</span>,
-    },
-    {
-      key: 'users',
-      header: t('tenants.users'),
-      align: 'right',
-      sortValue: (r) => r.active_users,
-      render: (r) => r.active_users,
-    },
-    {
-      key: 'plan',
-      header: t('tenants.plan'),
-      render: (r) => r.plan_code ?? <span className="muted">—</span>,
-    },
-    {
-      key: 'access',
-      header: t('tenants.access'),
-      sortValue: (r) => r.access_state,
-      render: (r) => <AccessBadge row={r} />,
-    },
-    {
-      key: 'until',
-      header: t('tenants.covered'),
-      sortValue: (r) => r.covered_until ?? '',
-      render: (r) => formatDate(r.covered_until, lang),
-    },
-    {
-      key: 'created',
-      header: t('common.created_at'),
-      sortValue: (r) => r.created_at,
-      render: (r) => formatDate(r.created_at, lang),
-    },
-  ];
-  return (
-    <DataTable
-      columns={columns}
-      rows={rows}
-      rowKey={(r) => r.id}
-      loading={loading}
-      error={error ? errorMessage(t, (error as ApiError).code, (error as ApiError).status) : null}
-      onRetry={refetch}
-      onRowClick={(r) => navigate(`/admin/tenants/${r.id}`)}
-      pagination={pagination}
-      empty={{ title: emptyTitle ?? t('common.empty'), action }}
-    />
-  );
-}
-
-/* ---------------- Tenants list ---------------- */
-export function TenantsPage() {
-  const { t } = useT();
-  const list = useListState();
-  const [filter, setFilter] = useState<'all' | AccessState>('all');
-  const [open, setOpen] = useState(false);
-  const query = useQuery({
-    queryKey: ['platform-tenants', 'list', list.q, filter, list.offset, list.limit],
-    queryFn: () =>
-      api<ListResponse<Tenant>>(
-        `/v1/platform/tenants${qs({
-          q: list.q,
-          state: filter === 'all' ? undefined : filter,
-          limit: list.limit,
-          offset: list.offset,
-        })}`,
-      ),
-  });
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        title={t('tenants.title')}
-        description={t('tenants.sub')}
-        actions={
-          <Button icon={<Plus />} onClick={() => setOpen(true)}>
-            {t('tenants.new')}
-          </Button>
-        }
-      />
-      <div className="toolbar">
-        <SearchInput value={list.search} onChange={list.setSearch} />
-        <Select
-          aria-label={t('tenants.access')}
-          value={filter}
-          onChange={(e) => {
-            setFilter(e.target.value as typeof filter);
-            list.setOffset(0);
-          }}
-        >
-          <option value="all">{t('common.all')}</option>
-          {(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived'] as AccessState[]).map((s) => (
-            <option key={s} value={s}>
-              {t(`tenants.state.${s}`)}
-            </option>
-          ))}
-        </Select>
-      </div>
-      <TenantsTable
-        rows={query.data?.items}
-        loading={query.isLoading}
-        error={query.error}
-        refetch={query.refetch}
-        pagination={list.pagination}
-        action={
-          <Button icon={<Plus />} onClick={() => setOpen(true)}>
-            {t('tenants.new')}
-          </Button>
-        }
-      />
-      <CreateTenantModal open={open} onClose={() => setOpen(false)} />
-    </div>
-  );
-}
-function CreateTenantModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { t } = useT();
-  const toast = useToast();
-  const onError = useApiError();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const schema = z.object({
-    legal_name: z.string().trim().min(2, t('common.required')).max(200),
-    registration_key: z.string().trim().min(2, t('common.required')).max(100),
-  });
-  const form = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema),
-    defaultValues: { legal_name: '', registration_key: '' },
-  });
-  const create = useMutation({
-    mutationFn: (v: z.infer<typeof schema>) =>
-      api<Tenant>('/v1/platform/tenants', { method: 'POST', body: v }),
-    onSuccess: async (row) => {
-      await queryClient.invalidateQueries({ queryKey: ['platform-tenants'] });
-      toast.success(t('tenants.created'));
-      form.reset();
-      onClose();
-      navigate(`/admin/tenants/${row.id}`);
-    },
-    onError,
-  });
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={t('tenants.new')}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button onClick={form.handleSubmit((v) => create.mutate(v))} loading={create.isPending}>
-            {t('common.create')}
-          </Button>
-        </>
-      }
-    >
-      <form className="stack" onSubmit={form.handleSubmit((v) => create.mutate(v))} noValidate>
-        <Input
-          label={t('tenants.legal_name')}
-          required
-          error={form.formState.errors.legal_name?.message}
-          {...form.register('legal_name')}
-        />
-        <Input
-          label={t('tenants.registration_key')}
-          required
-          error={form.formState.errors.registration_key?.message}
-          {...form.register('registration_key')}
-        />
-      </form>
-    </Modal>
-  );
-}
+/* Figma F6 (2026-10-17): bosh sahifa — dashboard.tsx, kompaniyalar ro'yxati va uch qadamli yaratish — tenants.tsx. */
 
 /* ---------------- Tenant detail ---------------- */
 type TenantDetail = Tenant & {
@@ -424,6 +157,8 @@ export function TenantDetailPage() {
   const { t, lang } = useT();
   const toast = useToast();
   const onError = useApiError();
+  const { me } = useAuth();
+  const owner = isPlatformOwner(me?.role);
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['platform-tenant', id],
@@ -441,6 +176,7 @@ export function TenantDetailPage() {
   const [confirm, setConfirm] = useState<'blocked' | 'active' | 'archived' | null>(null);
   const [reason, setReason] = useState('');
   const [planModal, setPlanModal] = useState(false);
+  const [profileModal, setProfileModal] = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [entryModal, setEntryModal] = useState<string | null>(null);
   const refresh = () =>
@@ -573,7 +309,11 @@ export function TenantDetailPage() {
         }
         description={<span className="mono">{d.registration_key}</span>}
         actions={
+          owner && (
           <>
+            <Button variant="secondary" icon={<Pencil />} onClick={() => setProfileModal(true)}>
+              {t('tenants.edit_profile')}
+            </Button>
             {d.status === 'active' && (
               <Button variant="secondary" icon={<ShieldBan />} onClick={() => setConfirm('blocked')}>
                 {t('tenants.block')}
@@ -590,6 +330,7 @@ export function TenantDetailPage() {
               </Button>
             )}
           </>
+          )
         }
       />
       <div className="grid-3" style={{ alignItems: 'start' }}>
@@ -614,6 +355,16 @@ export function TenantDetailPage() {
               <dd>
                 {d.users.active} / {d.users.total}
               </dd>
+              <dt>{t('tenants.contact_name')}</dt>
+              <dd>{d.contact_name ?? '—'}</dd>
+              <dt>{t('tenants.email')}</dt>
+              <dd>{d.email ?? '—'}</dd>
+              <dt>{t('tenants.phone')}</dt>
+              <dd className="mono">{d.phone ?? '—'}</dd>
+              <dt>{t('tenants.address')}</dt>
+              <dd>{d.address ?? '—'}</dd>
+              <dt>{t('tenants.legal_form')}</dt>
+              <dd>{d.legal_form ? t(`tenants.legal_form.${d.legal_form}`) : '—'}</dd>
               <dt>{t('tenants.trial_ends')}</dt>
               <dd>{formatDate(d.trial_ends_at, lang)}</dd>
               <dt>{t('tenants.paid_until')}</dt>
@@ -629,6 +380,7 @@ export function TenantDetailPage() {
                 </>
               )}
             </dl>
+            {owner && (
             <form className="row" onSubmit={aliasForm.handleSubmit((v) => saveAlias.mutate(v))}>
               <Input wrapClassName="grow" label={t('tenants.alias')} {...aliasForm.register('alias')} />
               <Button
@@ -640,6 +392,7 @@ export function TenantDetailPage() {
                 {t('common.save')}
               </Button>
             </form>
+            )}
           </div>
         </section>
         <section className="card">
@@ -677,15 +430,17 @@ export function TenantDetailPage() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <Button
-                    icon={<Link2 />}
-                    loading={issueInvite.isPending}
-                    onClick={() => issueInvite.mutate()}
-                  >
-                    {t('tenants.invite_new')}
-                  </Button>
-                </div>
+                {owner && (
+                  <div>
+                    <Button
+                      icon={<Link2 />}
+                      loading={issueInvite.isPending}
+                      onClick={() => issueInvite.mutate()}
+                    >
+                      {t('tenants.invite_new')}
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -693,9 +448,11 @@ export function TenantDetailPage() {
         <section className="card">
           <div className="card-header">
             <h3>{t('tenants.plan')}</h3>
-            <Button size="sm" variant="secondary" onClick={() => setPlanModal(true)}>
-              {t('tenants.set_plan')}
-            </Button>
+            {owner && (
+              <Button size="sm" variant="secondary" onClick={() => setPlanModal(true)}>
+                {t('tenants.set_plan')}
+              </Button>
+            )}
           </div>
           <div className="card-pad">
             {d.subscription ? (
@@ -727,17 +484,19 @@ export function TenantDetailPage() {
       <section>
         <div className="row-between" style={{ marginBottom: 10 }}>
           <h2>{t('tenants.invoices')}</h2>
-          <Button
-            icon={<Plus />}
-            variant="secondary"
-            disabled={!d.subscription}
-            onClick={() => setInvoiceModal(true)}
-          >
-            {t('tenants.new_invoice')}
-          </Button>
+          {owner && (
+            <Button
+              icon={<Plus />}
+              variant="secondary"
+              disabled={!d.subscription}
+              onClick={() => setInvoiceModal(true)}
+            >
+              {t('tenants.new_invoice')}
+            </Button>
+          )}
         </div>
         <DataTable
-          columns={invoiceCols}
+          columns={owner ? invoiceCols : invoiceCols.filter((c) => c.key !== 'act')}
           rows={d.invoices}
           rowKey={(r) => r.id}
           empty={{ title: t('common.empty') }}
@@ -776,6 +535,9 @@ export function TenantDetailPage() {
           </div>
         }
       />
+      {profileModal && (
+        <TenantProfileModal tenant={d} onClose={() => setProfileModal(false)} onDone={refresh} />
+      )}
       <SetPlanModal
         open={planModal}
         onClose={() => setPlanModal(false)}
@@ -806,6 +568,88 @@ export function TenantDetailPage() {
         onDone={refresh}
       />
     </div>
+  );
+}
+/** Figma F6 "Kompaniyani tahrirlash": nom, mas'ul shaxs, e-mail, telefon, manzil, shakl, alias — PATCH /profile. */
+function TenantProfileModal({
+  tenant,
+  onClose,
+  onDone,
+}: {
+  tenant: TenantDetail;
+  onClose: () => void;
+  onDone: () => Promise<unknown>;
+}) {
+  const { t } = useT();
+  const toast = useToast();
+  const onError = useApiError();
+  const [form, setForm] = useState({
+    legal_name: tenant.legal_name,
+    contact_name: tenant.contact_name ?? '',
+    email: tenant.email ?? '',
+    phone: tenant.phone ?? '',
+    address: tenant.address ?? '',
+    legal_form: tenant.legal_form ?? '',
+    alias: tenant.alias ?? '',
+  });
+  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/v1/platform/tenants/${tenant.id}/profile`, {
+        method: 'PATCH',
+        body: {
+          version: tenant.version,
+          legal_name: form.legal_name.trim(),
+          ...(form.contact_name.trim() ? { contact_name: form.contact_name.trim() } : {}),
+          ...(form.email.trim() ? { email: form.email.trim() } : {}),
+          ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
+          ...(form.address.trim() ? { address: form.address.trim() } : {}),
+          ...(form.legal_form ? { legal_form: form.legal_form } : {}),
+          alias: form.alias.trim(),
+        },
+      }),
+    onSuccess: async () => {
+      await onDone();
+      toast.success(t('common.saved'));
+      onClose();
+    },
+    onError: (e: ApiError) => (e.code === 'VERSION_CONFLICT' ? toast.error(t('common.version_conflict')) : onError(e)),
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={t('tenants.edit_title', { name: tenant.legal_name })}
+      description={t('tenants.edit_sub')}
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={form.legal_name.trim().length < 2}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <Input label={t('tenants.legal_name')} required value={form.legal_name} onChange={(e) => set('legal_name', e.target.value)} />
+        <Input label={t('tenants.email')} type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+        <Input label={t('tenants.contact_name')} value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} />
+        <Input label={t('tenants.phone')} placeholder="+998901234567" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+        <Input wrapClassName="span-2" label={t('tenants.address')} value={form.address} onChange={(e) => set('address', e.target.value)} />
+        <Select label={t('tenants.legal_form')} value={form.legal_form} onChange={(e) => set('legal_form', e.target.value)}>
+          <option value="">—</option>
+          {legalForms.map((f) => (
+            <option key={f} value={f}>
+              {t(`tenants.legal_form.${f}`)}
+            </option>
+          ))}
+        </Select>
+        <Input label={t('tenants.alias')} value={form.alias} onChange={(e) => set('alias', e.target.value)} />
+      </div>
+    </Modal>
   );
 }
 function SetPlanModal({
@@ -1063,505 +907,14 @@ function BillingEntryModal({
   );
 }
 
-/* ---------------- Plans ---------------- */
-export function PlansPage() {
-  const { t, lang } = useT();
-  const toast = useToast();
-  const onError = useApiError();
-  const queryClient = useQueryClient();
-  const query = useQuery({
-    queryKey: ['platform-plans'],
-    queryFn: () => api<ListResponse<Plan>>('/v1/platform/plans'),
-  });
-  const [open, setOpen] = useState(false);
-  // Tahrirlanayotgan tarif (null — yangi versiya yaratish); versiya raqami tahrirda o'zgarmaydi.
-  const [editing, setEditing] = useState<Plan | null>(null);
-  const schema = z.object({
-    code: z.string().trim().min(2).max(40),
-    version: z.coerce.number().int().positive(),
-    monthly_price: z.string().regex(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/, t('error.VALIDATION_ERROR')),
-    users: z.coerce.number().int().nonnegative(),
-    projects: z.coerce.number().int().nonnegative(),
-    storage_mb: z.coerce.number().int().nonnegative(),
-  });
-  const form = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema) as never,
-    defaultValues: {
-      code: 'standard',
-      version: 1,
-      monthly_price: '',
-      users: 20,
-      projects: 10,
-      storage_mb: 2048,
-    },
-  });
-  const m = useMutation({
-    mutationFn: (v: z.infer<typeof schema>) => {
-      const limits = { users: v.users, projects: v.projects, storage_mb: v.storage_mb };
-      return editing
-        ? api(`/v1/platform/plans/${editing.id}`, {
-            method: 'PATCH',
-            body: {
-              code: v.code,
-              monthly_price: v.monthly_price,
-              limits: { ...editing.limits, ...limits },
-            },
-          })
-        : api('/v1/platform/plans', {
-            method: 'POST',
-            body: { code: v.code, version: v.version, monthly_price: v.monthly_price, limits },
-          });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['platform-plans'] });
-      toast.success(t('common.saved'));
-      setOpen(false);
-    },
-    onError,
-  });
-  const openNew = () => {
-    setEditing(null);
-    form.reset({ code: 'standard', version: 1, monthly_price: '', users: 20, projects: 10, storage_mb: 2048 });
-    setOpen(true);
-  };
-  const openEdit = (plan: Plan) => {
-    setEditing(plan);
-    form.reset({
-      code: plan.code,
-      version: plan.version,
-      monthly_price: plan.monthly_price,
-      users: plan.limits.users ?? 0,
-      projects: plan.limits.projects ?? 0,
-      storage_mb: plan.limits.storage_mb ?? 0,
-    });
-    setOpen(true);
-  };
-  const columns: Column<Plan>[] = [
-    {
-      key: 'code',
-      header: t('plans.code'),
-      sortValue: (r) => r.code,
-      render: (r) => <span className="cell-main">{r.code}</span>,
-    },
-    {
-      key: 'version',
-      header: t('plans.version'),
-      align: 'right',
-      sortValue: (r) => r.version,
-      render: (r) => `v${r.version}`,
-    },
-    {
-      key: 'price',
-      header: t('plans.price'),
-      align: 'right',
-      sortValue: (r) => Number(r.monthly_price),
-      render: (r) => formatMoney(r.monthly_price, lang),
-    },
-    {
-      key: 'limits',
-      header: t('plans.limits'),
-      render: (r) =>
-        Object.entries(r.limits)
-          .map(
-            ([k, v]) => `${t(`plans.limit_${k}`) === `plans.limit_${k}` ? k : t(`plans.limit_${k}`)}: ${v}`,
-          )
-          .join(' · ') || '—',
-    },
-    {
-      key: 'created',
-      header: t('common.created_at'),
-      render: (r) => formatDate(r.created_at, lang),
-    },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      render: (r) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Pencil />}
-          aria-label={t('plans.edit')}
-          title={t('plans.edit')}
-          onClick={() => openEdit(r)}
-        />
-      ),
-    },
-  ];
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        title={t('plans.title')}
-        description={t('plans.sub')}
-        actions={
-          <Button icon={<Plus />} onClick={openNew}>
-            {t('plans.new')}
-          </Button>
-        }
-      />
-      <DataTable
-        columns={columns}
-        rows={query.data?.items}
-        rowKey={(r) => r.id}
-        loading={query.isLoading}
-        error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
-        onRetry={query.refetch}
-        empty={{
-          title: t('common.empty'),
-          action: (
-            <Button icon={<Plus />} onClick={openNew}>
-              {t('plans.new')}
-            </Button>
-          ),
-        }}
-      />
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editing ? t('plans.edit') : t('plans.new')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button onClick={form.handleSubmit((v) => m.mutate(v))} loading={m.isPending}>
-              {editing ? t('common.save') : t('common.create')}
-            </Button>
-          </>
-        }
-      >
-        <form className="form-grid" noValidate onSubmit={form.handleSubmit((v) => m.mutate(v))}>
-          {editing && <Alert tone="info">{t('plans.edit_note')}</Alert>}
-          <Input
-            label={t('plans.code')}
-            placeholder="standard / max"
-            error={form.formState.errors.code?.message}
-            {...form.register('code')}
-          />
-          <Input
-            label={t('plans.version')}
-            type="number"
-            min={1}
-            disabled={Boolean(editing)}
-            error={form.formState.errors.version?.message}
-            {...form.register('version')}
-          />
-          <Input
-            label={`${t('plans.price')} (UZS)`}
-            inputMode="decimal"
-            placeholder="450000.00"
-            error={form.formState.errors.monthly_price?.message}
-            {...form.register('monthly_price')}
-          />
-          <Input label={t('plans.limit_users')} type="number" min={0} {...form.register('users')} />
-          <Input label={t('plans.limit_projects')} type="number" min={0} {...form.register('projects')} />
-          <Input label={t('plans.limit_storage_mb')} type="number" min={0} {...form.register('storage_mb')} />
-        </form>
-      </Modal>
-    </div>
-  );
-}
-
-/* ---------------- Billing (all invoices) ---------------- */
-type InvoiceRow = {
-  id: string;
-  tenant_id: string;
-  legal_name: string;
-  plan_code: string;
-  period_start: string;
-  period_end: string;
-  due_at: string;
-  amount: string;
-  covered: string;
-  outstanding: string;
-};
-export function BillingPage() {
-  const { t, lang } = useT();
-  const navigate = useNavigate();
-  const list = useListState();
-  const [unpaid, setUnpaid] = useState(false);
-  const query = useQuery({
-    queryKey: ['platform-invoices', list.q, list.offset, list.limit, unpaid],
-    queryFn: () =>
-      api<ListResponse<InvoiceRow>>(
-        `/v1/platform/billing/invoices${qs({ q: list.q, limit: list.limit, offset: list.offset, unpaid })}`,
-      ),
-  });
-  const columns: Column<InvoiceRow>[] = [
-    {
-      key: 'tenant',
-      header: t('tenants.legal_name'),
-      sortValue: (r) => r.legal_name,
-      render: (r) => <span className="cell-main">{r.legal_name}</span>,
-    },
-    { key: 'plan', header: t('tenants.plan'), render: (r) => r.plan_code },
-    {
-      key: 'period',
-      header: t('tenants.period_start'),
-      sortValue: (r) => r.period_start,
-      render: (r) => `${formatDate(r.period_start, lang)} — ${formatDate(r.period_end, lang)}`,
-    },
-    {
-      key: 'due',
-      header: t('tenants.due_at'),
-      sortValue: (r) => r.due_at,
-      render: (r) => formatDate(r.due_at, lang),
-    },
-    {
-      key: 'amount',
-      header: t('tenants.amount'),
-      align: 'right',
-      render: (r) => formatMoney(r.amount, lang),
-    },
-    {
-      key: 'covered',
-      header: t('tenants.covered'),
-      align: 'right',
-      render: (r) => formatMoney(r.covered, lang, false),
-    },
-    {
-      key: 'out',
-      header: t('platform.debt'),
-      align: 'right',
-      render: (r) => (
-        <Badge
-          tone={
-            Number(r.outstanding) > 0 ? (new Date(r.due_at) < new Date() ? 'danger' : 'warning') : 'success'
-          }
-        >
-          {formatMoney(r.outstanding, lang, false)}
-        </Badge>
-      ),
-    },
-  ];
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('billing.title')} description={t('billing.sub')} />
-      <div className="toolbar">
-        <SearchInput value={list.search} onChange={list.setSearch} />
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={unpaid}
-            onChange={(e) => {
-              setUnpaid(e.target.checked);
-              list.setOffset(0);
-            }}
-          />{' '}
-          {t('platform.debt')}
-        </label>
-      </div>
-      <DataTable
-        columns={columns}
-        rows={query.data?.items}
-        rowKey={(r) => r.id}
-        loading={query.isLoading}
-        error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
-        onRetry={query.refetch}
-        onRowClick={(r) => navigate(`/admin/tenants/${r.tenant_id}`)}
-        pagination={list.pagination}
-      />
-    </div>
-  );
-}
-export function DebtorsPage() {
-  const { t } = useT();
-  const query = useQuery({
-    queryKey: ['platform-tenants'],
-    queryFn: () => apiAll<Tenant>('/v1/platform/tenants'),
-  });
-  const rows = query.data?.items.filter((r) => r.access_state === 'overdue' || r.access_state === 'blocked');
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('nav.debtors')} description={t('platform.tenants_overdue')} />
-      <TenantsTable rows={rows} loading={query.isLoading} error={query.error} refetch={query.refetch} />
-    </div>
-  );
-}
-
-/* ---------------- Support ---------------- */
-type SupportRow = {
-  id: string;
-  tenant_id: string;
-  legal_name: string;
-  display_name: string;
-  kind: 'support' | 'plan_change';
-  message: string;
-  status: 'open' | 'closed';
-  response: string | null;
-  responded_at: string | null;
-  created_at: string;
-};
-export function SupportPage() {
-  const { t, lang } = useT();
-  const onError = useApiError();
-  const queryClient = useQueryClient();
-  const list = useListState();
-  const [tab, setTab] = useState<'open' | 'closed' | 'all'>('open');
-  const query = useQuery({
-    queryKey: ['platform-support', tab, list.offset, list.limit],
-    queryFn: () =>
-      api<ListResponse<SupportRow>>(
-        `/v1/platform/support${qs({
-          status: tab === 'all' ? undefined : tab,
-          limit: list.limit,
-          offset: list.offset,
-        })}`,
-      ),
-  });
-  const [reply, setReply] = useState<SupportRow | null>(null);
-  const [text, setText] = useState('');
-  const update = useMutation({
-    mutationFn: (v: { id: string; status: 'open' | 'closed'; response?: string }) =>
-      api(`/v1/platform/support/${v.id}`, {
-        method: 'PATCH',
-        body: { status: v.status, ...(v.response ? { response: v.response } : {}) },
-      }),
-    onSuccess: () => {
-      setReply(null);
-      setText('');
-      return queryClient.invalidateQueries({ queryKey: ['platform-support'] });
-    },
-    onError,
-  });
-  const columns: Column<SupportRow>[] = [
-    {
-      key: 'tenant',
-      header: t('tenants.legal_name'),
-      render: (r) => (
-        <>
-          <div className="cell-main">{r.legal_name}</div>
-          <div className="cell-sub">{r.display_name}</div>
-        </>
-      ),
-    },
-    {
-      key: 'kind',
-      header: t('tenants.entry_kind'),
-      render: (r) => (
-        <Badge tone={r.kind === 'plan_change' ? 'brand' : 'info'}>{t(`support.kind.${r.kind}`)}</Badge>
-      ),
-    },
-    {
-      key: 'message',
-      header: t('support.message'),
-      render: (r) => (
-        <>
-          <div style={{ whiteSpace: 'pre-wrap' }}>{r.message}</div>
-          {r.response && (
-            <div className="cell-sub" style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>
-              {t('support.response')}: {r.response}
-            </div>
-          )}
-        </>
-      ),
-    },
-    {
-      key: 'created',
-      header: t('common.date'),
-      sortValue: (r) => r.created_at,
-      render: (r) => formatDateTime(r.created_at, lang),
-    },
-    {
-      key: 'status',
-      header: t('common.status'),
-      render: (r) => (
-        <Badge tone={r.status === 'open' ? 'warning' : 'success'}>{t(`support.${r.status}`)}</Badge>
-      ),
-    },
-    {
-      key: 'act',
-      header: '',
-      className: 'actions',
-      render: (r) => (
-        <span className="row">
-          {r.status === 'open' && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setReply(r);
-                setText('');
-              }}
-            >
-              {t('support.respond')}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={update.isPending && update.variables?.id === r.id && !update.variables?.response}
-            onClick={() => update.mutate({ id: r.id, status: r.status === 'open' ? 'closed' : 'open' })}
-          >
-            {r.status === 'open' ? t('support.closed') : t('support.reopen')}
-          </Button>
-        </span>
-      ),
-    },
-  ];
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader title={t('support.title')} description={t('support.sub')} />
-      <div className="segmented">
-        {(['open', 'closed', 'all'] as const).map((k) => (
-          <button key={k} type="button" aria-pressed={tab === k} onClick={() => {
-            setTab(k);
-            list.setOffset(0);
-          }}>
-            {k === 'all' ? t('common.all') : t(`support.${k}`)}
-          </button>
-        ))}
-      </div>
-      <DataTable
-        columns={columns}
-        rows={query.data?.items}
-        rowKey={(r) => r.id}
-        loading={query.isLoading}
-        error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
-        onRetry={query.refetch}
-        pagination={list.pagination}
-      />
-      <Modal
-        open={Boolean(reply)}
-        onClose={() => setReply(null)}
-        title={t('support.respond')}
-        description={reply ? `${reply.legal_name} · ${reply.display_name}` : undefined}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setReply(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              loading={update.isPending}
-              disabled={text.trim().length < 2}
-              onClick={() =>
-                reply && update.mutate({ id: reply.id, status: 'closed', response: text.trim() })
-              }
-            >
-              {t('support.close_with_response')}
-            </Button>
-          </>
-        }
-      >
-        <div className="stack">
-          {reply && <Alert tone="info">{reply.message}</Alert>}
-          <Textarea
-            label={t('support.response')}
-            rows={4}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <p className="muted text-xs">{t('support.response_hint')}</p>
-        </div>
-      </Modal>
-    </div>
-  );
-}
+/* Figma F6: tariflar — plans.tsx, daromad va qarzdorlik, qarzdorlar — billing.tsx, murojaatlar chati — support.tsx. */
 
 /* ---------------- Parolni tiklash havolasi (egasi va super admin) ---------------- */
 /** Foydalanuvchiga 30 daqiqalik bir martalik havola; parol ko'rsatilmaydi, sessiyalar bekor qilinadi. */
 function ResetLinkButton({ userId }: { userId: string }) {
   const { t } = useT();
   const onError = useApiError();
+  const { me } = useAuth();
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const m = useMutation({
@@ -1572,6 +925,7 @@ function ResetLinkButton({ userId }: { userId: string }) {
     },
     onError,
   });
+  if (!(isPlatformOwner(me?.role) || canManageStaff(me?.role))) return null;
   return (
     <>
       <Button size="sm" variant="secondary" icon={<KeyRound />} loading={m.isPending} onClick={() => m.mutate()}>
@@ -1622,6 +976,7 @@ type Staff = {
   active: boolean;
   must_change_password: boolean;
   created_at: string;
+  telegram_linked: boolean;
 };
 export function StaffPage() {
   const { t, lang } = useT();
@@ -1634,6 +989,7 @@ export function StaffPage() {
     queryFn: () => api<ListResponse<Staff>>('/v1/platform/staff'),
   });
   const [open, setOpen] = useState(false);
+  const [toggle, setToggle] = useState<Staff | null>(null);
   const schema = z.object({
     login: z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/, t('auth.login_name')),
     display_name: z.string().trim().min(2).max(120),
@@ -1658,6 +1014,19 @@ export function StaffPage() {
       setOpen(false);
     },
     onError,
+  });
+  const update = useMutation({
+    mutationFn: (v: { id: string; active: boolean; role: Staff['role'] }) =>
+      api(`/v1/platform/staff/${v.id}`, { method: 'PATCH', body: { active: v.active, role: v.role } }),
+    onSuccess: async (_, v) => {
+      await queryClient.invalidateQueries({ queryKey: ['platform-staff'] });
+      toast.success(toggle ? t('common.saved') : t('staff.role_changed'));
+      if (toggle?.id === v.id) setToggle(null);
+    },
+    onError: (e: ApiError) => {
+      setToggle(null);
+      onError(e);
+    },
   });
   const columns: Column<Staff>[] = [
     {
@@ -1686,6 +1055,18 @@ export function StaffPage() {
       ),
     },
     {
+      key: 'tg',
+      header: t('staff.col_2fa'),
+      render: (r) =>
+        r.telegram_linked ? (
+          <Badge tone="success">{t('staff.tg_2fa_on')}</Badge>
+        ) : r.role === 'support' ? (
+          <Badge tone="neutral">{t('staff.tg_off')}</Badge>
+        ) : (
+          <Badge tone="warning">{t('staff.tg_2fa_off')}</Badge>
+        ),
+    },
+    {
       key: 'created',
       header: t('common.created_at'),
       render: (r) => formatDate(r.created_at, lang),
@@ -1696,7 +1077,24 @@ export function StaffPage() {
       align: 'right',
       // O'z parolini profilda almashtiradi; platforma egasining parolini faqat egasi tiklaydi (server ham tekshiradi).
       render: (r) =>
-        r.active && r.id !== me?.id && r.role !== 'platform_owner' ? <ResetLinkButton userId={r.id} /> : null,
+        r.id !== me?.id && r.role !== 'platform_owner' ? (
+          <span className="row wrap" style={{ justifyContent: 'flex-end' }}>
+            <Select
+              aria-label={t('common.role')}
+              style={{ minWidth: 140 }}
+              value={r.role}
+              disabled={update.isPending}
+              onChange={(e) => update.mutate({ id: r.id, active: r.active, role: e.target.value as Staff['role'] })}
+            >
+              <option value="super_admin">{t('role.super_admin')}</option>
+              <option value="support">{t('role.support')}</option>
+            </Select>
+            <Button size="sm" variant="secondary" onClick={() => setToggle(r)}>
+              {r.active ? t('employees.deactivate') : t('employees.activate')}
+            </Button>
+            {r.active && <ResetLinkButton userId={r.id} />}
+          </span>
+        ) : null,
     },
   ];
   return (
@@ -1717,6 +1115,15 @@ export function StaffPage() {
         loading={query.isLoading}
         error={query.error ? errorMessage(t, (query.error as ApiError).code) : null}
         onRetry={query.refetch}
+      />
+      <ConfirmDialog
+        open={toggle !== null}
+        onClose={() => setToggle(null)}
+        onConfirm={() => toggle && update.mutate({ id: toggle.id, active: !toggle.active, role: toggle.role })}
+        title={toggle?.active ? t('employees.deactivate') : t('employees.activate')}
+        danger={Boolean(toggle?.active)}
+        loading={update.isPending}
+        message={toggle?.active ? t('staff.confirm_deactivate') : t('staff.confirm_activate')}
       />
       <Modal
         open={open}
@@ -1760,179 +1167,4 @@ export function StaffPage() {
     </div>
   );
 }
-type Diagnostics = {
-  database: { ok: boolean; latency_ms: number; server_time: string; last_migration: string | null };
-  worker: {
-    pending: number;
-    dead: number;
-    done_24h: number;
-    oldest_pending_at: string | null;
-    failed_jobs: {
-      id: string;
-      kind: string;
-      status: string;
-      attempts: number;
-      error_code: string | null;
-      created_at: string;
-      tenant_name: string | null;
-    }[];
-  };
-  errors: {
-    last_24h: number;
-    total: number;
-    items: {
-      id: string;
-      request_id: string;
-      method: string;
-      path: string;
-      status: number;
-      code: string;
-      message: string | null;
-      created_at: string;
-    }[];
-  };
-  sessions_active: number;
-  telegram: { configured: boolean; linked_accounts: number };
-  tenants: { active: number; pending: number; blocked: number; archived: number };
-  break_glass_enabled: boolean;
-  integrations_release_ready: boolean;
-};
-/** Texnik panel: baza, worker navbati, 5xx xatolar, Telegram va kompaniyalar — faqat bazadagi haqiqiy holat. */
-export function DiagnosticsPage() {
-  const { t, lang } = useT();
-  const query = useQuery({
-    queryKey: ['platform-diagnostics'],
-    queryFn: () => api<Diagnostics>('/v1/platform/diagnostics'),
-    retry: false,
-    refetchInterval: 30000,
-  });
-  const d = query.data;
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        title={t('diag.title')}
-        description={t('diag.sub')}
-        actions={
-          <Button variant="secondary" loading={query.isFetching} onClick={() => query.refetch()}>
-            {t('common.refresh')}
-          </Button>
-        }
-      />
-      {query.isError && (
-        <Alert tone="danger">
-          {errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}
-        </Alert>
-      )}
-      {d && (
-        <>
-          <div className="grid-4">
-            <Stat
-              accent
-              label={t('diag.database')}
-              value={d.database.ok ? t('diag.ok') : '—'}
-              sub={`${t('diag.latency')}: ${d.database.latency_ms} ms · ${t('diag.last_migration')}: ${d.database.last_migration ?? '—'}`}
-            />
-            <Stat
-              label={t('diag.worker')}
-              value={d.worker.pending}
-              sub={`${t('diag.pending')} · ${t('diag.dead')}: ${d.worker.dead} · ${t('diag.done_24h')}: ${d.worker.done_24h}`}
-            />
-            <Stat
-              label={t('diag.errors_24h')}
-              value={d.errors.last_24h}
-              sub={`${t('common.total')}: ${d.errors.total}`}
-            />
-            <Stat
-              label={t('diag.sessions')}
-              value={d.sessions_active}
-              sub={
-                d.telegram.configured
-                  ? `${t('diag.telegram_linked')}: ${d.telegram.linked_accounts}`
-                  : t('diag.telegram_off')
-              }
-            />
-          </div>
-          <div className="grid-4">
-            <Stat label={`${t('diag.tenants')} · ${t('tenants.state.pending')}`} value={d.tenants.pending} />
-            <Stat label={`${t('diag.tenants')} · ${t('common.active')}`} value={d.tenants.active} />
-            <Stat label={`${t('diag.tenants')} · ${t('tenants.state.blocked')}`} value={d.tenants.blocked} />
-            <Stat
-              label={`${t('diag.tenants')} · ${t('tenants.state.archived')}`}
-              value={d.tenants.archived}
-            />
-          </div>
-          <div className="grid-2" style={{ alignItems: 'start' }}>
-            <section className="card">
-              <div className="card-header">
-                <h3>{t('diag.failed_jobs')}</h3>
-                {d.worker.oldest_pending_at && (
-                  <small className="muted">
-                    {t('diag.oldest')}: {formatDateTime(d.worker.oldest_pending_at, lang)}
-                  </small>
-                )}
-              </div>
-              {d.worker.failed_jobs.length === 0 ? (
-                <div className="card-pad muted text-sm">{t('diag.no_failed')}</div>
-              ) : (
-                <table className="summary-table" style={{ width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left' }}>{t('diag.company')}</th>
-                      <th style={{ textAlign: 'left' }}>{t('common.status')}</th>
-                      <th className="num">{t('diag.attempts')}</th>
-                      <th style={{ textAlign: 'left' }}>{t('integr.error_code')}</th>
-                      <th style={{ textAlign: 'left' }}>{t('common.date')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.worker.failed_jobs.map((j) => (
-                      <tr key={j.id} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td>{j.tenant_name ?? t('diag.platform')}</td>
-                        <td>
-                          <Badge tone={j.status === 'dead' ? 'danger' : 'warning'}>{j.status}</Badge>
-                        </td>
-                        <td className="num">{j.attempts}</td>
-                        <td className="mono text-xs">{j.error_code ?? '—'}</td>
-                        <td className="text-xs">{formatDateTime(j.created_at, lang)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-            <section className="card">
-              <div className="card-header">
-                <h3>{t('diag.errors')}</h3>
-              </div>
-              {d.errors.items.length === 0 ? (
-                <div className="card-pad muted text-sm">{t('diag.no_errors')}</div>
-              ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {d.errors.items.map((e) => (
-                    <li key={e.id} style={{ padding: '8px 20px', borderBottom: '1px solid var(--border)' }}>
-                      <div className="row-between text-sm">
-                        <span className="mono">
-                          {e.method} {e.path}
-                        </span>
-                        <Badge tone="danger">{e.code}</Badge>
-                      </div>
-                      <small className="muted">
-                        {t('diag.request')}: {e.request_id} · {formatDateTime(e.created_at, lang)}
-                      </small>
-                      {e.message && (
-                        <div className="text-xs muted" style={{ wordBreak: 'break-word' }}>
-                          {e.message}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-          <p className="muted text-xs">{t('diag.note')}</p>
-        </>
-      )}
-    </div>
-  );
-}
+/* Figma F6: diagnostika — diagnostics.tsx. */

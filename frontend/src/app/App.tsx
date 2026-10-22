@@ -57,26 +57,27 @@ const EstimateEditorPage = lazy(() =>
 const StockPage = lazy(() => import('@/features/stock/StockPage').then((m) => ({ default: m.StockPage })));
 const Fin = {
   Hub: lazy(() => import('@/features/finance/pages').then((m) => ({ default: m.FinanceHubPage }))),
-  Docs: lazy(() => import('@/features/finance/pages').then((m) => ({ default: m.DocumentsPage }))),
+  // Figma F5 (2026-10-17): moliya sahifalari alohida modullarda.
+  Docs: lazy(() => import('@/features/finance/documents').then((m) => ({ default: m.DocumentsPage }))),
   Counterparties: lazy(() =>
-    import('@/features/finance/pages').then((m) => ({ default: m.CounterpartiesPage })),
+    import('@/features/finance/counterparties').then((m) => ({ default: m.CounterpartiesPage })),
   ),
-  Budgets: lazy(() => import('@/features/finance/pages').then((m) => ({ default: m.BudgetsPage }))),
+  Budgets: lazy(() => import('@/features/finance/budgets').then((m) => ({ default: m.BudgetsPage }))),
   Reconciliation: lazy(() =>
-    import('@/features/finance/pages').then((m) => ({ default: m.ReconciliationPage })),
+    import('@/features/finance/counterparties').then((m) => ({ default: m.ReconciliationPage })),
   ),
   PaymentRequests: lazy(() =>
-    import('@/features/finance/workflow').then((m) => ({ default: m.PaymentRequestsPage })),
+    import('@/features/finance/requests').then((m) => ({ default: m.PaymentRequestsPage })),
   ),
   Calendar: lazy(() =>
-    import('@/features/finance/workflow').then((m) => ({ default: m.PaymentCalendarPage })),
+    import('@/features/finance/calendar').then((m) => ({ default: m.PaymentCalendarPage })),
   ),
-  Payroll: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PayrollPage }))),
-  PlanActual: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.PlanActualPage }))),
-  Forecast: lazy(() => import('@/features/finance/workflow').then((m) => ({ default: m.ForecastPage }))),
+  Payroll: lazy(() => import('@/features/finance/payroll').then((m) => ({ default: m.PayrollPage }))),
+  PlanActual: lazy(() => import('@/features/finance/analysis').then((m) => ({ default: m.PlanActualPage }))),
+  Forecast: lazy(() => import('@/features/finance/analysis').then((m) => ({ default: m.ForecastPage }))),
   Pricing: lazy(() => import('@/features/pricing/PricingPage').then((m) => ({ default: m.PricingPage }))),
   Reports: lazy(() =>
-    import('@/features/finance/workflow').then((m) => ({ default: m.FinancialReportsPage })),
+    import('@/features/finance/analysis').then((m) => ({ default: m.FinancialReportsPage })),
   ),
 };
 const TasksPage = lazy(() => import('@/features/work/TasksPage').then((m) => ({ default: m.TasksPage })));
@@ -100,43 +101,23 @@ const CameraPage = lazy(() =>
   import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.CameraPage })),
 );
 const AuditPage = lazy(() => import('@/features/audit/AuditPage').then((m) => ({ default: m.AuditPage })));
+// Figma F6 (2026-10-17): platforma sahifalari alohida modullarda.
 const Platform = {
   Dashboard: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.PlatformDashboard,
-    })),
+    import('@/features/platform/dashboard').then((m) => ({ default: m.PlatformDashboard })),
   ),
-  Tenants: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.TenantsPage,
-    })),
-  ),
+  Tenants: lazy(() => import('@/features/platform/tenants').then((m) => ({ default: m.TenantsPage }))),
   TenantDetail: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.TenantDetailPage,
-    })),
+    import('@/features/platform/pages').then((m) => ({ default: m.TenantDetailPage })),
   ),
-  Plans: lazy(() => import('@/features/platform/pages').then((m) => ({ default: m.PlansPage }))),
-  Billing: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.BillingPage,
-    })),
-  ),
-  Debtors: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.DebtorsPage,
-    })),
-  ),
-  Support: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.SupportPage,
-    })),
-  ),
+  Plans: lazy(() => import('@/features/platform/plans').then((m) => ({ default: m.PlansPage }))),
+  Billing: lazy(() => import('@/features/platform/billing').then((m) => ({ default: m.BillingPage }))),
+  Debtors: lazy(() => import('@/features/platform/billing').then((m) => ({ default: m.DebtorsPage }))),
+  Support: lazy(() => import('@/features/platform/support').then((m) => ({ default: m.SupportPage }))),
   Staff: lazy(() => import('@/features/platform/pages').then((m) => ({ default: m.StaffPage }))),
+  Audit: lazy(() => import('@/features/platform/AuditPage').then((m) => ({ default: m.PlatformAuditPage }))),
   Diagnostics: lazy(() =>
-    import('@/features/platform/pages').then((m) => ({
-      default: m.DiagnosticsPage,
-    })),
+    import('@/features/platform/diagnostics').then((m) => ({ default: m.DiagnosticsPage })),
   ),
 };
 
@@ -249,6 +230,7 @@ export function App() {
                         <Route path="/admin/debtors" element={<Platform.Debtors />} />
                         <Route path="/admin/support" element={<Platform.Support />} />
                         <Route path="/admin/staff" element={<Platform.Staff />} />
+                        <Route path="/admin/audit" element={<Platform.Audit />} />
                         <Route path="/admin/diagnostics" element={<Platform.Diagnostics />} />
                       </Route>
                     </Route>

@@ -24,6 +24,7 @@ export const tenantRoles = [
 export const permissions = [
   'projects.read',
   'projects.write',
+  'employees.read',
   'employees.manage',
   'estimates.read',
   'estimates.import',
@@ -119,6 +120,7 @@ export const financeSubpages = new Set([
 export const permissionPage: Record<Permission, [Page, Action]> = {
   'projects.read': ['projects', 'read'],
   'projects.write': ['projects', 'create'],
+  'employees.read': ['employees', 'read'],
   'employees.manage': ['employees', 'update'],
   'estimates.read': ['estimates', 'read'],
   'estimates.import': ['estimates', 'create'],
@@ -154,8 +156,22 @@ const common: Permission[] = [
   'files.read',
   'files.write',
 ];
+/**
+ * Egasi qarori (2026-10-16): mijoz admini ombor va materiallarni faqat ko'radi. Ombor amallari (kirim,
+ * jo'natish, qabul, sarf, tekshirish, storno, inventarizatsiya) faqat tegishli xodim rollarida; individual
+ * grant ham adminga ochmaydi (`allowed` qattiq rad etadi). Ombor yaratish (projects.write) va ombor
+ * mudirini biriktirish (employees.manage) adminda qoladi.
+ */
+export const adminReadOnlyStock: readonly Permission[] = [
+  'stock.receive',
+  'stock.send',
+  'stock.accept',
+  'stock.consume',
+  'stock.review',
+  'stock.reverse',
+];
 export const basePermissions: Record<string, readonly Permission[]> = {
-  tenant_admin: permissions,
+  tenant_admin: permissions.filter((p) => !adminReadOnlyStock.includes(p)),
   foreman: [
     ...common,
     'stock.read',
@@ -166,7 +182,8 @@ export const basePermissions: Record<string, readonly Permission[]> = {
     'estimates.read',
   ],
   brigadier: [...common, 'stock.read', 'stock.accept', 'stock.consume', 'reports.submit'],
-  warehouse_manager: [...common, 'stock.read', 'stock.receive', 'stock.send'],
+  // stock.reverse: storno va inventarizatsiya endi ombor mudirida (admin ombor amallarini bajarmaydi).
+  warehouse_manager: [...common, 'stock.read', 'stock.receive', 'stock.send', 'stock.reverse'],
   financier: [
     ...common,
     'estimates.read',
@@ -177,15 +194,35 @@ export const basePermissions: Record<string, readonly Permission[]> = {
     'pricing.read',
     'pricing.write',
   ],
+  // finance.allocate: Figma bo'yicha buxgalter talabnomalarga mablag' ajratadi (egasi, 2026-10-16).
+  // stock.read (2026-10-17): yetkazib beruvchi invoysi ombor kirimiga bog'lanadi — kirimlar ro'yxatini o'qimasa
+  // buxgalter invoys yarata olmasdi; Figma "Hisob hisobotlari"da "Ombor hisoboti" ham bor. Ombor amallari yo'q.
   accountant: [
     ...common,
+    'stock.read',
     'estimates.read',
     'prices.read',
     'finance.read',
+    'finance.allocate',
     'finance.post',
     'finance.reverse',
   ],
-  manager: [...common, 'tasks.manage'],
+  // Bosh muhandis (Figma, egasi 2026-10-16): obyekt va blok yaratadi, smeta tuzadi va tahrirlaydi, narxni
+  // ko'radi, xodimlar ro'yxatini faqat ko'radi (boshqarish adminda), ombor qoldig'ini ko'radi, hisobot
+  // yuboradi va tekshiradi. Moliya sahifalari yo'q.
+  manager: [
+    ...common,
+    'projects.write',
+    'employees.read',
+    'estimates.read',
+    'estimates.import',
+    'estimates.edit',
+    'prices.read',
+    'stock.read',
+    'tasks.manage',
+    'reports.submit',
+    'reports.review',
+  ],
   super_admin: [],
   platform_owner: [],
   support: [],
@@ -219,6 +256,7 @@ export async function allowed(
   requestedPage?: Page,
 ) {
   if (!actor.tenant_id) return false;
+  if (actor.role === 'tenant_admin' && adminReadOnlyStock.includes(permission)) return false;
   const context = await permissionContext(db, actor);
   const override = context.overrides.find((o) => o.permission === permission);
   if (override?.effect === 'deny') return false;
@@ -236,7 +274,7 @@ export async function allowed(
 }
 export async function pageAllowed(db: Db, actor: Row, page: Page, action: Action) {
   if (!actor.tenant_id) return false;
-  if (actor.role === 'tenant_admin') return true;
+  if (actor.role === 'tenant_admin') return !(page === 'stock' && action !== 'read');
   if (page === 'permissions') return false;
   const domainPage = financeSubpages.has(page) ? 'finance' : page;
   let bindings = permissions.filter(

@@ -5,6 +5,10 @@ export type Db = pg.PoolClient & {
   permissionCache?: Map<string, { overrides: Row[]; policies: Row[] }>;
 };
 export type Row = Record<string, any>;
+// Postgres `date` (OID 1082) — vaqtsiz kun. pg uni Date ga aylantirib JSON'da "2026-10-10T00:00:00.000Z" berardi:
+// tahrir formalari shu qiymatni qaytarganda `date` sxemasi (YYYY-MM-DD) rad etardi (xodim, obyekt sanalari),
+// kalendar kalitlari mos kelmasdi, server TZ si UTC bo'lmasa kun siljirdi. Kun matn sifatida qoladi.
+pg.types.setTypeParser(1082, (value: string) => value);
 export const createPool = (url = process.env.DATABASE_URL) =>
   new pg.Pool({
     connectionString: url,

@@ -28,6 +28,8 @@ export interface Context {
   reply: FastifyReply;
   /** Brauzer cookie orqali kelgan sessiya; login javobi ham cookie qo'yishi uchun. */
   channel: 'bearer' | 'cookie';
+  /** So'rov tranzaksiyasidan tashqarida yozish uchun (masalan, xato bo'lganda ham saqlanishi kerak bo'lgan urinishlar soni). */
+  pool: pg.Pool;
 }
 export interface Endpoint {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -135,6 +137,7 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
               request,
               reply,
               channel,
+              pool,
             });
           let result = route.idempotent
             ? await idempotent(

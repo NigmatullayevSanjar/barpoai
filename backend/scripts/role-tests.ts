@@ -233,17 +233,20 @@ try {
     { project_id: projectA1.id, custodian_id: staff.brigadier!.id },
     A.adminToken,
   );
+  // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi — yaratish ombor mudirida
+  await call('POST', '/v1/materials', { name: 'Sement', unit_id: 'kg' }, A.adminToken, 403);
   const material = await call(
     'POST',
     '/v1/materials',
     { name: 'Sement', unit_id: 'kg' },
-    A.adminToken,
+    staff.warehouse_manager!.token,
   );
+  const staffB = await employee(B.adminToken, 'warehouse_manager', 'b_warehouse_manager');
   const materialB = await call(
     'POST',
     '/v1/materials',
     { name: 'G‘isht', unit_id: 'pcs' },
-    B.adminToken,
+    staffB.token,
   );
   const receiptKey = randomUUID();
   const receiptBody = {
@@ -492,6 +495,8 @@ try {
     material_id: material.id,
     counterparty_id: supplier.id,
     tenant_id: A.id,
+    // Figma F6: platforma oylik buxgalter hisoboti
+    month: '2026-10-01',
   };
   const fillUrl = (route: Endpoint) => {
     const prefix = Object.keys(ids)
@@ -830,19 +835,20 @@ try {
     );
     if (leaked) findings.push(`price leak in ${label}: ${leaked}`);
   }
-  // Narx varaqasi: sahifa ruxsati bilan kirgan, lekin prices.read'siz rol (menejer) pul maydonlarini ko'rmaydi, Excel ololmaydi
+  // Narx varaqasi: sahifa ruxsati bilan kirgan, lekin prices.read'siz rol pul maydonlarini ko'rmaydi, Excel ololmaydi.
+  // 2026-10-16 dan menejer narxni ko'radi, shuning uchun bu tekshiruv brigadir bilan.
   rp = await call('GET', '/v1/company/role-permissions', undefined, A.adminToken);
   await call(
     'POST',
     '/v1/company/role-permissions',
     {
       version: rp.version,
-      role: 'manager',
+      role: 'brigadier',
       rules: [{ page: 'pricing', read: true, create: true, update: false, delete: false }],
     },
     A.adminToken,
   );
-  const managerPricing = await login('a_manager', pass + '2');
+  const managerPricing = await login('a_brigadier', pass + '2');
   const pricingChecks: [string, any][] = [
     [
       'price list versions (manager)',
@@ -952,9 +958,17 @@ try {
     'POST',
     `/v1/stock/commands/${receipt.id}/reverse`,
     { reason: 'Xato kirim, qaytarildi' },
-    A.adminToken,
+    staff.warehouse_manager!.token,
   );
   assert.equal(usedReverse.status, 409);
+  // Admin storno qila olmaydi: ombor faqat ko'rish (2026-10-16)
+  await call(
+    'POST',
+    `/v1/stock/commands/${receipt.id}/reverse`,
+    { reason: 'Xato kirim, qaytarildi' },
+    A.adminToken,
+    403,
+  );
   const receipt2 = await call(
     'POST',
     '/v1/stock/commands',
@@ -965,14 +979,14 @@ try {
     'POST',
     `/v1/stock/commands/${receipt2.id}/reverse`,
     { reason: 'Xato kirim, qaytarildi' },
-    A.adminToken,
+    staff.warehouse_manager!.token,
     200,
   );
   const reverseTwice = await raw(
     'POST',
     `/v1/stock/commands/${receipt2.id}/reverse`,
     { reason: 'Xato kirim, qaytarildi' },
-    A.adminToken,
+    staff.warehouse_manager!.token,
   );
   assert.equal(
     reverseTwice.status,

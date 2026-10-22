@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Download, History, Pencil } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronDown, Download, History, Pencil, Printer } from 'lucide-react';
 import { saveBase64File } from '@/lib/download';
 import { api, ApiError } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/lib/format';
-import { displayCurrency } from '@/lib/currency-store';
 import {
   Alert,
   Badge,
@@ -18,7 +17,6 @@ import {
   PageHeader,
   SearchInput,
   Select,
-  Stat,
   Tabs,
   Textarea,
 } from '@/components/ui';
@@ -96,67 +94,99 @@ export function EstimateDetailPage() {
         <div className="card-pad muted">{t('common.loading')}</div>
       </div>
     );
+  // Figma "smeta ko'rish": orqaga tugmasi va sarlavha, ma'lumot kartasi, amallar paneli, ierarxik jadval, hisoblash kartasi.
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <PageHeader
-        breadcrumbs={
-          <>
-            <Link to={`/app/estimates?project=${d.project_id}`}>{t('est.title')}</Link>
-            <span>/</span>
-            <span>{project?.name ?? ''}</span>
-          </>
-        }
-        title={
-          <span className="row">
-            {d.name}{' '}
-            <Badge tone="brand">
-              {t('est.revision')} {d.revision}
-            </Badge>
-          </span>
-        }
-        description={`${formatDateTime(d.created_at, lang)} · ${t('est.lines')}: ${d.lines.length}`}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              icon={<Download />}
-              loading={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-            >
-              {t('est.export')}
-            </Button>
-            {can('estimates', 'update') && (
-              <Button icon={<Pencil />} onClick={() => navigate(`/app/estimates/${id}/edit`)}>
-                {t('common.edit')}
-              </Button>
-            )}
-            {can('estimates', 'delete') && (
-              <Button
-                variant="ghost"
-                icon={<Archive />}
-                onClick={() => setArchive(true)}
-                aria-label={t('est.archive')}
-              />
-            )}
-          </>
-        }
-      />
-      {pricesVisible ? (
-        <div className="grid-4">
-          <Stat accent label={t('est.total')} value={formatMoney(d.totals.total, lang, false)} sub={displayCurrency()} />
-          <Stat label={t('est.material_total')} value={formatMoney(d.totals.material_total, lang, false)} sub={displayCurrency()} />
-          <Stat label={t('est.work_total')} value={formatMoney(d.totals.work_total, lang, false)} sub={displayCurrency()} />
-          <Stat
-            label={t('est.lines')}
-            value={d.lines.length}
-            sub={lineKinds
-              .map((k) => `${t(`est.kind.${k}`)}: ${d.lines.filter((l) => l.kind === k).length}`)
-              .join(' · ')}
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="project-top">
+        <span className="row" style={{ gap: 12, minWidth: 0 }}>
+          <Link
+            to={`/app/estimates?project=${d.project_id}`}
+            className="btn btn-secondary btn-icon"
+            aria-label={t('common.back_to_list')}
+          >
+            <ArrowLeft size={16} />
+          </Link>
+          <PageHeader title={d.name} description={project?.name ?? ''} />
+        </span>
+      </div>
+      <div className="card card-pad">
+        <dl className="block-facts">
+          <div>
+            <dt>{t('est.name')}</dt>
+            <dd>{d.name}</dd>
+          </div>
+          <div>
+            <dt>{t('est.revision')}</dt>
+            <dd>
+              <Badge tone="brand">
+                {t('est.revision')} {d.revision}
+              </Badge>
+            </dd>
+          </div>
+          <div>
+            <dt>{t('est.info.project')}</dt>
+            <dd>{project?.name ?? '—'}</dd>
+          </div>
+          <div>
+            <dt>{t('est.info.date')}</dt>
+            <dd>{formatDateTime(d.created_at, lang)}</dd>
+          </div>
+          <div>
+            <dt>{t('est.lines')}</dt>
+            <dd>
+              {d.lines.length}
+              <small className="muted">
+                {' '}
+                ·{' '}
+                {lineKinds
+                  .map((k) => `${t(`est.kind.${k}`)}: ${d.lines.filter((l) => l.kind === k).length}`)
+                  .join(' · ')}
+              </small>
+            </dd>
+          </div>
+        </dl>
+      </div>
+      {!pricesVisible && <Alert tone="warning">{t('est.unit_price_hidden')}</Alert>}
+      <div className="toolbar blocks-toolbar">
+        <SearchInput value={search} onChange={setSearch} placeholder={t('est.search_lines')} />
+        <Select
+          aria-label={t('est.filter_kind')}
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+        >
+          <option value="all">{t('common.all')}</option>
+          {lineKinds.map((k) => (
+            <option key={k} value={k}>
+              {t(`est.kind.${k}`)}
+            </option>
+          ))}
+        </Select>
+        <span className="spacer" />
+        {can('estimates', 'update') && (
+          <Button variant="secondary" icon={<Pencil />} onClick={() => navigate(`/app/estimates/${id}/edit`)}>
+            {t('common.edit')}
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          icon={<Download />}
+          loading={exportMutation.isPending}
+          onClick={() => exportMutation.mutate()}
+        >
+          {t('est.export')}
+        </Button>
+        <Button variant="secondary" icon={<Printer />} onClick={() => window.print()}>
+          {t('est.print')}
+        </Button>
+        {can('estimates', 'delete') && (
+          <Button
+            variant="ghost"
+            icon={<Archive />}
+            onClick={() => setArchive(true)}
+            aria-label={t('est.archive')}
           />
-        </div>
-      ) : (
-        <Alert tone="warning">{t('est.unit_price_hidden')}</Alert>
-      )}
+        )}
+      </div>
       <Tabs<Tab>
         value={tab}
         onChange={setTab}
@@ -168,24 +198,10 @@ export function EstimateDetailPage() {
       />
       {tab === 'lines' && (
         <>
-          <div className="toolbar">
-            <SearchInput value={search} onChange={setSearch} placeholder={t('est.search_lines')} />
-            <Select
-              aria-label={t('est.filter_kind')}
-              value={kind}
-              onChange={(e) => setKind(e.target.value as typeof kind)}
-            >
-              <option value="all">{t('common.all')}</option>
-              {lineKinds.map((k) => (
-                <option key={k} value={k}>
-                  {t(`est.kind.${k}`)}
-                </option>
-              ))}
-            </Select>
-          </div>
           <LinesTable
             lines={visible}
             pricesVisible={pricesVisible}
+            categories={search || kind !== 'all' ? undefined : d.totals.by_category}
             total={
               search
                 ? undefined
@@ -194,6 +210,23 @@ export function EstimateDetailPage() {
                   : d.totals.by_kind.find((g) => g.key === kind)?.total
             }
           />
+          {pricesVisible && (
+            <section className="card card-pad est-calc">
+              <div className="stat-label" style={{ marginBottom: 12 }}>
+                {t('est.calc')}
+              </div>
+              <dl>
+                <dt>{t('est.material_total')}</dt>
+                <dd>{formatMoney(d.totals.material_total, lang, false)}</dd>
+                <dt>{t('est.work_total')}</dt>
+                <dd>{formatMoney(d.totals.work_total, lang, false)}</dd>
+                <div className="est-grand-total">
+                  <span>{t('est.calc.total')}</span>
+                  <span>{formatMoney(d.totals.total, lang)}</span>
+                </div>
+              </dl>
+            </section>
+          )}
         </>
       )}
       {tab === 'summary' && <SummaryTab totals={d.totals} pricesVisible={pricesVisible} />}
@@ -221,20 +254,43 @@ export function EstimateDetailPage() {
   );
 }
 
+/**
+ * Figma "smeta ko'rish" jadvali: kategoriya qatori yig'iladi, kategoriya jami serverdagi `totals.by_category` dan
+ * (faqat filtrsiz ko'rinishda), pastda umumiy jami. Frontend summalarni qo'shmaydi.
+ */
 function LinesTable({
   lines,
   pricesVisible,
   total,
+  categories,
 }: {
   lines: EstimateLine[];
   pricesVisible: boolean;
   total?: string;
+  categories?: EstimateGroupTotal[];
 }) {
   const { t, lang } = useT();
-  let lastCategory: string | null | undefined;
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (c: string) =>
+    setCollapsed((s) => {
+      const next = new Set(s);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
+  const colSpan = pricesVisible ? 12 : 10;
+  // Qatorlar kategoriya bo'yicha ketma-ket keladi (server tartibi); har kategoriya boshida sarlavha, oxirida jami.
+  const groups: { category: string; lines: EstimateLine[] }[] = [];
+  for (const l of lines) {
+    const c = l.category ?? '';
+    const last = groups[groups.length - 1];
+    if (last && last.category === c) last.lines.push(l);
+    else groups.push({ category: c, lines: [l] });
+  }
+  let n = 0;
   return (
     <div className="table-wrap">
-      <table className="table table-dense" style={{ minWidth: 1100 }}>
+      <table className="table table-dense est-table" style={{ minWidth: 1100 }}>
         <thead>
           <tr>
             <th>{t('est.col.n')}</th>
@@ -252,19 +308,29 @@ function LinesTable({
           </tr>
         </thead>
         <tbody>
-          {lines.map((l, i) => {
-            const showCategory = (l.category ?? '') !== (lastCategory ?? '');
-            lastCategory = l.category ?? '';
-            const plan = Number(l.effective_quantity);
-            const fact = Number(l.fact_quantity);
-            const pct = plan > 0 ? Math.round((fact / plan) * 100) : null;
+          {groups.map((g) => {
+            const open = !collapsed.has(g.category);
+            const subtotal = categories?.find((c) => (c.key ?? '') === g.category)?.total;
+            const name = g.category || t('est.uncategorized');
             return (
               <FragmentRow
-                key={l.id}
-                showCategory={showCategory}
-                category={l.category}
-                colSpan={pricesVisible ? 12 : 10}
+                key={g.category}
+                category={name}
+                open={open}
+                onToggle={() => toggle(g.category)}
+                colSpan={colSpan}
+                count={g.lines.length}
+                subtotal={pricesVisible && open && groups.length > 1 ? subtotal : undefined}
+                subtotalLabel={t('est.category_total', { name })}
               >
+                {open &&
+                  g.lines.map((l) => {
+                    const i = n++;
+                    const plan = Number(l.effective_quantity);
+                    const fact = Number(l.fact_quantity);
+                    const pct = plan > 0 ? Math.round((fact / plan) * 100) : null;
+                    return (
+                      <tr key={l.id}>
                 <td>{i + 1}</td>
                 <td>
                   <Badge tone={l.kind === 'material' ? 'info' : l.kind === 'labor' ? 'brand' : 'neutral'}>
@@ -313,19 +379,20 @@ function LinesTable({
                   {l.months.length ? <Badge>{l.months.length}</Badge> : <span className="muted">—</span>}
                 </td>
                 <td className="muted">{l.note ?? ''}</td>
+                      </tr>
+                    );
+                  })}
               </FragmentRow>
             );
           })}
         </tbody>
         {pricesVisible && total !== undefined && (
           <tfoot>
-            <tr>
-              <td colSpan={8} style={{ textAlign: 'right', fontWeight: 600 }}>
+            <tr className="est-grand">
+              <td colSpan={8} style={{ textAlign: 'right' }}>
                 {t('est.total')}
               </td>
-              <td className="num" style={{ fontWeight: 700 }}>
-                {formatMoney(total, lang, false)}
-              </td>
+              <td className="num">{formatMoney(total, lang, false)}</td>
               <td colSpan={3} />
             </tr>
           </tfoot>
@@ -334,37 +401,50 @@ function LinesTable({
     </div>
   );
 }
+/** Kategoriya sarlavhasi (yig'iladi), qatorlar va kategoriya jami (narx bilan, serverdan). */
 function FragmentRow({
-  showCategory,
   category,
+  open,
+  onToggle,
   colSpan,
+  count,
+  subtotal,
+  subtotalLabel,
   children,
 }: {
-  showCategory: boolean;
-  category: string | null;
+  category: string;
+  open: boolean;
+  onToggle: () => void;
   colSpan: number;
+  count: number;
+  subtotal?: string;
+  subtotalLabel: string;
   children: React.ReactNode;
 }) {
+  const { t, lang } = useT();
   return (
     <>
-      {showCategory && category && (
-        <tr>
-          <td
-            colSpan={colSpan}
-            style={{
-              background: 'var(--surface-2)',
-              fontWeight: 600,
-              fontSize: 'var(--fs-xs)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-              color: 'var(--text-3)',
-            }}
-          >
+      <tr className="est-category">
+        <td colSpan={colSpan}>
+          <button type="button" aria-expanded={open} onClick={onToggle} title={open ? t('est.collapse') : t('est.expand')}>
+            <ChevronDown aria-hidden />
             {category}
+            <span className="muted" style={{ fontWeight: 400 }}>
+              · {count}
+            </span>
+          </button>
+        </td>
+      </tr>
+      {children}
+      {subtotal !== undefined && (
+        <tr className="est-subtotal">
+          <td colSpan={8} style={{ textAlign: 'right' }}>
+            {subtotalLabel}
           </td>
+          <td className="num">{formatMoney(subtotal, lang, false)}</td>
+          <td colSpan={colSpan - 9} />
         </tr>
       )}
-      <tr>{children}</tr>
     </>
   );
 }

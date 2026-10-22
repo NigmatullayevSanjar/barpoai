@@ -30,6 +30,7 @@ export type FinanceDocument = {
   counterparty_name: string | null;
   cash_account_id: string | null;
   cash_account_name: string | null;
+  cash_account_kind: 'bank' | 'cash' | null;
   target_cash_account_name: string | null;
   matched_receipt_id: string | null;
   matched_material_name: string | null;
@@ -44,8 +45,19 @@ export type FinanceDocument = {
   created_by_name: string;
   created_at: string;
   outstanding: string | null;
+  /** Qarz hujjatlari uchun to'langan qismi (serverda); boshqa turlarda null */
+  paid: string | null;
   reversed: boolean;
   zone_name: string | null;
+};
+/** GET /v1/finance/documents `summary` — Figma F5 KPI kartalari (ro'yxat filtri bilan, sahifalashsiz) */
+export type DocsSummary = {
+  count: number;
+  total: string;
+  outstanding: string;
+  paid_count: number;
+  open_count: number;
+  overdue_count: number;
 };
 export type Counterparty = {
   id: string;
@@ -61,7 +73,11 @@ export type Counterparty = {
   version: number;
   debt: string;
   advance: string;
+  /** Muddati o'tgan qarz hujjatlari qoldig'i (serverda) */
+  overdue: string;
+  last_activity: string | null;
 };
+export type CounterpartiesSummary = { debt: string; advance: string; overdue: string };
 export type CashAccount = {
   id: string;
   name: string;
@@ -139,6 +155,9 @@ export type PayrollPeriod = {
   entries: number;
   total: string;
   paid: string;
+  /** Oklad + bonus (ish haqi fondi) va to'lanmagan qoldiq — serverda */
+  gross: string;
+  due: string;
   version: number;
 };
 export type PayrollEntry = {
@@ -158,7 +177,119 @@ export type PayrollEntry = {
   payment_document_id: string | null;
   version: number;
 };
-export type Budget = { project_id: string; month: string; amount: string; version: number };
+export type Budget = {
+  project_id: string;
+  month: string;
+  amount: string;
+  version: number;
+  actual: string;
+  remaining: string;
+  percent: string | null;
+};
+export type BudgetYear = {
+  year: number;
+  months: number;
+  amount: string;
+  actual: string;
+  remaining: string;
+  percent: string | null;
+};
+export type BudgetTotals = { amount: string; actual: string; remaining: string; percent: string | null };
+/** GET /v1/finance/calendar — muddatli hujjatlar, ochiq so'rovlar, bajarilgan to'lovlar va KPI (Figma F5) */
+export type CalendarData = {
+  documents: {
+    id: string;
+    kind: DocKind;
+    due_date: string;
+    description: string;
+    reference: string | null;
+    project_name: string;
+    counterparty_name: string | null;
+    outstanding: string;
+  }[];
+  requests: {
+    id: string;
+    amount: string;
+    due_date: string;
+    purpose: string;
+    status: PaymentRequest['status'];
+    project_name: string;
+    counterparty_name: string;
+  }[];
+  payments: {
+    id: string;
+    document_date: string;
+    amount: string;
+    description: string;
+    reference: string | null;
+    project_name: string;
+    counterparty_name: string | null;
+  }[];
+  overdue: { amount: string; count: number };
+  summary: {
+    today_count: number;
+    today_amount: string;
+    week_count: number;
+    week_amount: string;
+    month_count: number;
+    month_amount: string;
+  };
+};
+export type PlanActual = {
+  totals: { plan_value: string; fact_value: string; variance: string; percent: string | null };
+  by_kind: { kind: string; plan_value: string; plan_qty: string; fact_value: string }[];
+  by_category: {
+    category: string;
+    kind: string;
+    lines: number;
+    plan_value: string;
+    fact_value: string | null;
+  }[];
+  lines: {
+    id: string;
+    kind: string;
+    category: string | null;
+    description: string;
+    unit_id: string;
+    plan_qty: string;
+    plan_value: string;
+    zone_name: string | null;
+    estimate_name: string;
+    fact_qty: string;
+    fact_value: string | null;
+  }[];
+  by_zone: {
+    zone_name: string;
+    kind: string;
+    lines: number;
+    plan_qty: string;
+    plan_value: string;
+    fact_qty: string;
+    percent: string | null;
+  }[];
+  monthly: { month: string; plan_value: string; fact_value: string; budget: string }[];
+};
+export type Forecast = {
+  plan_total: string;
+  budget_total: string;
+  actual_cost: string;
+  remaining_plan: string;
+  monthly_burn: string;
+  months_used: number;
+  months_left: number | null;
+  projected_remaining_spend: string | null;
+  projected_total: string | null;
+  projected_variance: string | null;
+  months_of_runway: number | null;
+  end_date: string | null;
+  recent: { month: string; expense: string }[];
+};
+export type FinanceReports = {
+  cash_flow: { month: string; account: string; kind: string; inflow: string; outflow: string }[];
+  expenses: { project: string; month: string; material: string; other: string; total: string }[];
+  aging: { counterparty: string; current: string; d30: string; d90: string; older: string; total: string }[];
+  income: string;
+};
 
 export const kindTone: Record<DocKind, Tone> = {
   allocation: 'info',
@@ -225,29 +356,39 @@ export const useSummary = (projectId: string) =>
   });
 export const useDocuments = (
   projectId: string,
-  filters: { kind?: string; counterparty_id?: string; from?: string; to?: string; unpaid?: boolean } = {},
+  filters: {
+    kind?: string;
+    counterparty_id?: string;
+    from?: string;
+    to?: string;
+    unpaid?: boolean;
+    cash_kind?: string;
+  } = {},
   page: { offset: number; limit: number },
 ) =>
   useQuery({
     queryKey: ['finance-docs', projectId, filters, page.offset, page.limit],
     queryFn: () =>
-      api<ListResponse<FinanceDocument>>(
+      api<ListResponse<FinanceDocument> & { summary?: DocsSummary }>(
         `/v1/finance/documents${qs({ project_id: projectId, ...filters, limit: page.limit, offset: page.offset })}`,
       ),
     enabled: Boolean(projectId),
   });
-export const useCounterparties = (opts: { q?: string; offset: number; limit: number }) =>
+export const useCounterparties = (opts: { q?: string; kind?: string; offset: number; limit: number }) =>
   useQuery({
-    queryKey: ['counterparties', opts.q, opts.offset, opts.limit],
+    queryKey: ['counterparties', opts.q, opts.kind, opts.offset, opts.limit],
     queryFn: () =>
-      api<ListResponse<Counterparty>>(
-        `/v1/counterparties${qs({ q: opts.q || undefined, limit: opts.limit, offset: opts.offset })}`,
+      api<ListResponse<Counterparty> & { summary?: CounterpartiesSummary }>(
+        `/v1/counterparties${qs({ q: opts.q || undefined, kind: opts.kind || undefined, limit: opts.limit, offset: opts.offset })}`,
       ),
   });
 export const useCashBalances = () =>
   useQuery({
     queryKey: ['cash-balances'],
-    queryFn: () => api<ListResponse<CashAccount>>('/v1/finance/cash-balances'),
+    queryFn: () =>
+      api<ListResponse<CashAccount> & { summary?: { bank: string; cash: string } }>(
+        '/v1/finance/cash-balances',
+      ),
   });
 export const usePayables = (
   projectId: string,
@@ -276,7 +417,10 @@ export const usePaymentRequests = (
 export const useBudgets = (projectId: string) =>
   useQuery({
     queryKey: ['budgets', projectId],
-    queryFn: () => api<ListResponse<Budget>>(`/v1/budgets?project_id=${projectId}&limit=100`),
+    queryFn: () =>
+      api<ListResponse<Budget> & { yearly: BudgetYear[]; summary: BudgetTotals }>(
+        `/v1/budgets?project_id=${projectId}&limit=100`,
+      ),
     enabled: Boolean(projectId),
   });
 export const monthLabel = (iso: string, lang: 'uz' | 'ru') =>
