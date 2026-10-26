@@ -3253,6 +3253,238 @@ try {
   passed.push(
     'Receipts for invoice matching: unmatched=true hides receipts already on an invoice, q searches the material name; the accountant lists unmatched receipts but cannot post stock',
   );
+  // ---- Avans hisobi (egasi, 2026-10-26): subpudratchi avansi uning dalolatnomasiga hisoblanadi
+  const subCp = await call(
+    'POST',
+    '/v1/counterparties',
+    { name: 'Usta Subpudrat', kind: 'contractor' },
+    adminAgain,
+  );
+  const subDoc = (body: any, token = accP, expected = 200, projectId = project.id) =>
+    call(
+      'POST',
+      '/v1/finance/documents',
+      { project_id: projectId, counterparty_id: subCp.id, document_date: '2026-10-05', ...body },
+      token,
+      undefined,
+      expected,
+    );
+  const subRow = async () =>
+    (await call('GET', '/v1/counterparties?kind=contractor&q=Usta%20Subpudrat', undefined, adminAgain)).items.find(
+      (c: any) => c.id === subCp.id,
+    );
+  const subAct = async (id: string) =>
+    (
+      await call(
+        'GET',
+        `/v1/finance/documents?project_id=${project.id}&kind=labor&counterparty_id=${subCp.id}&limit=100`,
+        undefined,
+        adminAgain,
+      )
+    ).items.find((d: any) => d.id === id);
+  await subDoc({ kind: 'advance', amount: '3000000', cash_account_id: treasury.id, description: 'Subpudratchiga avans' });
+  const subLabor = await subDoc({
+    kind: 'labor',
+    amount: '10000000',
+    due_date: '2026-10-10',
+    description: 'Poydevor ishlari dalolatnomasi',
+  });
+  assert.equal((await subAct(subLabor.id)).advance_offsettable, '3000000.00');
+  // Kassa hisobi yoki bog'langan hujjatsiz avans hisobi — 400; avansdan ortiq — ADVANCE_INSUFFICIENT
+  await subDoc(
+    { kind: 'advance_offset', amount: '1', cash_account_id: treasury.id, allocated_invoice_id: subLabor.id, description: 'Kassa bilan hisob' },
+    accP,
+    400,
+  );
+  await subDoc({ kind: 'advance_offset', amount: '1', description: 'Hujjatsiz avans hisobi' }, accP, 400);
+  assert.equal(
+    (
+      await subDoc(
+        { kind: 'advance_offset', amount: '3000000.01', allocated_invoice_id: subLabor.id, description: 'Avansdan ortiq hisob' },
+        accP,
+        409,
+      )
+    ).error.code,
+    'ADVANCE_INSUFFICIENT',
+  );
+  // Finansist (bank/kassa yaratish yo'q) va prorab avansni hisoblay olmaydi
+  const finOffset = (await call('POST', '/v1/auth/login', { login: 'financier', password: pass + '2' })).access_token;
+  const foreOffset = (await call('POST', '/v1/auth/login', { login: 'foreman', password: pass + '2' })).access_token;
+  const offsetBody = { kind: 'advance_offset', amount: '1', allocated_invoice_id: subLabor.id, description: 'Ruxsatsiz hisob' };
+  await subDoc(offsetBody, finOffset, 403);
+  await subDoc(offsetBody, foreOffset, 403);
+  // Parallel: avans 3 mln, ikkita 2 mln lik hisob — kontragent qulfi tufayli faqat bittasi o'tadi
+  const parallelOffsets = await Promise.all(
+    [1, 2].map(() =>
+      app!.inject({
+        method: 'POST',
+        url: '/v1/finance/documents',
+        payload: {
+          project_id: project.id,
+          counterparty_id: subCp.id,
+          kind: 'advance_offset',
+          amount: '2000000',
+          allocated_invoice_id: subLabor.id,
+          description: 'Parallel avans hisobi',
+          document_date: '2026-10-06',
+        },
+        headers: { authorization: `Bearer ${accP}`, 'idempotency-key': randomUUID() },
+      }),
+    ),
+  );
+  assert.deepEqual(parallelOffsets.map((r) => r.statusCode).sort(), [200, 409]);
+  assert.equal(parallelOffsets.find((r) => r.statusCode === 409)!.json().error.code, 'ADVANCE_INSUFFICIENT');
+  // Mijoz admini ham avans hisobini qiladi: qolgan 1 mln
+  const adminOffset = await subDoc(
+    { kind: 'advance_offset', amount: '1000000', allocated_invoice_id: subLabor.id, description: 'Qolgan avans hisobi' },
+    adminAgain,
+  );
+  let subNow = await subRow();
+  assert.equal(subNow.debt, '7000000.00');
+  assert.equal(subNow.advance, '0.00');
+  let actNow = await subAct(subLabor.id);
+  assert.equal(actNow.paid, '3000000.00');
+  assert.equal(actNow.outstanding, '7000000.00');
+  assert.equal(actNow.advance_offsettable, '0.00');
+  await subDoc({
+    kind: 'payment',
+    amount: '7000000',
+    cash_account_id: treasury.id,
+    allocated_invoice_id: subLabor.id,
+    description: 'Dalolatnoma qoldig‘i to‘lovi',
+  });
+  assert.equal(
+    (
+      await subDoc(
+        { kind: 'payment', amount: '1', cash_account_id: treasury.id, allocated_invoice_id: subLabor.id, description: 'Ortiqcha to‘lov' },
+        accP,
+        409,
+      )
+    ).error.code,
+    'OVERPAYMENT_USE_ADVANCE',
+  );
+  subNow = await subRow();
+  assert.equal(subNow.debt, '0.00');
+  assert.equal(subNow.advance, '0.00');
+  assert.equal(subNow.overdue, '0.00');
+  actNow = await subAct(subLabor.id);
+  assert.equal(actNow.outstanding, '0.00');
+  const subStatement = await call('GET', `/v1/counterparties/${subCp.id}/statement?project_id=${project.id}`, undefined, adminAgain);
+  assert.equal(subStatement.items.at(-1).running_debt, '0.00');
+  assert.deepEqual(
+    [subStatement.totals.debt, subStatement.totals.advance].map((v: string) => dec(v).toFixed(2)),
+    ['0.00', '0.00'],
+  );
+  const subJournal = (
+    await admin.query(
+      "SELECT coalesce(-sum(amount) FILTER(WHERE account='cash'),0)::text cash_out,coalesce(sum(amount) FILTER(WHERE account='expense'),0)::text expense FROM journal_entries WHERE counterparty_id=$1",
+      [subCp.id],
+    )
+  ).rows[0];
+  assert.equal(subJournal.cash_out, '10000000.00');
+  assert.equal(subJournal.expense, '10000000.00');
+  passed.push(
+    'Advance offset: a subcontractor advance closes part of its labor act (payable +, advance −, no cash or expense), never above the advance or the act balance, serialized under parallel requests; the admin and the accountant may offset, the financier and the foreman get 403',
+  );
+  // Storno: dalolatnoma avval to'lov va hisoblar storno qilinmaguncha qoladi; hisoblangan avans storno qilinmaydi;
+  // hisob storno qilinsa qarz va avans qaytadi
+  assert.equal(
+    (await call('POST', `/v1/finance/documents/${subLabor.id}/reverse`, { reason: 'Xato dalolatnoma' }, adminAgain, undefined, 409)).error
+      .code,
+    'REVERSE_PAYMENTS_FIRST',
+  );
+  const subAdvance = (
+    await admin.query("SELECT id FROM finance_documents WHERE counterparty_id=$1 AND kind='advance'", [subCp.id])
+  ).rows[0];
+  assert.equal(
+    (await call('POST', `/v1/finance/documents/${subAdvance.id}/reverse`, { reason: 'Avans bekor' }, adminAgain, undefined, 409))
+      .error.code,
+    'ADVANCE_ALREADY_APPLIED',
+  );
+  await call('POST', `/v1/finance/documents/${adminOffset.id}/reverse`, { reason: 'Hisob xato kiritildi' }, adminAgain);
+  subNow = await subRow();
+  assert.equal(subNow.debt, '1000000.00');
+  assert.equal(subNow.advance, '1000000.00');
+  actNow = await subAct(subLabor.id);
+  assert.equal(actNow.outstanding, '1000000.00');
+  assert.equal(actNow.advance_offsettable, '1000000.00');
+  // Boshqa obyektdagi avans bu obyekt hujjatiga hisoblanmaydi
+  await subDoc(
+    { kind: 'advance', amount: '500000', cash_account_id: treasury.id, description: 'B obyekt avansi' },
+    adminAgain,
+    200,
+    projectB.id,
+  );
+  const subLabor2 = await subDoc({ kind: 'labor', amount: '2000000', description: 'Devor ishlari dalolatnomasi' });
+  assert.equal(
+    (
+      await subDoc(
+        { kind: 'advance_offset', amount: '1500000', allocated_invoice_id: subLabor2.id, description: 'Boshqa obyekt avansi bilan' },
+        accP,
+        409,
+      )
+    ).error.code,
+    'ADVANCE_INSUFFICIENT',
+  );
+  assert.equal((await subAct(subLabor2.id)).advance_offsettable, '1000000.00');
+  passed.push(
+    'Advance offset reversal restores debt and advance; an act with live offsets or payments and an already applied advance cannot be reversed; another project advance is never offset',
+  );
+  // Ish haqi davri hujjati avans bilan yopilmaydi (ish haqi sahifasidan net summa to'lanadi)
+  const offsetPeriod = await call('POST', '/v1/finance/payroll/periods', { project_id: project.id, month: '2026-09-01' }, adminAgain);
+  await call(
+    'POST',
+    `/v1/finance/payroll/periods/${offsetPeriod.id}/entries`,
+    { employee_id: foreman.id, base_salary: '1000000' },
+    adminAgain,
+  );
+  await call('POST', `/v1/finance/payroll/periods/${offsetPeriod.id}/post`, { version: offsetPeriod.version }, adminAgain);
+  const salaryDoc = (
+    await admin.query(
+      'SELECT f.id,f.counterparty_id FROM payroll_entries e JOIN finance_documents f ON f.id=e.labor_document_id WHERE e.period_id=$1',
+      [offsetPeriod.id],
+    )
+  ).rows[0];
+  await call(
+    'POST',
+    '/v1/finance/documents',
+    {
+      project_id: project.id,
+      counterparty_id: salaryDoc.counterparty_id,
+      kind: 'advance',
+      amount: '300000',
+      cash_account_id: treasury.id,
+      description: 'Xodimga avans',
+      document_date: '2026-10-05',
+    },
+    adminAgain,
+  );
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/finance/documents',
+        {
+          project_id: project.id,
+          counterparty_id: salaryDoc.counterparty_id,
+          kind: 'advance_offset',
+          amount: '300000',
+          allocated_invoice_id: salaryDoc.id,
+          description: 'Ish haqini avans bilan yopish',
+          document_date: '2026-10-05',
+        },
+        adminAgain,
+        undefined,
+        409,
+      )
+    ).error.code,
+    'PAYROLL_DOCUMENT_NOT_OFFSETTABLE',
+  );
+  const salaryRow = (
+    await call('GET', `/v1/finance/documents?project_id=${project.id}&kind=labor&limit=100`, undefined, adminAgain)
+  ).items.find((d: any) => d.id === salaryDoc.id);
+  assert.equal(salaryRow.advance_offsettable, '0.00');
+  passed.push('A payroll period labor document is paid from the payroll page only and is never offered for advance offset');
   // O7: moliya yig'masi yozuv bo'lmasa ham 2 xonali summa qaytaradi ('0' emas, '0.00')
   const emptyProject = await call('POST', '/v1/projects', { name: 'Bo‘sh yig‘ma' }, adminAgain);
   const emptySummary = await call(

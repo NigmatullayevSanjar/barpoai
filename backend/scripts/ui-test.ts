@@ -787,6 +787,48 @@ try {
   checks.push(
     'Payroll period posts labor expense per employee and payment clears it through the cash account',
   );
+  // Avans hisobi (2026-10-26): avans → xizmat dalolatnomasi → "Avansdan yopish" (summa serverdan oldindan)
+  await adminPage.goto(webURL + '/app/finance/bank-cash?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Operatsiya qo‘shish' }).first().click();
+  await dialog().getByLabel('Turi').selectOption('advance');
+  await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
+  await dialog()
+    .getByLabel(/Bank\/kassa hisobi/)
+    .selectOption({ index: 1 });
+  await dialog()
+    .getByLabel(/^Summa/)
+    .fill('300000');
+  await dialog().getByLabel('Tavsif').fill('Beton nasos uchun avans');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.goto(webURL + '/app/finance/invoices?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Invoys / dalolatnoma' }).first().click();
+  await dialog().getByLabel('Turi').selectOption('service');
+  await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
+  await dialog()
+    .getByLabel(/^Summa/)
+    .fill('1000000');
+  await dialog().getByLabel('Tavsif').fill('Beton nasos xizmati');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'Avansdan yopish', exact: true }).first().click();
+  assert.match(await dialog().getByLabel(/^Summa/).inputValue(), /^300000(\.00)?$/);
+  await dialog().getByLabel('Tavsif').fill('Avansni nasos xizmatiga hisoblash');
+  await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await dialog().waitFor({ state: 'detached' });
+  await adminPage.getByRole('button', { name: 'Avansdan yopish', exact: true }).waitFor({ state: 'detached' });
+  const fin4 = (
+    await owner.query(
+      "SELECT coalesce(sum(j.amount) FILTER(WHERE j.account='advance'),0)::text advance,(-coalesce(sum(j.amount) FILTER(WHERE j.account='payable'),0))::text debt FROM journal_entries j JOIN counterparties c ON c.id=j.counterparty_id WHERE c.name='Qurilish Savdo MChJ'",
+    )
+  ).rows[0];
+  assert.equal(fin4.advance, '0.00');
+  assert.equal(fin4.debt, '700000.00');
+  await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('cell', { name: 'Avans hisobi', exact: true }).first().waitFor();
+  checks.push(
+    'Advance offset from the invoices table: the amount is prefilled from the server, the advance closes part of the act and the document shows as "Avans hisobi"',
+  );
   // 5f. Vazifa va hisobot: yaratish → bajaruvchi → tekshiruv; hisobot + foto + progress tuzatish (stage 08)
   await adminPage.goto(webURL + '/app/tasks?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Vazifa qo‘shish' }).first().click();

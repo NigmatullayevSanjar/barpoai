@@ -99,6 +99,8 @@ export const financialPages: Partial<Record<string, Page>> = {
   payment: 'bank_cash',
   receipt: 'bank_cash',
   advance: 'bank_cash',
+  // Avans hisobi pul harakati emas, lekin qarzni yopadi — to'lov qila oladiganlarga beriladi.
+  advance_offset: 'bank_cash',
   cash_transfer: 'bank_cash',
   reversal: 'accounting_documents',
 };

@@ -53,6 +53,7 @@ export function DocumentsTable({
   const canReverse = me?.role === 'tenant_admin' || permissions?.permissions.includes('finance.reverse');
   const [reverse, setReverse] = useState<FinanceDocument | null>(null);
   const [pay, setPay] = useState<FinanceDocument | null>(null);
+  const [offset, setOffset] = useState<FinanceDocument | null>(null);
   const money = (v: string) => formatMoney(v, lang, false);
   const subOf = (r: FinanceDocument) =>
     [
@@ -253,6 +254,14 @@ export function DocumentsTable({
               {t('fin.pay')}
             </Button>
           )}
+          {allowPay &&
+            payableKinds.includes(r.kind) &&
+            !r.reversed &&
+            Number(r.advance_offsettable ?? 0) > 0 && (
+              <Button size="sm" variant="secondary" onClick={() => setOffset(r)}>
+                {t('fin.offset_advance')}
+              </Button>
+            )}
           {canReverse && !r.reversed && r.kind !== 'reversal' && (
             <Button size="sm" variant="ghost" onClick={() => setReverse(r)}>
               {t('fin.reverse')}
@@ -294,6 +303,18 @@ export function DocumentsTable({
             amount: pay.outstanding ?? undefined,
           }}
           onClose={() => setPay(null)}
+        />
+      )}
+      {offset && (
+        <DocumentModal
+          projectId={projectId}
+          kinds={['advance_offset']}
+          preset={{
+            counterparty_id: offset.counterparty_id ?? undefined,
+            allocated_invoice_id: offset.id,
+            amount: offset.advance_offsettable ?? undefined,
+          }}
+          onClose={() => setOffset(null)}
         />
       )}
     </>
@@ -358,5 +379,6 @@ export const kindsFor = (page: string): DocKind[] =>
             'payment',
             'receipt',
             'advance',
+            'advance_offset',
             'cash_transfer',
           ];
