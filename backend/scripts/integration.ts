@@ -1971,7 +1971,8 @@ try {
   assert(typeof diag.errors.last_24h === 'number' && Array.isArray(diag.errors.items));
   assert(diag.tenants.active >= 1 && diag.sessions_active >= 1);
   assert.match(String(diag.database.last_migration), /^\d{3}_[a-z_]+\.sql$/);
-  await call('GET', '/v1/platform/diagnostics', undefined, ownerToken, undefined, 403);
+  // D21: platforma egasida hamma ruxsat bor — diagnostika ham ochiq
+  await call('GET', '/v1/platform/diagnostics', undefined, ownerToken);
   const sr = await call(
     'POST',
     '/v1/support-requests',
@@ -3372,6 +3373,60 @@ try {
     undefined,
     400,
   );
+  // 2026-10-22: Excelda bor, bazada yo'q material va zona nomlari import paytida avtomatik yaratiladi
+  const autoBook = new ExcelJS.Workbook();
+  const autoSheet = autoBook.addWorksheet('Smeta');
+  autoSheet.addRow(['Nomi', 'Material', 'Zona', 'Birlik', 'Miqdor', 'Narx']);
+  autoSheet.addRow(['Sement quyish', 'Avto-sement M400', 'Avto-zona 1', 'kg', 5, 100]);
+  autoSheet.addRow(['Sement qo‘shimcha', 'avto-sement m400', 'AVTO-ZONA 1', 'kg', 2, 100]);
+  const autoB64 = Buffer.from(await autoBook.xlsx.writeBuffer()).toString('base64');
+  const autoPreview = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Avto yaratish',
+      file_base64: autoB64,
+      mapping: { description: 'Nomi', material_name: 'Material', zone_name: 'Zona', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx' },
+      defaults: { kind: 'material' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual(autoPreview.created, { materials: 1, zones: 1 });
+  assert.equal(autoPreview.preview.lines[0].material_id, autoPreview.preview.lines[1].material_id);
+  assert.equal(autoPreview.preview.lines[0].zone_id, autoPreview.preview.lines[1].zone_id);
+  const autoMaterial = (await admin!.query("SELECT unit_id FROM materials WHERE name='Avto-sement M400'")).rows;
+  assert.deepEqual(autoMaterial.map((r: any) => r.unit_id), ['kg']);
+  await call('POST', `/v1/estimate-imports/${autoPreview.id}/commit`, { digest: autoPreview.digest }, adminAgain);
+  // Noma'lum birlik bo'lsa material yaratilmaydi, xato qaytadi (tranzaksiya bekor)
+  autoSheet.getCell('D2').value = 'noma-lum-birlik';
+  autoSheet.getCell('B2').value = 'Boshqa material';
+  const badUnit = Buffer.from(await autoBook.xlsx.writeBuffer()).toString('base64');
+  await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Noma‘lum birlik',
+      file_base64: badUnit,
+      mapping: { description: 'Nomi', material_name: 'Material', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx' },
+      defaults: { kind: 'material' },
+    },
+    adminAgain,
+    undefined,
+    400,
+  );
+  assert.equal((await admin!.query("SELECT count(*)::int n FROM materials WHERE name='Boshqa material'")).rows[0].n, 0);
+  passed.push('Estimate import creates missing materials and zones (case-insensitive, once), reports the counts, and rolls back when a unit is unknown');
+  // Mijoz admini adminlikni topshira olmaydi (faqat platforma o'tkazadi); jadvalni xlsx qilish
+  await call('POST', '/v1/company/ownership', { new_admin_id: foreman.id, previous_admin_role: 'manager', reason: 'Endi mumkin emas' }, adminAgain, undefined, 404);
+  const tableXlsx = await call('POST', '/v1/exports/table', { filename: 'sinov jadval', sheet: 'Sinov', title: 'Sinov', headers: ['Nomi', 'Summa'], rows: [['A', '1000.50'], ['B', null]] }, adminAgain);
+  assert.equal(tableXlsx.filename, 'sinov_jadval.xlsx');
+  const tableBook = new ExcelJS.Workbook();
+  await tableBook.xlsx.load(Buffer.from(tableXlsx.base64, 'base64') as any);
+  assert.equal(tableBook.worksheets[0]!.getRow(3).getCell(2).value, 'Summa');
+  assert.equal(tableBook.worksheets[0]!.getRow(4).getCell(2).value, 1000.5);
+  passed.push('Company admin can no longer transfer adminship (endpoint removed); /v1/exports/table builds an xlsx from a screen table');
   const brokenZip = new JSZip();
   brokenZip.file('xl/workbook.xml', '<workbook');
   assert.equal(
@@ -3417,30 +3472,168 @@ try {
   );
   await call('PATCH', `/v1/platform/plans/${plan.id}`, { code: 'standard', monthly_price: '1.00' }, supportToken, undefined, 403);
   passed.push('Plan edit changes price and limits for future invoices only, is audited, owner-only, and plans still cannot be deleted');
-  // ---- super_admin: platforma egasining barcha sahifalari + parol tiklash (kompaniya admini ham), 6 belgili parol
+  // ---- D21 (2026-10-22): super_admin — butun platforma admini (egasining amallari ham); support — murojaatlar,
+  // diagnostika va kompaniya foydalanuvchisiga parol tiklash; ruxsatlar matritsasi sahifadan sozlanadi.
   await admin.query(
     "INSERT INTO users(login,display_name,password_hash,role) VALUES('superadmin','Super admin',$1,'super_admin')",
     [await hashPassword(pass)],
   );
   const superToken = (await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass }))
     .access_token;
-  // D15 (2026-10-13): super_admin va support o'qiydi; biznes amallari (tarif, obuna, invoys, bloklash) faqat egasida;
-  // xodimlar va platforma auditi — super_admin; parol tiklash — egasi va super_admin.
-  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/billing/invoices', '/v1/platform/billing/debtors', '/v1/platform/support', `/v1/platform/tenants/${t.id}`])
-    for (const tok of [superToken, supportToken]) await call('GET', path, undefined, tok);
-  await call('POST', '/v1/platform/plans', { code: 'tech', version: 1, monthly_price: '1.00' }, superToken, undefined, 403);
-  await call('PATCH', `/v1/platform/tenants/${t.id}`, { status: 'blocked', version: 1, reason: 'Texnik sinov' }, superToken, undefined, 403);
-  await call('POST', '/v1/platform/tenants', { legal_name: 'Support yaratmaydi', registration_key: 'SUP-1' }, supportToken, undefined, 403);
-  await call('GET', '/v1/platform/staff', undefined, supportToken, undefined, 403);
-  await call('GET', '/v1/platform/audit', undefined, supportToken, undefined, 403);
   const tenantAdminId = (await admin.query("SELECT id FROM users WHERE tenant_id=$1 AND role='tenant_admin'", [t.id]))
     .rows[0].id;
   const ownerId = (await admin.query("SELECT id FROM users WHERE login='owner'")).rows[0].id;
   const superId = (await admin.query("SELECT id FROM users WHERE login='superadmin'")).rows[0].id;
-  await call('POST', `/v1/platform/users/${ownerId}/reset`, undefined, superToken, undefined, 403);
+  // 2FA majburiy: bot sozlangan, Telegram ulanmagan super admin faqat profil va Telegramni ulashga kiradi.
+  const saMe = await call('GET', '/v1/auth/me', undefined, superToken);
+  assert.equal(saMe.two_factor_setup_required, true);
+  assert.equal(saMe.platform_permissions.length, 11);
+  assert.equal(
+    (await call('GET', '/v1/platform/tenants', undefined, superToken, undefined, 403)).error.code,
+    'TWO_FACTOR_SETUP_REQUIRED',
+  );
+  const saLink = await call('POST', '/v1/integrations/telegram/link', undefined, superToken);
+  await transaction(appPool!, null, (db) => consumeLinkToken(db, saLink.url.split('start=')[1]!, { id: '777001', first_name: 'SA' } as any));
+  assert.equal((await call('GET', '/v1/auth/me', undefined, superToken)).two_factor_setup_required, false);
+  const supportMe = await call('GET', '/v1/auth/me', undefined, supportToken);
+  assert.deepEqual([...supportMe.platform_permissions].sort(), ['diagnostics.read', 'support.reply', 'users.reset']);
+  assert.equal(supportMe.two_factor_setup_required, false);
+  passed.push(
+    'D21: a super_admin without Telegram (bot configured) reaches only profile and Telegram linking, everything else is TWO_FACTOR_SETUP_REQUIRED; after linking the same session works; /auth/me lists platform permissions',
+  );
+  for (const path of ['/v1/platform/tenants', '/v1/platform/plans', '/v1/platform/billing/summary', '/v1/platform/billing/invoices', '/v1/platform/billing/debtors', '/v1/platform/support', `/v1/platform/tenants/${t.id}`, `/v1/platform/tenants/${t.id}/users`])
+    for (const tok of [superToken, supportToken]) await call('GET', path, undefined, tok);
+  // Super admin egasining biznes amallarini bajaradi
+  const saPlan = await call('POST', '/v1/platform/plans', { code: 'tech', version: 1, monthly_price: '1.00' }, superToken);
+  await call('PATCH', `/v1/platform/plans/${saPlan.id}`, { code: 'tech', monthly_price: '2.00' }, superToken);
+  const saTenant = await call('POST', '/v1/platform/tenants', { legal_name: 'Super admin ochgan', registration_key: 'SA-1' }, superToken);
+  await call('POST', `/v1/platform/tenants/${saTenant.id}/invites`, undefined, superToken);
+  await call('POST', '/v1/platform/subscriptions', { tenant_id: saTenant.id, plan_version_id: saPlan.id }, superToken);
+  assert.equal(
+    (await call('PATCH', `/v1/platform/tenants/${saTenant.id}`, { status: 'blocked', version: saTenant.version, reason: 'Texnik sinov' }, superToken, undefined, 409)).error.code,
+    'SIGNUP_REQUIRED',
+  );
+  const saInvoice = await call('POST', '/v1/platform/billing/invoices', { tenant_id: saTenant.id, plan_version_id: saPlan.id, period_start: new Date().toISOString() }, superToken);
+  assert.equal(saInvoice.amount, '2.00');
+  await call('POST', '/v1/platform/billing/entries', { invoice_id: saInvoice.id, kind: 'payment', amount: saInvoice.amount, external_ref: 'SA-PAY-1', reason: 'Super admin to‘lov sinovi' }, superToken);
+  await call('POST', '/v1/platform/tenants', { legal_name: 'Support yaratmaydi', registration_key: 'SUP-1' }, supportToken, undefined, 403);
+  await call('POST', '/v1/platform/plans', { code: 'sup', version: 1, monthly_price: '1.00' }, supportToken, undefined, 403);
+  await call('POST', '/v1/platform/billing/entries', { invoice_id: saInvoice.id, kind: 'credit', amount: '1.00', external_ref: 'SUP-1', reason: 'Support kredit bermaydi' }, supportToken, undefined, 403);
+  for (const path of ['/v1/platform/staff', '/v1/platform/audit', '/v1/platform/permissions'])
+    await call('GET', path, undefined, supportToken, undefined, 403);
+  passed.push(
+    'D21: super_admin creates plans, tenants, invites, subscriptions, invoices and payments like the owner; support stays out of business actions, staff, audit and permissions',
+  );
+  // Parol tiklash: o'ziga hech kim; support — faqat kompaniya foydalanuvchisiga (admin ham), xodim va egasiga emas
   await call('POST', `/v1/platform/users/${superId}/reset`, undefined, superToken, undefined, 403);
-  await call('POST', `/v1/platform/users/${tenantAdminId}/reset`, undefined, supportToken, undefined, 403);
-  passed.push('D15: super_admin and support read tenants/plans/billing; business actions, staff and audit stay with the owner/super_admin; nobody resets their own or the owner’s password');
+  await call('POST', `/v1/platform/users/${ownerId}/reset`, undefined, supportToken, undefined, 403);
+  await call('POST', `/v1/platform/users/${superId}/reset`, undefined, supportToken, undefined, 403);
+  const platformTarget = await call('POST', '/v1/employees', { login: 'platforma.sinov', display_name: 'Platforma sinov', password: pass, role: 'manager' }, adminAgain);
+  const supReset = await call('POST', `/v1/platform/users/${platformTarget.id}/reset`, undefined, supportToken);
+  assert(supReset.token.length >= 32);
+  passed.push('D21 password reset: nobody resets themselves; support issues links to company users but not to platform staff or the owner');
+  // Ruxsatlar matritsasi: egasi va super admin sozlaydi; support o'z qatorini (ruxsati bo'lsa), super admin qatorini emas
+  const pMatrix = await call('GET', '/v1/platform/permissions', undefined, ownerToken);
+  assert(Object.values(pMatrix.roles.super_admin).every(Boolean));
+  assert.equal(pMatrix.roles.support['audit.read'], false);
+  await call('PATCH', '/v1/platform/permissions', { role: 'support', permissions: { 'audit.read': true, 'permissions.manage': true } }, superToken);
+  await call('GET', '/v1/platform/audit?limit=1', undefined, supportToken);
+  await call('PATCH', '/v1/platform/permissions', { role: 'super_admin', permissions: { 'audit.read': false } }, supportToken, undefined, 403);
+  await call(
+    'PATCH',
+    '/v1/platform/permissions',
+    { role: 'support', permissions: Object.fromEntries(pMatrix.permissions.map((p: string) => [p, pMatrix.defaults.support.includes(p)])) },
+    supportToken,
+  );
+  await call('GET', '/v1/platform/audit?limit=1', undefined, supportToken, undefined, 403);
+  await call('GET', '/v1/platform/permissions', undefined, supportToken, undefined, 403);
+  // Super admin o'z ruxsatini ham o'zgartiradi (egasi qarori); egasi qaytaradi
+  await call('PATCH', '/v1/platform/permissions', { role: 'super_admin', permissions: { 'billing.manage': false } }, superToken);
+  await call('POST', '/v1/platform/billing/entries', { invoice_id: saInvoice.id, kind: 'credit', amount: '1.00', external_ref: 'SA-CR-1', reason: 'Ruxsatsiz kredit' }, superToken, undefined, 403);
+  await call('PATCH', '/v1/platform/permissions', { role: 'super_admin', permissions: { 'billing.manage': true } }, ownerToken);
+  assert.equal((await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='platform.permissions'")).rows[0].n, 4);
+  passed.push(
+    'D21 permission matrix: the owner and super_admin edit role permissions; a change applies on the next request; support with permissions.manage edits only its own row; a super_admin can remove its own permission and the owner restores it; every change is audited',
+  );
+  // Umumiy audit: kompaniya, rol, platforma filtrlari; tuzatish turi yozuvning o'zida
+  const tenantAudit = await call('GET', `/v1/platform/audit?scope=tenants&tenant_id=${t.id}&limit=100`, undefined, superToken);
+  assert(tenantAudit.items.length > 0 && tenantAudit.items.every((x: any) => x.tenant_id === t.id && x.tenant_name));
+  const foremanAudit = await call('GET', '/v1/platform/audit?role=foreman&limit=100', undefined, ownerToken);
+  assert(foremanAudit.items.length > 0 && foremanAudit.items.every((x: any) => x.actor_role === 'foreman'));
+  const acceptedAudit = await call('GET', `/v1/platform/audit?tenant_id=${t.id}&action=report.accepted`, undefined, superToken);
+  assert.equal(acceptedAudit.items.find((x: any) => x.resource_id === report.id)?.correction, 'progress');
+  const platformAudit = await call('GET', '/v1/platform/audit?scope=platform&limit=100', undefined, superToken);
+  assert(platformAudit.items.length > 0 && platformAudit.items.every((x: any) => x.tenant_id === null));
+  passed.push('D21 general audit lists platform and company actions of every role with tenant, role, scope and action filters and marks correctable rows');
+  // Kompaniya xatolarini tuzatish: storno (ombor, moliya) va ish hajmi — audit yozuvidan
+  const saReceipt = await call('POST', '/v1/stock/commands', { project_id: projectQ.id, kind: 'receipt', material_id: brick.id, to_account_id: qWarehouse.account.id, quantity: '2', unit_cost: '50', reason: 'Platforma storno sinovi' }, whP);
+  const receiptAudit = await call('GET', `/v1/platform/audit?tenant_id=${t.id}&action=stock.receipt`, undefined, superToken);
+  assert.equal(receiptAudit.items.find((x: any) => x.resource_id === saReceipt.id)?.correction, 'stock');
+  await call('POST', `/v1/platform/tenants/${t.id}/stock-commands/${saReceipt.id}/reverse`, { reason: 'Noto‘g‘ri kirim' }, supportToken, undefined, 403);
+  const receiptPreview = await call('GET', `/v1/platform/tenants/${t.id}/stock-commands/${saReceipt.id}`, undefined, superToken);
+  assert.equal(receiptPreview.reversed, false);
+  assert.equal(receiptPreview.kind, 'receipt');
+  const stockReversal = await call('POST', `/v1/platform/tenants/${t.id}/stock-commands/${saReceipt.id}/reverse`, { reason: 'Noto‘g‘ri kirim' }, superToken);
+  assert.equal(stockReversal.created_by, tenantAdminId);
+  assert(stockReversal.reason.startsWith('BARPO AI (Super admin): '));
+  assert.equal((await call('GET', `/v1/platform/tenants/${t.id}/stock-commands/${saReceipt.id}`, undefined, superToken)).reversed, true);
+  const stockAudit = (await admin.query("SELECT actor_id,details FROM audit_events WHERE tenant_id=$1 AND action='stock.reverse' AND resource_id=$2", [t.id, stockReversal.id])).rows[0];
+  assert.equal(stockAudit.actor_id, superId);
+  assert.equal(stockAudit.details.platform_correction, true);
+  const saDoc = await call('POST', '/v1/finance/documents', { project_id: projectQ.id, kind: 'labor', amount: '10', counterparty_id: supplier.id, description: 'Platforma storno sinovi', document_date: '2026-10-01' }, adminAgain);
+  const docAudit = await call('GET', `/v1/platform/audit?tenant_id=${t.id}&action=finance.labor`, undefined, superToken);
+  assert.equal(docAudit.items.find((x: any) => x.resource_id === saDoc.id)?.correction, 'finance');
+  const finReversal = await call('POST', `/v1/platform/tenants/${t.id}/finance-documents/${saDoc.id}/reverse`, { reason: 'Ikki marta kiritilgan' }, superToken);
+  assert.equal(finReversal.created_by, tenantAdminId);
+  assert.equal((await call('GET', `/v1/platform/tenants/${t.id}/finance-documents/${saDoc.id}`, undefined, superToken)).reversed, true);
+  const progressBefore = await call('GET', `/v1/platform/tenants/${t.id}/reports/${report.id}/progress`, undefined, superToken);
+  assert.equal(progressBefore.items.length, 1);
+  const entry0 = progressBefore.items[0];
+  await call('POST', `/v1/platform/tenants/${t.id}/progress-entries/${entry0.id}/corrections`, { quantity_delta: '1', reason: 'Hajm kam yozilgan' }, superToken);
+  const entry1 = (await call('GET', `/v1/platform/tenants/${t.id}/reports/${report.id}/progress`, undefined, superToken)).items[0];
+  assert.equal(dec(entry1.total).minus(entry0.total).toString(), '1');
+  assert.equal(
+    (await call('POST', `/v1/platform/tenants/${t.id}/progress-entries/${entry0.id}/corrections`, { quantity_delta: '-1000', reason: 'Manfiy bo‘lmasin' }, superToken, undefined, 400)).error.code,
+    'NEGATIVE_PROGRESS',
+  );
+  assert.equal(
+    (await call('POST', `/v1/platform/tenants/${saTenant.id}/stock-commands/${randomUUID()}/reverse`, { reason: 'Admin yo‘q sinovi' }, superToken, undefined, 409)).error.code,
+    'TENANT_ADMIN_REQUIRED',
+  );
+  assert(
+    (await admin.query("SELECT count(*)::int n FROM notifications WHERE user_id=$1 AND kind='platform.correction'", [tenantAdminId])).rows[0].n >= 3,
+  );
+  passed.push(
+    'D21 corrections: from a general-audit row the super_admin reverses a stock receipt and a finance document and corrects accepted progress (never below zero); the document is written for the company admin, the audit names the super_admin (platform_correction) and the admin is notified; support cannot correct; a company without an active admin needs an ownership transfer first',
+  );
+  // Foydalanuvchi tuzatishlari: Telegramni uzish, sessiyalar, faolsizlantirish (admin — faqat adminlikni o'tkazish bilan)
+  const targetSession = (await call('POST', '/v1/auth/login', { login: 'platforma.sinov', password: pass })).access_token;
+  const targetLink = await call('POST', '/v1/integrations/telegram/link', undefined, targetSession);
+  await transaction(appPool!, null, (db) => consumeLinkToken(db, targetLink.url.split('start=')[1]!, { id: '777003', first_name: 'PT' } as any));
+  const targetRow = (await call('GET', `/v1/platform/tenants/${t.id}/users`, undefined, supportToken)).items.find((u: any) => u.id === platformTarget.id);
+  assert.equal(targetRow.telegram_linked, true);
+  assert(targetRow.sessions_active >= 1);
+  await call('POST', `/v1/platform/tenants/${t.id}/users/${platformTarget.id}/telegram/unlink`, { reason: 'Telefon yo‘qolgan' }, supportToken, undefined, 403);
+  await call('POST', `/v1/platform/tenants/${t.id}/users/${platformTarget.id}/telegram/unlink`, { reason: 'Telefon yo‘qolgan' }, superToken);
+  assert.equal(
+    (await call('POST', `/v1/platform/tenants/${t.id}/users/${platformTarget.id}/telegram/unlink`, { reason: 'Telefon yo‘qolgan' }, superToken, undefined, 409)).error.code,
+    'TELEGRAM_NOT_LINKED',
+  );
+  const revokedSessions = await call('POST', `/v1/platform/tenants/${t.id}/users/${platformTarget.id}/sessions/revoke`, { reason: 'Shubhali kirish' }, superToken);
+  assert(revokedSessions.revoked >= 1);
+  await call('GET', '/v1/auth/me', undefined, targetSession, undefined, 401);
+  await call('PATCH', `/v1/platform/tenants/${t.id}/users/${platformTarget.id}`, { active: false, reason: 'Ishdan ketgan' }, superToken);
+  await call('POST', '/v1/auth/login', { login: 'platforma.sinov', password: pass }, undefined, undefined, 401);
+  await call('PATCH', `/v1/platform/tenants/${t.id}/users/${platformTarget.id}`, { active: true, reason: 'Qayta ishga olindi' }, superToken);
+  assert.equal(
+    (await call('PATCH', `/v1/platform/tenants/${t.id}/users/${tenantAdminId}`, { active: false, reason: 'Admin faolsizlantirilmaydi' }, superToken, undefined, 409)).error.code,
+    'OWNERSHIP_TRANSFER_REQUIRED',
+  );
+  const userAudit = (await admin.query("SELECT actor_id,details FROM audit_events WHERE tenant_id=$1 AND action='employee.update' AND resource_id=$2 ORDER BY created_at", [t.id, platformTarget.id])).rows;
+  assert(userAudit.length >= 2 && userAudit.slice(-2).every((x: any) => x.actor_id === superId && x.details.platform_correction === true));
+  passed.push(
+    'D21 user corrections: the super_admin unlinks a company user’s Telegram, revokes their sessions and deactivates/reactivates them with a reason (the company admin only via ownership transfer); each step lands in the company audit under the super_admin; support cannot',
+  );
   // ---- Xodimlar: super_admin faolsizlantiradi va rolini o'zgartiradi (sessiya bekor), o'zini va egasini emas
   const helper = await call('POST', '/v1/platform/staff', { login: 'helper2', password: pass, display_name: 'Yordamchi', role: 'support' }, superToken);
   const staffList = await call('GET', '/v1/platform/staff', undefined, superToken);
@@ -3453,16 +3646,21 @@ try {
   await call('PATCH', `/v1/platform/staff/${helper.id}`, { active: true, role: 'super_admin' }, superToken);
   await call('GET', '/v1/platform/support', undefined, helperToken, undefined, 401);
   const helperToken2 = (await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' })).access_token;
-  await call('GET', '/v1/platform/staff', undefined, helperToken2);
+  // D21: Telegram ulanmagan yangi super admin faqat profil va Telegramni ulashga kiradi
+  assert.equal((await call('GET', '/v1/platform/staff', undefined, helperToken2, undefined, 403)).error.code, 'TWO_FACTOR_SETUP_REQUIRED');
   await call('PATCH', `/v1/platform/staff/${helper.id}`, { active: false, role: 'super_admin' }, superToken);
   await call('POST', '/v1/auth/login', { login: 'helper2', password: pass + '2' }, undefined, undefined, 401);
   await call('PATCH', `/v1/platform/staff/${superId}`, { active: false, role: 'support' }, superToken, undefined, 403);
   await call('PATCH', `/v1/platform/staff/${ownerId}`, { active: false, role: 'support' }, superToken, undefined, 403);
-  passed.push('Staff: role change and deactivation revoke sessions and block login; a super_admin cannot change itself or the owner');
+  // D21: egasi ham xodimlarni boshqaradi; staff.manage ruxsati yo'q support — yo'q
+  const ownerHelper = await call('POST', '/v1/platform/staff', { login: 'helper3', password: pass, display_name: 'Egasi qo‘shgan', role: 'support' }, ownerToken);
+  await call('PATCH', `/v1/platform/staff/${ownerHelper.id}`, { active: false, role: 'support' }, ownerToken);
+  await call('POST', '/v1/platform/staff', { login: 'helper4', password: pass, display_name: 'Support qo‘shmaydi', role: 'support' }, supportToken, undefined, 403);
+  passed.push('Staff: role change and deactivation revoke sessions and block login; a super_admin cannot change itself or the owner; the owner manages staff too (D21); a newly promoted super_admin without Telegram is limited to 2FA setup');
   // ---- Platforma auditi: egasi va super_admin ko'radi, action filtri ishlaydi
   const pAudit = await call('GET', '/v1/platform/audit?action=platform.staff', undefined, superToken);
   assert(pAudit.items.length >= 3 && pAudit.items.every((a: any) => a.action.startsWith('platform.staff')));
-  assert(pAudit.items.every((a: any) => a.actor_role === 'super_admin'));
+  assert(pAudit.items.every((a: any) => ['super_admin', 'platform_owner'].includes(a.actor_role)));
   assert.equal(typeof pAudit.total, 'number');
   await call('GET', '/v1/platform/audit?limit=1', undefined, ownerToken);
   passed.push('Platform audit lists platform-staff actions with actor role and filters by action prefix');
@@ -3474,8 +3672,7 @@ try {
   }
   passed.push('A new support request notifies every active platform staff member');
   // ---- 2FA: Telegram ulangan super_admin uchun kirish kod bilan; kod botga global fetch orqali ketadi (bu yerda ushlanadi)
-  const saLink = await transaction(appPool!, null, (db) => createLinkToken(db, { id: superId, tenant_id: null, role: 'super_admin' }));
-  await transaction(appPool!, null, (db) => consumeLinkToken(db, saLink.url.split('start=')[1]!, { id: '777001', first_name: 'SA' } as any));
+  // Super admin Telegrami D21 blokida ulangan (777001).
   const realFetch = globalThis.fetch;
   const sent: string[] = [];
   globalThis.fetch = (async (input: any, init?: any) => {
@@ -3618,6 +3815,31 @@ try {
   const adminLoginRow = (await admin.query('SELECT login FROM users WHERE id=$1', [tenantAdminId])).rows[0];
   await call('POST', '/v1/auth/login', { login: adminLoginRow.login, password: 'olti66' });
   passed.push('super_admin issues a reset link to a company admin; the new password needs 6+ characters; old sessions are revoked');
+  // ---- D21: platforma adminlikni o'tkazadi; egasining parolini super admin tiklaydi (havola unga ko'rsatiladi)
+  const oldAdminSession = (await call('POST', '/v1/auth/login', { login: adminLoginRow.login, password: 'olti66' })).access_token;
+  assert.equal(
+    (await call('POST', `/v1/platform/tenants/${t.id}/ownership`, { new_admin_id: platformTarget.id, reason: 'Admin ishdan ketdi' }, superToken, undefined, 400)).error.code,
+    'PREVIOUS_ADMIN_ROLE_REQUIRED',
+  );
+  await call('POST', `/v1/platform/tenants/${t.id}/ownership`, { new_admin_id: platformTarget.id, previous_admin_role: 'manager', reason: 'Admin ishdan ketdi' }, supportToken, undefined, 403);
+  await call('POST', `/v1/platform/tenants/${t.id}/ownership`, { new_admin_id: platformTarget.id, previous_admin_role: 'manager', reason: 'Admin ishdan ketdi' }, superToken);
+  const roleOf = async (id: string) => (await admin!.query('SELECT role FROM users WHERE id=$1', [id])).rows[0].role;
+  assert.equal(await roleOf(platformTarget.id), 'tenant_admin');
+  assert.equal(await roleOf(tenantAdminId), 'manager');
+  await call('GET', '/v1/auth/me', undefined, oldAdminSession, undefined, 401);
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM notifications WHERE user_id=$1 AND kind='platform.correction'", [platformTarget.id])).rows[0].n,
+    1,
+  );
+  const ownerLink = await call('POST', `/v1/platform/users/${ownerId}/reset`, undefined, superToken);
+  assert(ownerLink.token.length >= 32);
+  await call('GET', '/v1/auth/me', undefined, ownerToken, undefined, 401);
+  const ownerAgain = (await call('POST', '/v1/auth/login', { login: 'owner', password: pass })).access_token;
+  await call('POST', `/v1/platform/users/${superId}/reset`, undefined, ownerAgain);
+  await call('GET', '/v1/auth/me', undefined, superToken, undefined, 401);
+  passed.push(
+    'D21: the super_admin moves company adminship (the previous admin role is required, both re-login, the new admin is notified); the super_admin resets the owner’s password (owner sessions revoked) and the owner resets a super_admin',
+  );
   const spec = await call('GET', '/openapi.json');
   assert.equal(spec.openapi, '3.1.0');
   passed.push('OpenAPI generated from registered API routes');

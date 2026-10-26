@@ -10,6 +10,7 @@ import { buildApp } from '../src/app.js';
 import { hashPassword } from '../src/security.js';
 import { permissionPage, pages, tenantRoles, financialPages } from '../src/permissions.js';
 import type { Endpoint } from '../src/http.js';
+import { platformDefaults } from '../src/platform-permissions.js';
 
 /**
  * 11-bosqich: 10 rol bilan to'liq sinov.
@@ -112,6 +113,10 @@ try {
   const ownerToken = await login('owner');
   const techToken = await login('tech');
   const helpToken = await login('helpdesk');
+  // D21: super admin uchun 2FA majburiy — sessiya ochilgach Telegram ulangan deb belgilanadi (kod yuborilmaydi).
+  await owner.query(
+    "INSERT INTO telegram_accounts(user_id,telegram_user_id) SELECT id,'888001' FROM users WHERE login='tech'",
+  );
 
   // ---------------------------------------------------------------- Seed: ikki kompaniya
   const makeTenant = async (key: string, adminLogin: string) => {
@@ -561,8 +566,12 @@ try {
     for (const route of gets) {
       const url = fillUrl(route);
       if (!url) continue;
+      // D21: platforma marshruti — rol ro'yxatda va (bo'lsa) ruxsat rolning standart qiymatlarida; egasida hammasi.
       const expected = route.platform
-        ? route.platform.includes(role)
+        ? route.platform.includes(role) &&
+          (!route.platformPermission ||
+            role === 'platform_owner' ||
+            platformDefaults[role as 'super_admin' | 'support'].includes(route.platformPermission))
         : Boolean(route.passwordChange);
       const r = await raw('GET', url, undefined, token);
       if (expected) cell.allowed++;

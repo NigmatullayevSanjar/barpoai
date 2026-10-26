@@ -420,9 +420,9 @@ export const uz: Record<string, string> = {
   'staff.role_changed': 'Rol o‘zgartirildi',
   'staff.confirm_deactivate': 'Xodimni faolsizlantirasizmi? U tizimga kira olmaydi.',
   'staff.confirm_activate': 'Xodimni qayta faollashtirasizmi?',
-  'platform_audit.title': 'Platforma auditi',
+  'platform_audit.title': 'Umumiy audit',
   'platform_audit.sub':
-    'Platforma xodimlari amallari: tarif, obuna, bloklash, xodimlar, parol tiklash, kirish',
+    'Platforma va barcha kompaniyalardagi hamma rollar harakatlari; yozuvlar o‘zgartirilmaydi',
   'diag.title': 'Diagnostika',
   'diag.sub': 'Tizim xatoliklari, worker navbati va integratsiyalar holati',
   'diag.database': 'Ma’lumotlar bazasi',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import ExcelJS from 'exceljs';
 import { type Endpoint } from './http.js';
 import { one, audit, type Db, type Row } from './db.js';
 import {
@@ -995,6 +996,51 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         [actor.tenant_id, projects, query.from, query.to],
       );
       return { cash_flow: cashFlow, expenses, aging, income: income.income };
+    },
+  });
+}
+
+/**
+ * Ekrandagi jadvalni Excel (xlsx) ga aylantirish: hisobotlar va solishtirish uchun chop etish (PDF) o‘rniga.
+ * Faqat shakllantiradi (bazadan o‘qimaydi): qiymatlar frontend ko‘rsatgan UZS matnlari, ruxsat ko‘rinish sahifasida tekshirilgan.
+ */
+export function tableExportRoutes(add: (r: Endpoint) => void) {
+  const cell = z.union([z.string().max(1000), z.number(), z.null()]);
+  add({
+    method: 'POST',
+    path: '/v1/exports/table',
+    summary: 'Jadvalni (sarlavha va qatorlar) Excel xlsx faylga aylantirish',
+    body: z.strictObject({
+      filename: z.string().trim().min(1).max(80),
+      sheet: z.string().trim().min(1).max(31),
+      title: z.string().max(200).optional(),
+      headers: z.array(z.string().max(100)).min(1).max(20),
+      rows: z.array(z.array(cell).max(20)).max(5000),
+    }),
+    handler: async ({ body }) => {
+      const book = new ExcelJS.Workbook();
+      const sheet = book.addWorksheet(body.sheet.replace(/[\/?*[\]:]/g, ' '));
+      if (body.title) {
+        sheet.addRow([body.title]).font = { bold: true, size: 13 };
+        sheet.addRow([]);
+      }
+      const head = sheet.addRow(body.headers);
+      head.font = { bold: true };
+      const numeric = /^-?(0|[1-9]\d{0,17})(\.\d{1,6})?$/;
+      for (const r of body.rows)
+        sheet.addRow(r.map((v: string | number | null) => (typeof v === 'string' && numeric.test(v) ? Number(v) : v)));
+      sheet.columns.forEach((c, i) => {
+        c.width = Math.min(
+          50,
+          Math.max(10, body.headers[i]?.length ?? 10, ...body.rows.map((r: (string | number | null)[]) => String(r[i] ?? '').length)),
+        );
+      });
+      const buffer = Buffer.from(await book.xlsx.writeBuffer());
+      return {
+        filename: `${body.filename.replace(/[^\w.-]+/g, '_')}.xlsx`,
+        mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        base64: buffer.toString('base64'),
+      };
     },
   });
 }

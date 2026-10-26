@@ -24,11 +24,12 @@ import { dec } from './money.js';
 import { accessState } from './auth.js';
 import { issueInvoice, applyCredit, recomputeCoverage, periodEnd } from './billing.js';
 import { telegramConfigured, botHealth } from './telegram.js';
-// Rollar (egasi qarori, 2026-10-13, D15): egasi — biznes amallari (tarif, obuna, invoys, to'lov, bloklash);
-// super_admin — texnik rol: o'qish, parol tiklash, xodimlar, diagnostika, audit; support — faqat o'qish va murojaatlar.
-const owner = ['platform_owner'];
-const readers = ['platform_owner', 'super_admin', 'support'];
-const technical = ['platform_owner', 'super_admin'];
+import { platformPermit, platformStaff } from './platform-permissions.js';
+// Rollar (egasi qarori D21, 2026-10-22; D15 o'rniga): ko'rish — barcha platforma xodimlari; har amal o'z ruxsati bilan
+// (platform-permissions.ts). Super admin standartda egasining barcha amallariga ega, support — murojaatlar,
+// diagnostika va kompaniya foydalanuvchisiga parol tiklash. Egasiga tegishli cheklovlar kodda qat'iy.
+const staff = platformStaff;
+const readers = platformStaff;
 /** tenants.phone CHECK (+998XXXXXXXXX): schemas.phone 9 raqamga keltiradi, prefiks shu yerda qo'shiladi. */
 const e164 = (p: string) => '+998' + p.replace(/^\+?998/, '');
 const legalForm = z.enum(['mchj', 'aj', 'yatt', 'qk', 'other']);
@@ -46,7 +47,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/subscriptions',
     summary:
       'Korxonaga tarif versiyasi biriktirish; davr boshlanishi berilmasa trial tugashi yoki oxirgi qoplangan sana',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'plans.manage',
     body: z.strictObject({
       tenant_id: uuid,
       plan_version_id: uuid,
@@ -116,7 +118,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/tenants',
     summary:
       'Yangi korxona yaratish (Figma F6 uch qadam: profil, alias, boshlang‘ich tarif — bitta so‘rovda); trial signupda boshlanadi',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'tenants.manage',
     body: z.strictObject({
       legal_name: text,
       registration_key: text,
@@ -160,7 +163,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/tenants/:id/profile',
     summary:
       'Kompaniya profilini tahrirlash (Figma F6): nom, mas‘ul shaxs, e-mail, telefon, manzil, shakl, alias',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'tenants.manage',
     params: idParams,
     body: z.strictObject({
       version,
@@ -205,7 +209,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/platform/tenants/:id/invites',
     summary: 'Bir martalik individual taklif; oldingi link bekor qilinadi',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'tenants.manage',
     params: idParams,
     handler: async ({ db, actor, params }) => {
       const tenant = await one(db, 'SELECT * FROM tenants WHERE id=$1 FOR UPDATE', [params.id]);
@@ -232,7 +237,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'PATCH',
     path: '/v1/platform/tenants/:id',
     summary: 'Bloklash, arxivlash va qayta ochish',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'tenants.block',
     params: idParams,
     body: z.strictObject({ status: z.enum(['active', 'blocked', 'archived']), version, reason }),
     handler: async ({ db, actor, params, body }) => {
@@ -262,7 +268,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/platform/tenants/:id/alias',
     summary: 'Rasmiy nomdan mustaqil private alias',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'tenants.manage',
     params: idParams,
     body: z.strictObject({ alias: text }),
     handler: async ({ db, actor, params, body }) => {
@@ -277,7 +284,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/platform/plans',
     summary: 'O‘zgarmas tarif versiyasi yaratish',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'plans.manage',
     body: z.strictObject({
       code: text,
       version,
@@ -315,7 +323,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/plans/:id',
     summary:
       'Tarifni tahrirlash: kod, oylik narx va limitlar; yangi narx keyingi invoysdan, chiqarilgan invoyslar o‘zgarmaydi',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'plans.manage',
     params: idParams,
     body: z.strictObject({
       code: text,
@@ -342,17 +351,26 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/platform/users/:id/reset',
     summary:
-      'Istalgan foydalanuvchiga (kompaniya admini ham) bir martalik 30 daqiqalik reset havolasi; platforma egasini faqat egasi tiklaydi',
-    platform: technical,
+      'Bir martalik 30 daqiqalik reset havolasi: kompaniya foydalanuvchisiga (admin ham) — users.reset; platforma xodimiga — staff.manage; platforma egasini faqat super admin tiklaydi (D21); o‘zini emas',
+    platform: staff,
     params: idParams,
     handler: async ({ db, actor, params }) => {
-      const user = await one(db, 'SELECT id,role FROM users WHERE id=$1 AND active', [params.id]);
+      const user = await one(db, 'SELECT id,role,tenant_id FROM users WHERE id=$1 AND active', [
+        params.id,
+      ]);
       invariant(user.id !== actor.id, 'FORBIDDEN', 403);
-      invariant(
-        user.role !== 'platform_owner' || actor.role === 'platform_owner',
-        'FORBIDDEN',
-        403,
-      );
+      if (user.tenant_id) await platformPermit(db, actor, 'users.reset');
+      else {
+        await platformPermit(db, actor, 'staff.manage');
+        // Egasini super admin tiklaydi (havola unga ko'rsatiladi); super adminni — egasi yoki boshqa super admin.
+        invariant(
+          user.role === 'platform_owner'
+            ? actor.role === 'super_admin'
+            : user.role !== 'super_admin' || ['platform_owner', 'super_admin'].includes(actor.role),
+          'FORBIDDEN',
+          403,
+        );
+      }
       await db.query(
         'UPDATE password_resets SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
         [user.id],
@@ -372,7 +390,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/billing/invoices',
     summary:
       'Tarifdan SaaS invoys qo‘lda yaratish (standart davr 30 kun); mavjud kredit avtomatik qo‘llanadi',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'billing.manage',
     body: z.strictObject({
       tenant_id: uuid,
       plan_version_id: uuid,
@@ -398,7 +417,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/billing/entries',
     summary:
       'SaaS to‘lov, kredit yoki refund; invoysdan ortiqcha to‘lov kompaniya kreditiga o‘tadi va keyingi invoysga qo‘llanadi',
-    platform: owner,
+    platform: staff,
+    platformPermission: 'billing.manage',
     body: z.strictObject({
       invoice_id: uuid,
       kind: z.enum(['payment', 'credit', 'refund']),
@@ -565,7 +585,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/support',
     summary: 'Support va tarif almashtirish so‘rovlari (javob bilan); status filtri',
-    platform: ['support', 'platform_owner', 'super_admin'],
+    platform: readers,
     query: pageQuery.extend({ status: z.enum(['open', 'closed']).optional() }),
     handler: async ({ db, query }) => ({
       items: (
@@ -581,7 +601,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     path: '/v1/platform/diagnostics',
     summary:
       'Texnik holat: baza, worker navbati, so‘nggi 5xx xatolar, integratsiyalar; tenant moliyasi ochilmaydi',
-    platform: ['super_admin', 'support'],
+    platform: staff,
+    platformPermission: 'diagnostics.read',
     handler: async ({ db }) => {
       const started = Date.now();
       const dbRow = await one(
@@ -700,8 +721,10 @@ export function platformRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/platform/staff',
-    summary: 'Super admin texnik xodim yaratadi',
-    platform: ['super_admin'],
+    summary:
+      'Platforma xodimini yaratish (egasi yoki staff.manage ruxsati bor xodim); super adminni faqat egasi yoki super admin yaratadi',
+    platform: staff,
+    platformPermission: 'staff.manage',
     body: z.strictObject({
       login: loginName,
       password,
@@ -709,6 +732,11 @@ export function platformRoutes(add: (r: Endpoint) => void) {
       role: z.enum(['super_admin', 'support']),
     }),
     handler: async ({ db, actor, body }) => {
+      invariant(
+        body.role !== 'super_admin' || ['platform_owner', 'super_admin'].includes(actor.role),
+        'FORBIDDEN',
+        403,
+      );
       const row = await one(
         db,
         'INSERT INTO users(login,password_hash,display_name,role,must_change_password) VALUES($1,$2,$3,$4,true) RETURNING id,login,role,display_name',

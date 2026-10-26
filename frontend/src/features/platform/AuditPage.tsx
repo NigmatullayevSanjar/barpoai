@@ -1,36 +1,65 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, ApiError, qs } from '@/lib/api';
+import { Wrench } from 'lucide-react';
+import { api, apiAll, ApiError, qs } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDateTime } from '@/lib/format';
-import { Alert, Badge, Input, PageHeader, Pagination } from '@/components/ui';
+import { platformRoles, tenantRoles } from '@/lib/permissions';
+import { Alert, Badge, Button, Input, PageHeader, Pagination, Segmented, Select } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { CorrectionModal, type CorrectionTarget } from './corrections';
+import type { Tenant } from './pages';
 
 type AuditRow = {
   id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
   actor_id: string | null;
   actor_name: string | null;
+  actor_login: string | null;
   actor_role: string | null;
   action: string;
   resource_id: string | null;
   details: Record<string, unknown>;
   created_at: string;
+  correction: CorrectionTarget['kind'] | null;
 };
+type Scope = 'all' | 'platform' | 'tenants';
 const LIMIT = 50;
-/** Platforma auditi: egasi va super admin; filtrlar serverda, yozuvlar o'zgartirilmaydi. */
+/**
+ * Umumiy audit (D21): platforma va barcha kompaniyalardagi hamma rollar harakatlari; filtrlar serverda, yozuvlar
+ * o'zgartirilmaydi. Ombor harakati, moliyaviy hujjat va qabul qilingan hisobot yozuvidan tuzatish oynasi ochiladi.
+ */
 export function PlatformAuditPage() {
   const { t, lang } = useT();
+  const { canPlatform } = useAuth();
+  const canCorrect = canPlatform('tenants.correct');
+  const [scope, setScope] = useState<Scope>('all');
+  const [tenantId, setTenantId] = useState('');
+  const [role, setRole] = useState('');
   const [action, setAction] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [offset, setOffset] = useState(0);
-  const filters = { action: action.trim() || undefined, from: from || undefined, to: to || undefined };
+  const [target, setTarget] = useState<CorrectionTarget | null>(null);
+  const reset = () => setOffset(0);
+  const filters = {
+    scope: scope === 'all' ? undefined : scope,
+    tenant_id: scope !== 'platform' && tenantId ? tenantId : undefined,
+    role: role || undefined,
+    action: action.trim() || undefined,
+    from: from || undefined,
+    to: to || undefined,
+  };
+  const tenants = useQuery({
+    queryKey: ['platform-tenants-all'],
+    queryFn: () => apiAll<Tenant>('/v1/platform/tenants'),
+  });
   const query = useQuery({
     queryKey: ['platform-audit', filters, offset],
     queryFn: () =>
-      api<{ items: AuditRow[]; total: number }>(
-        `/v1/platform/audit${qs({ ...filters, limit: LIMIT, offset })}`,
-      ),
+      api<{ items: AuditRow[]; total: number }>(`/v1/platform/audit${qs({ ...filters, limit: LIMIT, offset })}`),
   });
   const columns: Column<AuditRow>[] = [
     {
@@ -38,6 +67,12 @@ export function PlatformAuditPage() {
       header: t('common.date'),
       width: 150,
       render: (r) => <span className="mono text-xs">{formatDateTime(r.created_at, lang)}</span>,
+    },
+    {
+      key: 'tenant',
+      header: t('platform_audit.tenant'),
+      render: (r) =>
+        r.tenant_name ?? <span className="muted">{t('platform_audit.platform_row')}</span>,
     },
     {
       key: 'actor',
@@ -52,7 +87,14 @@ export function PlatformAuditPage() {
     {
       key: 'action',
       header: t('audit.action'),
-      render: (r) => <Badge tone="brand">{r.action}</Badge>,
+      render: (r) => (
+        <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <Badge tone="brand">{r.action}</Badge>
+          {r.details.platform_correction === true && (
+            <Badge tone="warning">{t('platform_audit.via_platform')}</Badge>
+          )}
+        </span>
+      ),
     },
     {
       key: 'resource',
@@ -71,18 +113,84 @@ export function PlatformAuditPage() {
           <span className="muted">—</span>
         ),
     },
+    ...(canCorrect
+      ? [
+          {
+            key: 'correct',
+            header: '',
+            className: 'actions',
+            render: (r: AuditRow) =>
+              r.correction && r.tenant_id && r.resource_id ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Wrench />}
+                  onClick={() =>
+                    setTarget({ kind: r.correction!, tenantId: r.tenant_id!, resourceId: r.resource_id! })
+                  }
+                >
+                  {t('platform_audit.correct')}
+                </Button>
+              ) : null,
+          } satisfies Column<AuditRow>,
+        ]
+      : []),
   ];
   return (
     <div className="stack" style={{ gap: 14 }}>
       <PageHeader title={t('platform_audit.title')} description={t('platform_audit.sub')} />
-      <div className="toolbar">
+      <Segmented<Scope>
+        value={scope}
+        onChange={(v) => {
+          setScope(v);
+          reset();
+        }}
+        items={[
+          { key: 'all', label: t('platform_audit.scope_all') },
+          { key: 'platform', label: t('platform_audit.scope_platform') },
+          { key: 'tenants', label: t('platform_audit.scope_tenants') },
+        ]}
+      />
+      <div className="toolbar" style={{ flexWrap: 'wrap' }}>
+        {scope !== 'platform' && (
+          <Select
+            aria-label={t('platform_audit.tenant')}
+            value={tenantId}
+            onChange={(e) => {
+              setTenantId(e.target.value);
+              reset();
+            }}
+          >
+            <option value="">{t('platform_audit.all_tenants')}</option>
+            {(tenants.data?.items ?? []).map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.legal_name}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Select
+          aria-label={t('common.role')}
+          value={role}
+          onChange={(e) => {
+            setRole(e.target.value);
+            reset();
+          }}
+        >
+          <option value="">{t('platform_audit.all_roles')}</option>
+          {[...platformRoles, ...tenantRoles].map((r) => (
+            <option key={r} value={r}>
+              {t(`role.${r}`)}
+            </option>
+          ))}
+        </Select>
         <Input
           aria-label={t('audit.filter_action')}
           placeholder={t('audit.filter_action')}
           value={action}
           onChange={(e) => {
             setAction(e.target.value);
-            setOffset(0);
+            reset();
           }}
         />
         <Input
@@ -91,7 +199,7 @@ export function PlatformAuditPage() {
           value={from}
           onChange={(e) => {
             setFrom(e.target.value);
-            setOffset(0);
+            reset();
           }}
         />
         <Input
@@ -100,7 +208,7 @@ export function PlatformAuditPage() {
           value={to}
           onChange={(e) => {
             setTo(e.target.value);
-            setOffset(0);
+            reset();
           }}
         />
         {query.data && (
@@ -125,6 +233,7 @@ export function PlatformAuditPage() {
       {(query.data?.total ?? 0) > LIMIT && (
         <Pagination offset={offset} limit={LIMIT} count={query.data!.total} onChange={setOffset} />
       )}
+      {target && <CorrectionModal target={target} onClose={() => setTarget(null)} />}
     </div>
   );
 }

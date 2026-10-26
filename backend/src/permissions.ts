@@ -256,6 +256,8 @@ export async function allowed(
   requestedPage?: Page,
 ) {
   if (!actor.tenant_id) return false;
+  // D21: platforma tuzatishi (routes-platform-admin.ts) — ruxsat platforma tomonida (tenants.correct) tekshirilgan.
+  if (actor.correction) return true;
   if (actor.role === 'tenant_admin' && adminReadOnlyStock.includes(permission)) return false;
   const context = await permissionContext(db, actor);
   const override = context.overrides.find((o) => o.permission === permission);
@@ -274,6 +276,7 @@ export async function allowed(
 }
 export async function pageAllowed(db: Db, actor: Row, page: Page, action: Action) {
   if (!actor.tenant_id) return false;
+  if (actor.correction) return true;
   if (actor.role === 'tenant_admin') return !(page === 'stock' && action !== 'read');
   if (page === 'permissions') return false;
   const domainPage = financeSubpages.has(page) ? 'finance' : page;

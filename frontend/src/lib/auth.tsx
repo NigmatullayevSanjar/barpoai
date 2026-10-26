@@ -1,7 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, onUnauthorized } from './api';
-import { platformRoles, type CrudAction, type Page, type PermissionSnapshot, type Role } from './permissions';
+import {
+  platformRoles,
+  type CrudAction,
+  type Page,
+  type PermissionSnapshot,
+  type PlatformPermission,
+  type Role,
+} from './permissions';
 
 export type Me = {
   id: string;
@@ -11,6 +18,10 @@ export type Me = {
   display_name: string;
   phone: string | null;
   must_change_password: boolean;
+  /** Platforma xodimining amal ruxsatlari (D21); kompaniya foydalanuvchisida yo'q. */
+  platform_permissions?: PlatformPermission[];
+  /** Super admin, bot sozlangan, Telegram ulanmagan — faqat profil ochiq (D21). */
+  two_factor_setup_required?: boolean;
 };
 export type SessionIssue = 'TENANT_BLOCKED' | 'TENANT_ARCHIVED' | null;
 /** Telegram ulangan egasi/super admin uchun parol to'g'ri bo'lgandan keyin ikkinchi qadam. */
@@ -27,6 +38,7 @@ type AuthState = {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   can: (page: Page, action?: CrudAction) => boolean;
+  canPlatform: (permission: PlatformPermission) => boolean;
   isPlatform: boolean;
 };
 const Ctx = createContext<AuthState | null>(null);
@@ -138,6 +150,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [me, permissions],
   );
+  const canPlatform = useCallback(
+    (permission: PlatformPermission) => Boolean(me?.platform_permissions?.includes(permission)),
+    [me],
+  );
 
   const value = useMemo<AuthState>(
     () => ({
@@ -149,9 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refresh,
       can,
+      canPlatform,
       isPlatform: Boolean(me && platformRoles.includes(me.role)),
     }),
-    [me, permissions, issue, login, verifyCode, logout, refresh, can],
+    [me, permissions, issue, login, verifyCode, logout, refresh, can, canPlatform],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

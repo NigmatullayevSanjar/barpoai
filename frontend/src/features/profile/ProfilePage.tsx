@@ -29,7 +29,7 @@ function TelegramCard() {
   const { t, lang } = useT();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { me } = useAuth();
+  const { me, refresh } = useAuth();
   const twoFactor = me?.role === 'platform_owner' || me?.role === 'super_admin';
   const status = useQuery({
     queryKey: ['telegram-status'],
@@ -55,6 +55,11 @@ function TelegramCard() {
       toast.success(t('telegram.connected_toast'));
     }
   }, [wasLinked, link, toast, t]);
+  // D21: super admin Telegramni ulagach boshqa sahifalar ochiladi (/auth/me qayta o'qiladi).
+  const setupRequired = me?.two_factor_setup_required;
+  useEffect(() => {
+    if (wasLinked && setupRequired) void refresh();
+  }, [wasLinked, setupRequired, refresh]);
   const create = useMutation({
     mutationFn: () => api<LinkResponse>('/v1/integrations/telegram/link', { method: 'POST' }),
     onSuccess: (data) => {
@@ -109,7 +114,11 @@ function TelegramCard() {
           </Alert>
         )}
         {s && !s.configured && <Alert tone="warning">{t('telegram.not_configured')}</Alert>}
-        {s && !s.linked && twoFactor && <Alert tone="warning">{t('telegram.two_factor_required')}</Alert>}
+        {s && !s.linked && twoFactor && (
+          <Alert tone={setupRequired ? 'danger' : 'warning'}>
+            {t(setupRequired ? 'telegram.two_factor_mandatory' : 'telegram.two_factor_required')}
+          </Alert>
+        )}
         {s?.linked && (
           <>
             {twoFactor && <Alert tone="success">{t('telegram.two_factor_on')}</Alert>}

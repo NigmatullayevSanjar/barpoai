@@ -1,11 +1,54 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
-import { one, audit } from './db.js';
+import { one, audit, type Db, type Row } from './db.js';
 import { uuid, idParams, reason, pageQuery } from './schemas.js';
 import { projectScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { notify } from './notify.js';
 import { quantity } from './money.js';
+
+/** Qabul qilingan progressni tuzatish: asl yozuv o'zgarmaydi, farq alohida saqlanadi (platforma tuzatishi ham shu). */
+export async function correctProgress(
+  db: Db,
+  actor: Row,
+  id: string,
+  quantityDelta: string,
+  reasonText: string,
+) {
+  const entry = await one(
+    db,
+    'SELECT pe.*,r.project_id,r.author_id FROM progress_entries pe JOIN reports r ON r.id=pe.report_id WHERE pe.tenant_id=$1 AND pe.id=$2',
+    [actor.tenant_id, id],
+  );
+  await projectScope(db, actor, entry.project_id);
+  invariant(Number(quantityDelta) !== 0, 'NO_ADJUSTMENT_REQUIRED', 400);
+  const current = await one(
+    db,
+    'SELECT pe.quantity+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c WHERE c.tenant_id=pe.tenant_id AND c.progress_entry_id=pe.id),0) total FROM progress_entries pe WHERE pe.tenant_id=$1 AND pe.id=$2',
+    [actor.tenant_id, id],
+  );
+  invariant(Number(current.total) + Number(quantityDelta) >= 0, 'NEGATIVE_PROGRESS', 400);
+  const row = await one(
+    db,
+    'INSERT INTO progress_corrections(tenant_id,progress_entry_id,quantity_delta,reason,created_by) VALUES($1,$2,$3,$4,$5) RETURNING *,quantity_delta::text',
+    [actor.tenant_id, id, quantityDelta, reasonText, actor.id],
+  );
+  await audit(db, actor, 'progress.correct', entry.report_id, {
+    delta: quantityDelta,
+    reason: reasonText,
+  });
+  await notify(db, {
+    tenant_id: actor.tenant_id,
+    user_id: entry.author_id,
+    project_id: entry.project_id,
+    kind: 'progress.corrected',
+    title: '✏️ Progress tuzatildi',
+    body: `Farq: ${quantity(quantityDelta)}\nSabab: ${reasonText}`,
+    payload: { report_id: entry.report_id },
+    dedup_key: `progress.correct:${row.id}`,
+  });
+  return row;
+}
 
 /** Vazifa va hisobot kartalari, fayl ro'yxati va qabul qilingan progressni tuzatish. */
 export function workExtraRoutes(add: (r: Endpoint) => void) {
@@ -104,41 +147,8 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
       reason,
     }),
     idempotent: true,
-    handler: async ({ db, actor, params, body }) => {
-      const entry = await one(
-        db,
-        'SELECT pe.*,r.project_id,r.author_id FROM progress_entries pe JOIN reports r ON r.id=pe.report_id WHERE pe.tenant_id=$1 AND pe.id=$2',
-        [actor.tenant_id, params.id],
-      );
-      await projectScope(db, actor, entry.project_id);
-      invariant(Number(body.quantity_delta) !== 0, 'NO_ADJUSTMENT_REQUIRED', 400);
-      const current = await one(
-        db,
-        'SELECT pe.quantity+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c WHERE c.tenant_id=pe.tenant_id AND c.progress_entry_id=pe.id),0) total FROM progress_entries pe WHERE pe.tenant_id=$1 AND pe.id=$2',
-        [actor.tenant_id, params.id],
-      );
-      invariant(Number(current.total) + Number(body.quantity_delta) >= 0, 'NEGATIVE_PROGRESS', 400);
-      const row = await one(
-        db,
-        'INSERT INTO progress_corrections(tenant_id,progress_entry_id,quantity_delta,reason,created_by) VALUES($1,$2,$3,$4,$5) RETURNING *,quantity_delta::text',
-        [actor.tenant_id, params.id, body.quantity_delta, body.reason, actor.id],
-      );
-      await audit(db, actor, 'progress.correct', entry.report_id, {
-        delta: body.quantity_delta,
-        reason: body.reason,
-      });
-      await notify(db, {
-        tenant_id: actor.tenant_id,
-        user_id: entry.author_id,
-        project_id: entry.project_id,
-        kind: 'progress.corrected',
-        title: '✏️ Progress tuzatildi',
-        body: `Farq: ${quantity(body.quantity_delta)}\nSabab: ${body.reason}`,
-        payload: { report_id: entry.report_id },
-        dedup_key: `progress.correct:${row.id}`,
-      });
-      return row;
-    },
+    handler: async ({ db, actor, params, body }) =>
+      correctProgress(db, actor, params.id, body.quantity_delta, body.reason),
   });
   add({
     method: 'GET',

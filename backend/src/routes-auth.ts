@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { login, verifyLoginCode, registerInvite, issueSession, publicUser } from './auth.js';
+import {
+  login,
+  verifyLoginCode,
+  registerInvite,
+  issueSession,
+  publicUser,
+  twoFactorSetupRequired,
+} from './auth.js';
 import { digest, hashPassword, verifyPassword, verifyTelegram } from './security.js';
 import {
   password,
@@ -14,7 +21,8 @@ import {
   queryBool,
 } from './schemas.js';
 import { invariant } from './errors.js';
-import { createLinkToken, telegramStatus, unlinkTelegram } from './telegram.js';
+import { createLinkToken, telegramStatus, unlinkTelegram, telegramConfigured } from './telegram.js';
+import { platformGranted } from './platform-permissions.js';
 const authLimit = (max: number) => ({
   max: Number(process.env.AUTH_RATE_LIMIT_PER_MINUTE ?? max),
   timeWindow: '1 minute',
@@ -103,7 +111,13 @@ export function authRoutes(add: (r: Endpoint) => void) {
         ? (await db.query('SELECT legal_name,status FROM tenants WHERE id=$1', [actor.tenant_id]))
             .rows[0]
         : null;
-      return { ...publicUser(actor), tenant_name: tenant?.legal_name ?? null };
+      // D21: platforma xodimiga ruxsatlar ro'yxati (UI faqat yashiradi) va super admin uchun 2FA sozlash belgisi.
+      return {
+        ...publicUser(actor),
+        tenant_name: tenant?.legal_name ?? null,
+        platform_permissions: actor.tenant_id ? undefined : await platformGranted(db, actor),
+        two_factor_setup_required: twoFactorSetupRequired(actor, telegramConfigured()),
+      };
     },
   });
   add({
