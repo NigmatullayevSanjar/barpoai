@@ -647,6 +647,19 @@ try {
         document_date: '2026-10-01',
       },
     ],
+    [
+      'POST',
+      '/v1/finance/documents',
+      {
+        project_id: projectB1.id,
+        kind: 'advance_offset',
+        amount: '1',
+        counterparty_id: supplier.id,
+        allocated_invoice_id: labor.id,
+        description: 'Chet avans hisobi',
+        document_date: '2026-10-01',
+      },
+    ],
   ];
   for (const [method, url, body] of crossWrites) {
     const r = await raw(method, url, body, B.adminToken);

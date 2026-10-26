@@ -16,6 +16,7 @@ export type DocKind =
   | 'payment'
   | 'receipt'
   | 'advance'
+  | 'advance_offset'
   | 'cash_transfer'
   | 'reversal';
 export const payableKinds: DocKind[] = ['supplier_invoice', 'opening_debt', 'labor', 'equipment', 'service'];
@@ -47,6 +48,8 @@ export type FinanceDocument = {
   outstanding: string | null;
   /** Qarz hujjatlari uchun to'langan qismi (serverda); boshqa turlarda null */
   paid: string | null;
+  /** Qarz hujjatini shu obyektdagi kontragent avansidan yopish mumkin bo'lgan summa (serverda); boshqa turlarda null */
+  advance_offsettable: string | null;
   reversed: boolean;
   zone_name: string | null;
 };
@@ -302,6 +305,7 @@ export const kindTone: Record<DocKind, Tone> = {
   payment: 'success',
   receipt: 'success',
   advance: 'warning',
+  advance_offset: 'info',
   cash_transfer: 'neutral',
   reversal: 'danger',
 };

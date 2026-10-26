@@ -3,6 +3,22 @@ import { permit, projectScope, financialPages, pageAllowed } from './permissions
 import { invariant } from './errors.js';
 import { dec, money } from './money.js';
 import { journal } from './inventory.js';
+/** FK uchun olinadigan KEY SHARE qulflari bilan to'qnashmaydi; avans hisobi va avans stornosini ketma-ket qiladi. */
+async function lockCounterparty(db: Db, actor: Row, id: string) {
+  await one(db, 'SELECT id FROM counterparties WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE', [
+    actor.tenant_id,
+    id,
+  ]);
+}
+/** Kontragentning shu obyektdagi avans qoldig'i (berilgan − hisoblangan; storno yozuvlari bilan). */
+async function advanceBalance(db: Db, actor: Row, projectId: string, counterpartyId: string) {
+  const row = await one(
+    db,
+    "SELECT coalesce(sum(amount),0)::text amount FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND counterparty_id=$3 AND account='advance'",
+    [actor.tenant_id, projectId, counterpartyId],
+  );
+  return row.amount as string;
+}
 export async function postFinance(db: Db, actor: Row, input: Row) {
   const page = financialPages[input.kind]!;
   invariant(await pageAllowed(db, actor, page, 'create'), 'PAGE_ACTION_FORBIDDEN', 403);
@@ -42,6 +58,7 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
       'opening_debt',
       'payment',
       'advance',
+      'advance_offset',
       'labor',
       'equipment',
       'service',
@@ -49,6 +66,8 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
     'COUNTERPARTY_REQUIRED',
     400,
   );
+  // Avans hisobi: kontragent qatori qulflanadi — parallel hisoblar (va avans stornosi) avans qoldig'idan oshmaydi.
+  if (input.kind === 'advance_offset') await lockCounterparty(db, actor, input.counterparty_id);
   if (input.kind === 'cash_transfer')
     invariant(
       input.target_cash_account_id && input.target_cash_account_id !== input.cash_account_id,
@@ -56,7 +75,7 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
       400,
     );
   if (input.allocated_invoice_id) {
-    invariant(input.kind === 'payment', 'ONLY_PAYMENT_CAN_ALLOCATE', 400);
+    invariant(['payment', 'advance_offset'].includes(input.kind), 'ONLY_PAYMENT_CAN_ALLOCATE', 400);
     const invoice = await one(
       db,
       'SELECT * FROM finance_documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
@@ -89,8 +108,22 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
       'OVERPAYMENT_USE_ADVANCE',
     );
   }
-  if (input.kind === 'payment')
+  if (input.kind === 'payment' || input.kind === 'advance_offset')
     invariant(input.allocated_invoice_id, 'PAYMENT_ALLOCATION_REQUIRED', 400);
+  if (input.kind === 'advance_offset') {
+    // Ish haqi davri hujjati faqat ish haqi sahifasidan to'lanadi (to'lov summasi = net), avans bilan yopilmaydi.
+    invariant(
+      !(
+        await db.query(
+          'SELECT 1 FROM payroll_entries WHERE tenant_id=$1 AND labor_document_id=$2',
+          [actor.tenant_id, input.allocated_invoice_id],
+        )
+      ).rowCount,
+      'PAYROLL_DOCUMENT_NOT_OFFSETTABLE',
+    );
+    const balance = await advanceBalance(db, actor, input.project_id, input.counterparty_id);
+    invariant(dec(balance).gte(input.amount), 'ADVANCE_INSUFFICIENT');
+  }
   let receiptValue: string | null = null;
   if (input.kind === 'supplier_invoice') {
     invariant(input.matched_receipt_id, 'RECEIPT_MATCH_REQUIRED', 400);
@@ -172,6 +205,9 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
     case 'advance':
       entries.push(e('advance', positive), e('cash', negative, input.cash_account_id));
       break;
+    case 'advance_offset':
+      entries.push(e('payable', positive), e('advance', negative));
+      break;
     case 'receipt':
       entries.push(e('cash', positive, input.cash_account_id), e('income', negative));
       break;
@@ -197,6 +233,12 @@ export async function reverseFinance(db: Db, actor: Row, id: string, reason: str
   invariant(await pageAllowed(db, actor, page, 'delete'), 'PAGE_ACTION_FORBIDDEN', 403);
   await permit(db, actor, 'finance.reverse', 'delete', page);
   invariant(original.kind !== 'reversal', 'INVALID_REVERSAL');
+  // Hujjatga hisoblangan avansni storno qilsa avans manfiy bo'lib qolardi: avval avans hisobi storno qilinadi.
+  if (original.kind === 'advance') {
+    await lockCounterparty(db, actor, original.counterparty_id);
+    const balance = await advanceBalance(db, actor, original.project_id, original.counterparty_id);
+    invariant(dec(balance).gte(original.amount), 'ADVANCE_ALREADY_APPLIED');
+  }
   invariant(
     !(
       await db.query(

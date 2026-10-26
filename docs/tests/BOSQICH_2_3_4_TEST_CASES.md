@@ -111,7 +111,7 @@
 | Ma’lumot | Qiymat |
 |---|---|
 | Xonadonlar | `A-1` (A blok, 50 m²), `A-2` (A blok, 50 m²), `B-1` (B blok, 100 m²) — jami 200 m² |
-| Smeta (ish qatorlari, zona bilan) | A blok **10 000 000**; B blok **20 000 000**; zonasiz **2 000 000** |
+| Smeta (ish qatorlari, zona bilan) | A blok **10 000 000**; B blok **20 000 000**; zonasiz **2 000 000** — tayyor fayl: `docs/tests/fixtures/smeta_namuna.xlsx` (Smetalar → Excel import; ustunlar avtomatik moslanadi) |
 | Fakt xarajat (xizmat yoki ish hujjati, zona bilan) | A blok **12 000 000**; B blok **5 000 000** |
 
 Kutilgan guruhlar (prognoz = max(reja, fakt)):

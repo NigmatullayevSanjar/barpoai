@@ -62,10 +62,11 @@ Bu to‘liq soliq buxgalteriyasi emas. QQS, deklaratsiya yoki uy savdosi CRM kir
 | Labor/equipment/service actual | expense | payable | Ha |
 | Supplier payment | payable | cash | Yo‘q |
 | Supplier advance | advance | cash | Yo‘q |
+| Avans hisobi (`advance_offset`) | payable | advance | Yo‘q |
 | Customer receipt | cash | income | Yo‘q |
 | Internal cash transfer | target cash | source cash | Yo‘q |
 
-Supplier debt = −SUM(payable), advance alohida aktiv. Ob’yekt tannarxi=SUM(expense), net cash flow=SUM(cash). Ichki transfer net 0. Supplier payment invoice row lock bilan qoldiqdan oshirilmaydi. Payment allocation boshqa project/supplierga ulanmaydi. Bir supplier invoice hozir bir receiptga to‘liq matching; multi-receipt va avansni payablega allocation keyingi ichki completion gate.
+Supplier debt = −SUM(payable), advance alohida aktiv. Ob’yekt tannarxi=SUM(expense), net cash flow=SUM(cash). Ichki transfer net 0. Supplier payment invoice row lock bilan qoldiqdan oshirilmaydi. Payment allocation boshqa project/supplierga ulanmaydi. Bir supplier invoice hozir bir receiptga to‘liq matching; multi-receipt keyingi ichki completion gate. Avansni qarz hujjatiga hisoblash 2026-10-26 dan bor (pastdagi “Avans hisobi” bo‘limi).
 
 UySot receipt bank cash eventiga reconciliation orqali bog‘lanishi kerak; bu ikkita alohida cash yozuvi emas. Kamera hodisasi receipt/payment yaratmaydi. Ushbu real adapterlar credential/schema yo‘qligi sababli hali post qilmaydi.
 
@@ -149,3 +150,15 @@ Hisob (rejaning 4-bo‘limi, `backend/src/pricing.ts`, hammasi decimal.js bilan,
 - Har yangi obyekt bilan `Asosiy ombor` va uning stock hisobi bir tranzaksiyada yaratiladi (`POST /v1/projects`, nom doimiy — foydalanuvchida til ustuni yo‘q); migratsiya 022 ombori yo‘q mavjud obyektlarga (arxivlanganlarga ham) shu omborni va hisobini yaratadi.
 - Bosh muhandis (`manager`) bazaviy siyosati Figma bo‘yicha: `projects.write`, `employees.read` (yangi ruxsat: xodimlar ro‘yxati va kartasini o‘qish; boshqarish faqat adminda), `estimates.read/import/edit`, `prices.read`, `stock.read`, `tasks.manage`, `reports.submit/review`. Moliya sahifalari yo‘q. Buxgalter `finance.allocate` oladi (talabnomalarga mablag‘ ajratish). `GET /v1/employees` va `GET /v1/employees/:id` `employees.read` bilan ochiladi.
 - Prorab standart siyosati o‘zgarmaydi: narx yo‘q, obyekt/blok/ombor yaratish yo‘q; admin xohlasa xodim kartasida `prices.read` yoki rol matritsasida `projects` create berishi mumkin.
+
+## Avans hisobi va subpudratchi (2026-10-26, egasi qarori)
+
+- Kontragent turi `contractor` UI’da **“Subpudratchi” / “Субподрядчик”** deb ataladi (bazadagi qiymat o‘zgarmaydi). Subpudratchini mijoz admini va buxgalter qo‘shadi (`finance.post`, `counterparties` sahifasi).
+- Yangi moliya hujjati `advance_offset` — kontragentga berilgan avansni uning qarz hujjatiga (yetkazib beruvchi invoysi, boshlang‘ich qarz, mehnat/texnika/xizmat dalolatnomasi) hisoblaydi. Jurnal: `payable` +X, `advance` −X; kassa va xarajat o‘zgarmaydi. Migratsiya 024.
+- Majburiy: kontragent va `allocated_invoice_id`; kassa hisobi berilmaydi (`UNEXPECTED_CASH_ACCOUNT`). Hujjat o‘sha kontragent va o‘sha obyektga tegishli, storno qilinmagan bo‘ladi (`INVOICE_MISMATCH`, `INVOICE_REVERSED`).
+- X hujjat qoldig‘idan (`OVERPAYMENT_USE_ADVANCE`) va kontragentning **shu obyektdagi** avans qoldig‘idan (`ADVANCE_INSUFFICIENT`) oshmaydi. Boshqa obyekt avansi hisoblanmaydi. Kontragent qatori `FOR NO KEY UPDATE` bilan qulflanadi — parallel hisoblar avansdan oshmaydi.
+- Ish haqi davri yaratgan mehnat hujjati avans bilan yopilmaydi (`PAYROLL_DOCUMENT_NOT_OFFSETTABLE`) — u ish haqi sahifasidan net summa bilan to‘lanadi.
+- Ruxsat: `bank_cash` sahifasida yaratish (to‘lov qila oladiganlar — mijoz admini, buxgalter). Finansist va prorab — 403.
+- Qoldiq formulasi (`outstandingSql`, `paid`) avans hisobini to‘lov kabi hisobga oladi: “To‘langan”, “muddati o‘tgan”, to‘lov so‘rovi chegarasi va kontragent qarzi bir xil. Hujjat qoldig‘i avans hisobi bilan kamaygan bo‘lsa, eski to‘lov so‘rovini to‘lash `OVERPAYMENT_USE_ADVANCE` bilan rad etiladi.
+- Storno: avans hisobi storno qilinsa qarz va avans qaytadi. Avans hisobi bor dalolatnoma avval hisob storno qilinmaguncha storno qilinmaydi (`REVERSE_PAYMENTS_FIRST`). Hisoblangan avansning o‘zini storno qilish rad etiladi (`ADVANCE_ALREADY_APPLIED`) — aks holda avans qoldig‘i manfiy bo‘lardi.
+- `GET /v1/finance/documents` qarz hujjati qatorida `advance_offsettable` = max(0, min(qoldiq, shu obyektdagi avans qoldig‘i)); ish haqi davri hujjati va storno qilinganlarda 0. UI: “Hisoblar va dalolatnomalar” jadvalida “Avansdan yopish” tugmasi faqat shu summa > 0 bo‘lsa, summa oldindan to‘ldiriladi.

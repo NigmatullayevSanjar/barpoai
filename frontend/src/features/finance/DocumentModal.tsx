@@ -46,7 +46,8 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
     offset: 0,
     limit: 100,
   });
-  const needsCounterparty = [...payableKinds, 'payment', 'advance'].includes(kind);
+  const needsCounterparty = [...payableKinds, 'payment', 'advance', 'advance_offset'].includes(kind);
+  const allocates = kind === 'payment' || kind === 'advance_offset';
   const needsCash = cashKinds.includes(kind);
   const receiptValue = selectedReceipt
     ? (Number(selectedReceipt.unit_cost ?? 0) * Number(selectedReceipt.accepted_quantity)).toFixed(2)
@@ -65,7 +66,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
           ...(needsCash ? { cash_account_id: cashAccount } : {}),
           ...(kind === 'cash_transfer' ? { target_cash_account_id: targetCash } : {}),
           ...(kind === 'supplier_invoice' ? { matched_receipt_id: receipt } : {}),
-          ...(kind === 'payment' ? { allocated_invoice_id: invoice } : {}),
+          ...(allocates ? { allocated_invoice_id: invoice } : {}),
           ...(zone ? { zone_id: zone } : {}),
           ...(reference.trim() ? { reference: reference.trim() } : {}),
           ...(due && payableKinds.includes(kind) ? { due_date: due } : {}),
@@ -82,7 +83,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
     (!needsCash || cashAccount) &&
     (kind !== 'cash_transfer' || (targetCash && targetCash !== cashAccount)) &&
     (kind !== 'supplier_invoice' || receipt) &&
-    (kind !== 'payment' || invoice);
+    (!allocates || invoice);
   return (
     <Modal
       open
@@ -195,12 +196,12 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
               }
             />
           )}
-          {kind === 'payment' && (
+          {allocates && (
             <Select
               wrapClassName="span-2"
               label={t('fin.allocated_invoice')}
               required
-              hint={t('fin.pay_hint')}
+              hint={t(kind === 'advance_offset' ? 'fin.offset_hint' : 'fin.pay_hint')}
               value={invoice}
               onChange={(e) => {
                 setInvoice(e.target.value);
@@ -254,7 +255,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
             value={reference}
             onChange={(e) => setReference(e.target.value)}
           />
-          {!needsCash && (
+          {!needsCash && kind !== 'advance_offset' && (
             <Select label={t('stock.zone')} value={zone} onChange={(e) => setZone(e.target.value)}>
               <option value="">—</option>
               {(zones.data?.items ?? []).map((z) => (
