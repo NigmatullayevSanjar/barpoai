@@ -114,7 +114,7 @@ export const workUz: Record<string, string> = {
     'Asl yozuv o‘zgarmaydi; farq (musbat yoki manfiy) sabab bilan alohida saqlanadi.',
   'reports.correction_delta': 'Farq (masalan, -5 yoki 2.5)',
   'reports.corrections': 'Tuzatishlar',
-  'reports.effective_progress': 'Amaldagi progress',
+  'reports.effective_progress': 'Amalda',
   'reports.plan': 'Reja',
   'reports.detail': 'Hisobot kartasi',
   'reports.reviewed_by': 'Tekshirdi',

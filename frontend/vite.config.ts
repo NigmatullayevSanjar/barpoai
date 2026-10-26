@@ -8,7 +8,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
-    host: 'localhost',
+    // 0.0.0.0 — wifi orqali boshqa qurilmalardan http://<kompyuter-IP>:5173 (backend .env da APP_ALLOW_LAN=1).
+    host: '0.0.0.0',
     port: 5173,
     strictPort: true,
     proxy: {
@@ -16,6 +17,6 @@ export default defineConfig({
       '/health': { target: process.env.API_PROXY_TARGET ?? 'http://localhost:3001', changeOrigin: false },
     },
   },
-  preview: { host: 'localhost', port: 5173 },
+  preview: { host: '0.0.0.0', port: 5173 },
   build: { sourcemap: false, chunkSizeWarningLimit: 900 },
 });

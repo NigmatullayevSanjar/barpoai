@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { Pencil, Plus } from 'lucide-react';
 import { api, ApiError, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { isPlatformOwner } from '@/lib/permissions';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatMoney } from '@/lib/format';
 import { Alert, Badge, Button, EmptyState, Input, Modal, PageHeader } from '@/components/ui';
@@ -22,8 +21,8 @@ const limitKeys = ['users', 'projects', 'storage_mb'] as const;
 
 export function PlansPage() {
   const { t, lang } = useT();
-  const { me } = useAuth();
-  const owner = isPlatformOwner(me?.role);
+  const { canPlatform } = useAuth();
+  const owner = canPlatform('plans.manage');
   const toast = useToast();
   const onError = useApiError();
   const queryClient = useQueryClient();

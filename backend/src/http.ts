@@ -6,8 +6,16 @@ import cookie from '@fastify/cookie';
 import { z } from 'zod';
 import type pg from 'pg';
 import { transaction, idempotent, mapDatabaseError, type Db, type Row } from './db.js';
-import { authenticate, tenantAccess, SESSION_COOKIE, SESSION_SECONDS } from './auth.js';
+import {
+  authenticate,
+  tenantAccess,
+  twoFactorSetupRequired,
+  SESSION_COOKIE,
+  SESSION_SECONDS,
+} from './auth.js';
 import { invariant } from './errors.js';
+import { telegramConfigured } from './telegram.js';
+import { platformPermit, type PlatformPermission } from './platform-permissions.js';
 import {
   permit,
   type Permission,
@@ -40,6 +48,8 @@ export interface Endpoint {
   query?: z.ZodType;
   public?: boolean;
   platform?: string[];
+  /** Platforma amali (D21): rol `platform` ro'yxatida bo'lishi va shu ruxsat matritsada berilgan bo'lishi kerak. */
+  platformPermission?: PlatformPermission;
   recovery?: boolean;
   passwordChange?: boolean;
   permission?: Permission;
@@ -57,6 +67,18 @@ export interface Endpoint {
   handler: (ctx: Context) => Promise<any>;
 }
 export const appOrigin = () => process.env.APP_ORIGIN ?? 'http://localhost:5173';
+/**
+ * Brauzer originiga ruxsat: APP_ORIGIN (vergul bilan bir nechta) yoki APP_ALLOW_LAN=1 bo'lsa lokal tarmoq
+ * (192.168.x.x, 10.x.x.x, 172.16–31.x.x) manzilidagi frontend (wifi orqali telefondan sinash uchun).
+ */
+export function originAllowed(origin: string | undefined) {
+  if (!origin) return false;
+  if (appOrigin().split(',').map((o) => o.trim()).includes(origin)) return true;
+  return (
+    process.env.APP_ALLOW_LAN === '1' &&
+    /^http:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):5173$/.test(origin)
+  );
+}
 export function setSessionCookie(reply: FastifyReply, token: string) {
   reply.setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -93,7 +115,7 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
             const origin =
               request.headers.origin ??
               request.headers.referer?.replace(/(^https?:\/\/[^/]+).*/, '$1');
-            invariant(origin === appOrigin(), 'CSRF_ORIGIN_REJECTED', 403);
+            invariant(originAllowed(origin), 'CSRF_ORIGIN_REJECTED', 403);
           }
           const actor = route.public ? {} : await authenticate(db, bearer, cookieToken);
           if (!route.public) {
@@ -102,9 +124,15 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
               'PASSWORD_CHANGE_REQUIRED',
               403,
             );
-            if (route.platform)
+            invariant(
+              !twoFactorSetupRequired(actor, telegramConfigured()) || route.passwordChange,
+              'TWO_FACTOR_SETUP_REQUIRED',
+              403,
+            );
+            if (route.platform) {
               invariant(!actor.tenant_id && route.platform.includes(actor.role), 'FORBIDDEN', 403);
-            else if (!route.passwordChange) {
+              if (route.platformPermission) await platformPermit(db, actor, route.platformPermission);
+            } else if (!route.passwordChange) {
               await db.query("SELECT set_config('app.tenant_id',$1,true)", [actor.tenant_id ?? '']);
               await tenantAccess(db, actor, route.recovery);
               if (route.adminOnly) invariant(actor.role === 'tenant_admin', 'FORBIDDEN', 403);
@@ -191,7 +219,7 @@ export async function baseApp(
   await app.register(helmet);
   await app.register(cookie);
   await app.register(cors, {
-    origin: appOrigin(),
+    origin: (origin, cb) => cb(null, !origin || originAllowed(origin)),
     credentials: true,
   });
   // SPA polling va bitta IP orqasidagi ko'p foydalanuvchi uchun umumiy chegara; login/reset alohida qattiq.
@@ -269,7 +297,11 @@ export function openapi(definitions: Endpoint[]) {
       operationId: r.method.toLowerCase() + r.path.replace(/[^a-zA-Z0-9]/g, '_'),
       security: r.public ? [] : [{ bearerAuth: [] }, { cookieAuth: [] }],
       parameters,
-      'x-permission': r.permission ?? r.platform?.join('|') ?? 'authenticated',
+      'x-permission':
+        r.permission ??
+        (r.platform
+          ? r.platform.join('|') + (r.platformPermission ? ` + ${r.platformPermission}` : '')
+          : 'authenticated'),
       'x-tenant-scope': !r.platform && !r.public,
       responses: {
         '200': {

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, RotateCcw, Send } from 'lucide-react';
 import { api, ApiError, qs, type ListResponse } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
@@ -44,6 +45,9 @@ export function SupportPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [text, setText] = useState('');
+  // D21: javob berish, yakunlash va qayta ochish — support.reply ruxsati bilan.
+  const { canPlatform } = useAuth();
+  const canReply = canPlatform('support.reply');
   const query = useQuery({
     queryKey: ['platform-support', tab],
     queryFn: () =>
@@ -152,7 +156,7 @@ export function SupportPage() {
                     </small>
                   </span>
                 </span>
-                {selected.status === 'open' ? (
+                {!canReply ? null : selected.status === 'open' ? (
                   <Button
                     icon={<Check />}
                     loading={
@@ -198,7 +202,7 @@ export function SupportPage() {
                   </div>
                 )}
               </div>
-              {selected.status === 'open' && (
+              {canReply && selected.status === 'open' && (
                 <div className="chat-footer">
                   <Textarea
                     wrapClassName="grow"

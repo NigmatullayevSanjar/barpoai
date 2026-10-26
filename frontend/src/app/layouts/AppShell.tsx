@@ -203,7 +203,7 @@ function UserMenu() {
  * sahifa sarlavhasi va izohi har sahifaning o'zida (PageHeader).
  */
 export function AppShell() {
-  const { me, can, isPlatform, issue } = useAuth();
+  const { me, can, canPlatform, isPlatform, issue } = useAuth();
   const { t } = useT();
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
@@ -214,7 +214,10 @@ export function AppShell() {
   const tenantGroups = navFor(me.role)
     .map((g) => ({ ...g, items: g.items.filter((it) => can(it.page)) }))
     .filter((g) => g.items.length > 0);
-  const platformItems = platformNav.filter((it) => it.roles.includes(me.role));
+  // D21: band ruxsat bo'yicha; super admin Telegramni ulamaguncha menyu bo'sh (faqat profil ochiq).
+  const platformItems = me.two_factor_setup_required
+    ? []
+    : platformNav.filter((it) => !it.permission || canPlatform(it.permission));
 
   return (
     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>

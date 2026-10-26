@@ -1,4 +1,4 @@
-# Avans hisobi va subpudratchi — qo‘lda test case’lar (D21, 2026-10-26)
+# Avans hisobi va subpudratchi — qo‘lda test case’lar (D22, 2026-10-26)
 
 **Tayyorgarlik:** “Test obyekt” va “B obyekt”, bitta bank yoki kassa hisobi (mablag‘ kirimi bilan). Kirish: mijoz admini; R-03 uchun buxgalter, finansist va prorab ham.
 

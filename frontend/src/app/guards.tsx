@@ -32,6 +32,10 @@ export function RequireAuth({ platform }: { platform?: boolean }) {
   if (me === null) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (me.must_change_password && location.pathname !== '/change-password')
     return <Navigate to="/change-password" replace />;
+  // D21: super admin uchun 2FA majburiy — Telegram ulanguncha faqat profil (ulash kartasi) ochiq.
+  // Boshlang'ich parol almashtirilmaguncha /change-password ochiq turadi (aks holda ikki yo'naltirish aylanib qoladi).
+  if (!me.must_change_password && me.two_factor_setup_required && location.pathname !== '/profile')
+    return <Navigate to="/profile" replace />;
   if (platform !== undefined && platform !== isPlatform)
     return <Navigate to={homeFor(me.role, me.must_change_password)} replace />;
   return <Outlet />;

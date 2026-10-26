@@ -302,7 +302,7 @@ export const financeRu: Record<string, string> = {
   'fin.rep.aging_desc': 'Срок неоплаченной задолженности по контрагентам',
   'fin.rep.stock': 'Складской отчёт',
   'fin.rep.stock_desc': 'Склад выбранного объекта: остатки и стоимость материалов',
-  'fin.rec.generate': 'Сформировать акт',
+  'fin.rec.generate': 'Скачать в Excel',
   'fin.rec.our_data': 'Наши данные',
   'fin.rec.one_sided': 'Данных со стороны контрагента в системе нет; акт формируется по нашим записям.',
   'fin.rec.document': 'Документ',

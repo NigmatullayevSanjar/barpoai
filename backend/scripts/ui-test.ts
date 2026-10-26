@@ -1076,14 +1076,64 @@ try {
   );
   const techPage = await newPage();
   await login(techPage, 'ui_tech', password);
-  // D15: super_admin bosh sahifaga tushadi, o'qiydi, lekin biznes tugmalari yo'q; Audit va Texnik xodimlar sahifalari bor.
+  // D21: super admin uchun 2FA majburiy — Telegram ulanmaguncha faqat profil ochiq (menyu bo'sh, ogohlantirish).
+  await techPage.waitForURL(/\/profile$/);
+  await techPage.getByText('Super admin uchun Telegram 2FA majburiy').first().waitFor();
+  assert.equal(await techPage.locator('.sidebar nav a.nav-link').count(), 0);
+  await owner.query(
+    "INSERT INTO telegram_accounts(user_id,telegram_user_id) SELECT id,'999001' FROM users WHERE login='ui_tech'",
+  );
+  // Profildagi karta Telegram holatini kuzatadi; ulangach /auth/me qayta o'qiladi va menyu ochiladi.
+  await techPage.locator('.sidebar nav a.nav-link').first().waitFor({ timeout: 20000 });
+  checks.push(
+    'D21: a super_admin without Telegram lands on the profile with a mandatory-2FA warning and an empty menu; once Telegram is linked the menu opens without a new login',
+  );
+  // Yangi super admin (boshlang'ich parol almashtirilmagan, Telegram ulanmagan): bo'sh sahifa emas, parol almashtirish ochiladi
+  await owner.query(
+    "INSERT INTO users(login,display_name,password_hash,role,must_change_password) VALUES('ui_tech_new','Yangi super admin',$1,'super_admin',true)",
+    [await hashPassword(password)],
+  );
+  const newTechPage = await newPage();
+  await login(newTechPage, 'ui_tech_new', password);
+  await newTechPage.waitForURL(/\/change-password$/);
+  await newTechPage.getByRole('heading', { name: 'Boshlang‘ich parolni almashtiring' }).waitFor();
+  checks.push('A new super_admin (must change password, no Telegram) sees the change-password page instead of a blank redirect loop');
+  // D21: super admin — butun platforma admini: 10 band, biznes tugmalari, umumiy audit, ruxsatlar, kompaniya foydalanuvchilari.
+  await techPage.goto(webURL + '/admin');
   await techPage.getByRole('heading', { name: 'Platforma boshqaruv paneli' }).waitFor();
+  assert.equal(await techPage.locator('.sidebar nav a.nav-link').count(), 10);
   await techPage.goto(webURL + '/admin/plans');
   await techPage.getByRole('heading', { name: 'Tariflar' }).waitFor();
-  assert.equal(await techPage.getByRole('button', { name: 'Yangi tarif versiyasi' }).count(), 0);
+  await techPage.getByRole('button', { name: 'Yangi tarif versiyasi' }).waitFor();
   await techPage.goto(webURL + '/admin/audit');
-  await techPage.getByRole('heading', { name: 'Platforma auditi' }).waitFor();
+  await techPage.getByRole('heading', { name: 'Umumiy audit' }).waitFor();
+  // Umumiy auditda kompaniyalar yozuvlari ham bor: tarif yozuvi amal filtri bilan topiladi.
+  await techPage.getByLabel('Amal bo‘yicha (masalan, task.)').fill('plan.');
   await techPage.getByText('plan.create', { exact: true }).first().waitFor();
+  await techPage.goto(webURL + '/admin/permissions');
+  await techPage.getByRole('heading', { name: 'Platforma ruxsatlari' }).waitFor();
+  const supportAuditBox = techPage.getByLabel('Texnik yordam: Umumiy audit');
+  assert.equal(await supportAuditBox.isChecked(), false);
+  await supportAuditBox.check();
+  await techPage.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await techPage.getByText('Ruxsatlar saqlandi').first().waitFor();
+  const supportAuditAllowed = async () =>
+    (await owner.query("SELECT allowed FROM platform_role_permissions WHERE role='support' AND permission='audit.read'")).rows[0]
+      ?.allowed;
+  assert.equal(await supportAuditAllowed(), true);
+  await techPage.getByRole('button', { name: 'Standart qiymatlar' }).click();
+  assert.equal(await supportAuditBox.isChecked(), false);
+  await techPage.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  for (let i = 0; i < 50 && (await supportAuditAllowed()); i++) await delay(100);
+  assert.equal(await supportAuditAllowed(), false);
+  const firstTenant = (await owner.query('SELECT id FROM tenants WHERE status=$1 ORDER BY created_at LIMIT 1', ['active'])).rows[0].id;
+  await techPage.goto(webURL + `/admin/tenants/${firstTenant}`);
+  await techPage.getByRole('heading', { name: 'Foydalanuvchilar' }).waitFor();
+  await techPage.getByRole('button', { name: 'Tahrirlash' }).first().waitFor();
+  await techPage.getByRole('button', { name: 'Admin qilish' }).first().waitFor();
+  checks.push(
+    'D21: the super_admin sees all 10 platform pages, business buttons (new plan, edit tenant), the general audit, edits a support permission from the matrix page and restores defaults, and sees company users with correction buttons',
+  );
   await techPage.goto(webURL + '/admin/staff');
   await techPage.getByRole('heading', { name: 'Texnik xodimlar' }).waitFor();
   await techPage.getByText('2FA yo‘q — Telegram ulanmagan').first().waitFor();
@@ -1114,7 +1164,7 @@ try {
 
   // 7. Platforma egasi: tarif biriktirish, invoys, to'lov, holat
   await ownerPage.reload();
-  await ownerPage.getByText('Sinov Admini').waitFor();
+  await ownerPage.getByText('Sinov Admini').first().waitFor();
   await ownerPage.getByRole('button', { name: 'Tarif biriktirish' }).click();
   await ownerPage.getByLabel('Tarif versiyasi').selectOption({ index: 1 });
   await ownerPage.getByRole('dialog').getByRole('button', { name: 'Saqlash', exact: true }).click();
@@ -1227,7 +1277,7 @@ try {
   );
   const supportPage = await newPage();
   await login(supportPage, 'ui_support', password);
-  // D15: support faqat o'qiydi — Mijozlar ro'yxatiga tushadi; bosh sahifa, tariflar, to'lovlar, qarzdorlar, murojaatlar, diagnostika ochiq (7 havola).
+  // D21: support — Mijozlar ro'yxatiga tushadi; bosh sahifa, tariflar, to'lovlar, qarzdorlar, murojaatlar, diagnostika ochiq (7 havola).
   await supportPage.getByRole('heading', { name: 'Mijoz kompaniyalar' }).waitFor();
   await supportPage.goto(webURL + '/admin/diagnostics');
   await supportPage.getByText('Worker navbati', { exact: true }).waitFor();

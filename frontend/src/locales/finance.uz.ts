@@ -306,7 +306,7 @@ export const financeUz: Record<string, string> = {
   'fin.rep.aging_desc': 'Kontragentlar bo‘yicha to‘lanmagan qarzning muddati',
   'fin.rep.stock': 'Ombor hisoboti',
   'fin.rep.stock_desc': 'Tanlangan obyekt ombori: material qoldiqlari va qiymati',
-  'fin.rec.generate': 'Dalolatnoma shakllantirish',
+  'fin.rec.generate': 'Excelga yuklab olish',
   'fin.rec.our_data': 'Bizning ma‘lumot',
   'fin.rec.one_sided': 'Kontragent tomonidan ma‘lumot tizimda yo‘q; dalolatnoma bizning yozuvlar asosida shakllanadi.',
   'fin.rec.document': 'Hujjat',

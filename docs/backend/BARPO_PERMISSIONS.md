@@ -83,9 +83,23 @@ POST /v1/company/role-permissions optimistic version + idempotency bilan saqlayd
 
 Forma va tafsilotlar o‘z biznes sahifasining huquqini oladi: masalan smeta yaratish va tahrirlash sahifalari estimates.create va estimates.update bilan alohida filtrlanadi. Moliya dizayn ekranlari alohida bank_cash, invoices, payroll, budgets va boshqa sahifa keylariga moslangan; profil self-service hisoblanadi.
 
-## Platforma chegaralari
+## Platforma chegaralari (D21, 2026-10-22)
 
-Platform owner: kompaniya/invite/alias/tarif/obuna/invoys/manual payment/support/audit/parol tiklash. Super admin (D15): o‘qish (kompaniyalar, tariflar, to‘lovlar), murojaatlar, diagnostika, texnik staff (yaratish, faolsizlantirish, rol), platforma auditi, parol tiklash; biznes amallari yo‘q. Support: o‘qish, murojaatlar, diagnostika. Egasi va super admin Telegram ulangan bo‘lsa 2FA (D16). Hech biri tenant APIga avtomatik kira olmaydi; break-glass o‘chirilgan. Super admin PostgreSQL SUPERUSER emas.
+Ko‘rish (kompaniyalar, tariflar, daromad, qarzdorlar, murojaatlar) barcha platforma xodimlariga ochiq. Amallar quyidagi ruxsatlar bilan; platforma egasida hammasi doim bor, super admin va support uchun standart qiymatlar jadvalda, egasi yoki `permissions.manage` ruxsati bor xodim ularni “Platforma ruxsatlari” sahifasida o‘zgartiradi (super admin qatorini faqat egasi yoki super admin). Egasiga tegishli cheklovlar qat’iy: egasini hech kim bloklamaydi va rolini o‘zgartirmaydi; egasining parolini faqat super admin tiklaydi (havola unga ko‘rsatiladi); o‘zini hech kim tiklamaydi. Super admin uchun Telegram 2FA majburiy: bot sozlangan, Telegram ulanmagan bo‘lsa faqat profil va Telegramni ulash ochiq (TWO_FACTOR_SETUP_REQUIRED). Kompaniya tuzatishlari (`tenants.correct`) kompaniya sahifalariga kirishsiz, tayyor amallar bilan: storno, ish hajmini tuzatish, xodimni faolsizlantirish, sessiya va Telegramni uzish, adminlikni o‘tkazish; hujjat kompaniya admini nomidan (created_by), audit platforma xodimiga yoziladi (`platform_correction`). Break-glass o‘chirilgan; super admin PostgreSQL SUPERUSER emas.
+
+| Platforma ruxsati | platform_owner | super_admin | support |
+|---|---|---|---|
+| tenants.manage | ✓ | ✓ | — |
+| tenants.block | ✓ | ✓ | — |
+| plans.manage | ✓ | ✓ | — |
+| billing.manage | ✓ | ✓ | — |
+| users.reset | ✓ | ✓ | ✓ |
+| tenants.correct | ✓ | ✓ | — |
+| audit.read | ✓ | ✓ | — |
+| support.reply | ✓ | ✓ | ✓ |
+| diagnostics.read | ✓ | ✓ | ✓ |
+| staff.manage | ✓ | ✓ | — |
+| permissions.manage | ✓ | ✓ | — |
 
 ## Sezgir maydonlar
 

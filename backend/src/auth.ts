@@ -12,7 +12,8 @@ export async function authenticate(db: Db, bearer: string | undefined, cookie?: 
   invariant(raw && raw.length < 256, 'UNAUTHORIZED', 401);
   const actor = (
     await db.query(
-      `SELECT u.id,u.tenant_id,u.role,u.active,u.must_change_password,u.display_name,u.phone,u.version,s.token_hash,s.channel
+      `SELECT u.id,u.tenant_id,u.role,u.active,u.must_change_password,u.display_name,u.phone,u.version,s.token_hash,s.channel,
+        EXISTS(SELECT 1 FROM telegram_accounts t WHERE t.user_id=u.id) telegram_linked
     FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.active`,
       [digest(raw)],
     )
@@ -107,6 +108,12 @@ export async function login(
   return issueSession(db, user, channel);
 }
 export const TWO_FACTOR_ROLES = ['platform_owner', 'super_admin'];
+/**
+ * D21 (2026-10-22): super admin uchun 2FA majburiy. Bot sozlangan bo'lsa-yu Telegram ulanmagan bo'lsa, sessiya faqat
+ * profil va Telegramni ulash uchun (parol almashtirish marshrutlari); boshqa hamma so'rov TWO_FACTOR_SETUP_REQUIRED.
+ */
+export const twoFactorSetupRequired = (actor: Row, configured: boolean) =>
+  actor.role === 'super_admin' && !actor.telegram_linked && configured;
 const CODE_SECONDS = 300;
 /** Kodni yozadi va botga yuboradi; javobda sessiya emas, challenge (5 daqiqa). Eski ochiq kodlar bekor qilinadi. */
 async function startLoginChallenge(

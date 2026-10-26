@@ -116,6 +116,9 @@ const Platform = {
   Support: lazy(() => import('@/features/platform/support').then((m) => ({ default: m.SupportPage }))),
   Staff: lazy(() => import('@/features/platform/pages').then((m) => ({ default: m.StaffPage }))),
   Audit: lazy(() => import('@/features/platform/AuditPage').then((m) => ({ default: m.PlatformAuditPage }))),
+  Permissions: lazy(() =>
+    import('@/features/platform/permissions').then((m) => ({ default: m.PlatformPermissionsPage })),
+  ),
   Diagnostics: lazy(() =>
     import('@/features/platform/diagnostics').then((m) => ({ default: m.DiagnosticsPage })),
   ),
@@ -231,6 +234,7 @@ export function App() {
                         <Route path="/admin/support" element={<Platform.Support />} />
                         <Route path="/admin/staff" element={<Platform.Staff />} />
                         <Route path="/admin/audit" element={<Platform.Audit />} />
+                        <Route path="/admin/permissions" element={<Platform.Permissions />} />
                         <Route path="/admin/diagnostics" element={<Platform.Diagnostics />} />
                       </Route>
                     </Route>

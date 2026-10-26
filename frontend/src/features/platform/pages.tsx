@@ -8,7 +8,8 @@ import { Check, Copy, KeyRound, Link2, Pencil, Plus, ShieldBan, ShieldCheck, Arc
 import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
-import { canManageStaff, isPlatformOwner } from '@/lib/permissions';
+import type { PlatformPermission } from '@/lib/permissions';
+import { TenantUsersSection } from './tenant-users';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { displayCurrency } from '@/lib/currency-store';
@@ -157,8 +158,12 @@ export function TenantDetailPage() {
   const { t, lang } = useT();
   const toast = useToast();
   const onError = useApiError();
-  const { me } = useAuth();
-  const owner = isPlatformOwner(me?.role);
+  // D21: har amal o'z ruxsati bilan (super admin standartda hammasiga ega); server ham tekshiradi.
+  const { canPlatform } = useAuth();
+  const canManage = canPlatform('tenants.manage');
+  const canBlock = canPlatform('tenants.block');
+  const canPlans = canPlatform('plans.manage');
+  const canBilling = canPlatform('billing.manage');
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['platform-tenant', id],
@@ -309,22 +314,24 @@ export function TenantDetailPage() {
         }
         description={<span className="mono">{d.registration_key}</span>}
         actions={
-          owner && (
+          (canManage || canBlock) && (
           <>
-            <Button variant="secondary" icon={<Pencil />} onClick={() => setProfileModal(true)}>
-              {t('tenants.edit_profile')}
-            </Button>
-            {d.status === 'active' && (
+            {canManage && (
+              <Button variant="secondary" icon={<Pencil />} onClick={() => setProfileModal(true)}>
+                {t('tenants.edit_profile')}
+              </Button>
+            )}
+            {canBlock && d.status === 'active' && (
               <Button variant="secondary" icon={<ShieldBan />} onClick={() => setConfirm('blocked')}>
                 {t('tenants.block')}
               </Button>
             )}
-            {d.status === 'blocked' && (
+            {canBlock && d.status === 'blocked' && (
               <Button icon={<ShieldCheck />} onClick={() => setConfirm('active')}>
                 {t('tenants.unblock')}
               </Button>
             )}
-            {d.status !== 'archived' && d.status !== 'pending' && (
+            {canBlock && d.status !== 'archived' && d.status !== 'pending' && (
               <Button variant="ghost" icon={<Archive />} onClick={() => setConfirm('archived')}>
                 {t('tenants.archive')}
               </Button>
@@ -347,7 +354,7 @@ export function TenantDetailPage() {
                   : '—'}
                 {d.admin && (
                   <div style={{ marginTop: 6 }}>
-                    <ResetLinkButton userId={d.admin.id} />
+                    <ResetLinkButton userId={d.admin.id} permission="users.reset" />
                   </div>
                 )}
               </dd>
@@ -380,7 +387,7 @@ export function TenantDetailPage() {
                 </>
               )}
             </dl>
-            {owner && (
+            {canManage && (
             <form className="row" onSubmit={aliasForm.handleSubmit((v) => saveAlias.mutate(v))}>
               <Input wrapClassName="grow" label={t('tenants.alias')} {...aliasForm.register('alias')} />
               <Button
@@ -430,7 +437,7 @@ export function TenantDetailPage() {
                     </div>
                   </div>
                 )}
-                {owner && (
+                {canManage && (
                   <div>
                     <Button
                       icon={<Link2 />}
@@ -448,7 +455,7 @@ export function TenantDetailPage() {
         <section className="card">
           <div className="card-header">
             <h3>{t('tenants.plan')}</h3>
-            {owner && (
+            {canPlans && (
               <Button size="sm" variant="secondary" onClick={() => setPlanModal(true)}>
                 {t('tenants.set_plan')}
               </Button>
@@ -481,10 +488,11 @@ export function TenantDetailPage() {
           </div>
         </section>
       </div>
+      <TenantUsersSection tenantId={id} />
       <section>
         <div className="row-between" style={{ marginBottom: 10 }}>
           <h2>{t('tenants.invoices')}</h2>
-          {owner && (
+          {canBilling && (
             <Button
               icon={<Plus />}
               variant="secondary"
@@ -496,7 +504,7 @@ export function TenantDetailPage() {
           )}
         </div>
         <DataTable
-          columns={owner ? invoiceCols : invoiceCols.filter((c) => c.key !== 'act')}
+          columns={canBilling ? invoiceCols : invoiceCols.filter((c) => c.key !== 'act')}
           rows={d.invoices}
           rowKey={(r) => r.id}
           empty={{ title: t('common.empty') }}
@@ -909,12 +917,12 @@ function BillingEntryModal({
 
 /* Figma F6: tariflar — plans.tsx, daromad va qarzdorlik, qarzdorlar — billing.tsx, murojaatlar chati — support.tsx. */
 
-/* ---------------- Parolni tiklash havolasi (egasi va super admin) ---------------- */
+/* ---------------- Parolni tiklash havolasi (D21: kompaniya foydalanuvchisi — users.reset, xodim — staff.manage) ---------------- */
 /** Foydalanuvchiga 30 daqiqalik bir martalik havola; parol ko'rsatilmaydi, sessiyalar bekor qilinadi. */
-function ResetLinkButton({ userId }: { userId: string }) {
+export function ResetLinkButton({ userId, permission }: { userId: string; permission: PlatformPermission }) {
   const { t } = useT();
   const onError = useApiError();
-  const { me } = useAuth();
+  const { canPlatform } = useAuth();
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const m = useMutation({
@@ -925,7 +933,7 @@ function ResetLinkButton({ userId }: { userId: string }) {
     },
     onError,
   });
-  if (!(isPlatformOwner(me?.role) || canManageStaff(me?.role))) return null;
+  if (!canPlatform(permission)) return null;
   return (
     <>
       <Button size="sm" variant="secondary" icon={<KeyRound />} loading={m.isPending} onClick={() => m.mutate()}>
@@ -967,7 +975,7 @@ function ResetLinkButton({ userId }: { userId: string }) {
   );
 }
 
-/* ---------------- Staff (super admin) ---------------- */
+/* ---------------- Platforma xodimlari (D21: egasi va staff.manage ruxsati borlar) ---------------- */
 type Staff = {
   id: string;
   login: string;
@@ -981,6 +989,8 @@ type Staff = {
 export function StaffPage() {
   const { t, lang } = useT();
   const { me } = useAuth();
+  // Super adminni faqat egasi yoki super admin yaratadi va o'zgartiradi (server ham tekshiradi).
+  const senior = me?.role === 'platform_owner' || me?.role === 'super_admin';
   const toast = useToast();
   const onError = useApiError();
   const queryClient = useQueryClient();
@@ -1075,9 +1085,15 @@ export function StaffPage() {
       key: 'actions',
       header: '',
       align: 'right',
-      // O'z parolini profilda almashtiradi; platforma egasining parolini faqat egasi tiklaydi (server ham tekshiradi).
+      // O'z parolini profilda almashtiradi; egasining parolini faqat super admin tiklaydi, egasi o'zgartirilmaydi (D21).
       render: (r) =>
-        r.id !== me?.id && r.role !== 'platform_owner' ? (
+        r.id === me?.id ? null : r.role === 'platform_owner' ? (
+          me?.role === 'super_admin' && (
+            <span className="row wrap" style={{ justifyContent: 'flex-end' }}>
+              <ResetLinkButton userId={r.id} permission="staff.manage" />
+            </span>
+          )
+        ) : senior || r.role !== 'super_admin' ? (
           <span className="row wrap" style={{ justifyContent: 'flex-end' }}>
             <Select
               aria-label={t('common.role')}
@@ -1086,13 +1102,13 @@ export function StaffPage() {
               disabled={update.isPending}
               onChange={(e) => update.mutate({ id: r.id, active: r.active, role: e.target.value as Staff['role'] })}
             >
-              <option value="super_admin">{t('role.super_admin')}</option>
+              {senior && <option value="super_admin">{t('role.super_admin')}</option>}
               <option value="support">{t('role.support')}</option>
             </Select>
             <Button size="sm" variant="secondary" onClick={() => setToggle(r)}>
               {r.active ? t('employees.deactivate') : t('employees.activate')}
             </Button>
-            {r.active && <ResetLinkButton userId={r.id} />}
+            {r.active && <ResetLinkButton userId={r.id} permission="staff.manage" />}
           </span>
         ) : null,
     },
@@ -1160,7 +1176,7 @@ export function StaffPage() {
           />
           <Select label={t('common.role')} {...form.register('role')}>
             <option value="support">{t('role.support')}</option>
-            <option value="super_admin">{t('role.super_admin')}</option>
+            {senior && <option value="super_admin">{t('role.super_admin')}</option>}
           </Select>
         </form>
       </Modal>

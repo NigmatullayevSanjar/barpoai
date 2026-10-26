@@ -129,6 +129,7 @@ export const estimatesRu: Record<string, string> = {
   'est.import_unresolved':
     'Следующие названия не найдены. Сначала создайте их в материалах/зонах или исправьте название в Excel.',
   'est.import_row': 'строка {row}',
+  'est.import_created': 'Автоматически созданы отсутствовавшие материалы ({materials}) и зоны ({zones}).',
   'est.import_done': 'Смета импортирована',
   'est.import_expired': 'Срок проверки истёк, проверьте заново.',
   'est.unit_price_hidden': 'Цены скрыты для вашей роли',

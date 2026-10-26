@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, RotateCcw } from 'lucide-react';
 import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { isPlatformOwner } from '@/lib/permissions';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney } from '@/lib/format';
 import { Alert, Button, Input, Modal, PageHeader, SearchInput, Select, useListState } from '@/components/ui';
@@ -128,8 +127,8 @@ export function TenantsTable({
 export function TenantsPage() {
   const { t } = useT();
   const list = useListState();
-  const { me } = useAuth();
-  const owner = isPlatformOwner(me?.role);
+  const { canPlatform } = useAuth();
+  const owner = canPlatform('tenants.manage');
   const [filter, setFilter] = useState<'all' | AccessState>('all');
   const [plan, setPlan] = useState('');
   const [open, setOpen] = useState(false);

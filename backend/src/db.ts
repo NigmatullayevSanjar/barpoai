@@ -53,9 +53,16 @@ export async function audit(
   resource: string | null,
   details: object = {},
 ) {
+  // D21: platforma tuzatishida hujjat kompaniya admini nomidan yoziladi (created_by FK), audit esa haqiqiy bajaruvchiga.
   await db.query(
     'INSERT INTO audit_events(tenant_id,actor_id,action,resource_id,details) VALUES($1,$2,$3,$4,$5)',
-    [actor.tenant_id, actor.id, action, resource, details],
+    [
+      actor.tenant_id,
+      actor.audit_actor_id ?? actor.id,
+      action,
+      resource,
+      actor.audit_actor_id ? { ...details, platform_correction: true } : details,
+    ],
   );
 }
 function canonical(value: any): string {

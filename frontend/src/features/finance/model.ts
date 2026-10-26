@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
+import { formatMonth } from '@/lib/format';
 import { useToast } from '@/components/ui/Toast';
 import type { Tone } from '@/components/ui';
 
@@ -427,11 +428,7 @@ export const useBudgets = (projectId: string) =>
       ),
     enabled: Boolean(projectId),
   });
-export const monthLabel = (iso: string, lang: 'uz' | 'ru') =>
-  new Date(iso.slice(0, 10) + 'T00:00:00Z').toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'uz-UZ', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+/** "YYYY-MM-01" → "Oktyabr 2026"; lug'atdagi oy nomi (Intl emas — brauzerga qarab "M10" chiqardi). */
+export const monthLabel = (iso: string, lang: 'uz' | 'ru') => formatMonth(iso, lang);
 export const num = (v: string | number | null | undefined) =>
   v === null || v === undefined || v === '' ? 0 : Number(v);

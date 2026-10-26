@@ -129,6 +129,7 @@ export const estimatesUz: Record<string, string> = {
   'est.import_unresolved':
     'Quyidagi nomlar topilmadi. Avval materiallar/zonalar bo‘limida yarating yoki Exceldagi nomni to‘g‘rilang.',
   'est.import_row': '{row}-qator',
+  'est.import_created': 'Excelda bor, lekin bazada yo‘q bo‘lgan {materials} ta material va {zones} ta zona avtomatik yaratildi.',
   'est.import_done': 'Smeta import qilindi',
   'est.import_expired': 'Tekshiruv muddati o‘tdi, qayta tekshiring.',
   'est.unit_price_hidden': 'Narxlar sizning rolingiz uchun yashirin',

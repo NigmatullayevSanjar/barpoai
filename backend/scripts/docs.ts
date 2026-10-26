@@ -4,6 +4,7 @@ import { createPool } from '../src/db.js';
 import { buildApp } from '../src/app.js';
 import { openapi } from '../src/http.js';
 import { basePermissions, permissionPage, pages, actions, roles } from '../src/permissions.js';
+import { platformPermissions, platformDefaults } from '../src/platform-permissions.js';
 await mkdir('../docs/backend', { recursive: true });
 const pool = createPool('postgresql://unused:unused@127.0.0.1:1/unused');
 const { app, definitions } = await buildApp(pool);
@@ -85,7 +86,14 @@ for (const [permission, [page, action]] of Object.entries(permissionPage))
 matrix +=
   '\n## Sahifalar\n\n' +
   pages.map((p) => '- `' + p + '`: ' + actions.join(', ')).join('\n') +
-  '\n\nForma va tafsilotlar o‘z biznes sahifasining huquqini oladi: masalan smeta yaratish va tahrirlash sahifalari estimates.create va estimates.update bilan alohida filtrlanadi. Moliya dizayn ekranlari alohida bank_cash, invoices, payroll, budgets va boshqa sahifa keylariga moslangan; profil self-service hisoblanadi.\n\n## Platforma chegaralari\n\nPlatform owner: kompaniya/invite/alias/tarif/obuna/invoys/manual payment/support/audit/parol tiklash. Super admin (D15): o‘qish (kompaniyalar, tariflar, to‘lovlar), murojaatlar, diagnostika, texnik staff (yaratish, faolsizlantirish, rol), platforma auditi, parol tiklash; biznes amallari yo‘q. Support: o‘qish, murojaatlar, diagnostika. Egasi va super admin Telegram ulangan bo‘lsa 2FA (D16). Hech biri tenant APIga avtomatik kira olmaydi; break-glass o‘chirilgan. Super admin PostgreSQL SUPERUSER emas.\n\n## Sezgir maydonlar\n\nprices.read bo‘lmasa unit_price, unit_cost, total, value, value_delta, amount chiqarilmaydi. Finance read alohida huquq. Hash/token/secret hech qachon oddiy employee DTOda yo‘q. RLS faqat tenant chegarasi; project/custodian filtri handlerlarda. Eksport, worker, fayl va jami ham shu chegarani saqlashi kerak.\n';
+  '\n\nForma va tafsilotlar o‘z biznes sahifasining huquqini oladi: masalan smeta yaratish va tahrirlash sahifalari estimates.create va estimates.update bilan alohida filtrlanadi. Moliya dizayn ekranlari alohida bank_cash, invoices, payroll, budgets va boshqa sahifa keylariga moslangan; profil self-service hisoblanadi.\n\n## Platforma chegaralari (D21, 2026-10-22)\n\nKo‘rish (kompaniyalar, tariflar, daromad, qarzdorlar, murojaatlar) barcha platforma xodimlariga ochiq. Amallar quyidagi ruxsatlar bilan; platforma egasida hammasi doim bor, super admin va support uchun standart qiymatlar jadvalda, egasi yoki `permissions.manage` ruxsati bor xodim ularni “Platforma ruxsatlari” sahifasida o‘zgartiradi (super admin qatorini faqat egasi yoki super admin). Egasiga tegishli cheklovlar qat’iy: egasini hech kim bloklamaydi va rolini o‘zgartirmaydi; egasining parolini faqat super admin tiklaydi (havola unga ko‘rsatiladi); o‘zini hech kim tiklamaydi. Super admin uchun Telegram 2FA majburiy: bot sozlangan, Telegram ulanmagan bo‘lsa faqat profil va Telegramni ulash ochiq (TWO_FACTOR_SETUP_REQUIRED). Kompaniya tuzatishlari (`tenants.correct`) kompaniya sahifalariga kirishsiz, tayyor amallar bilan: storno, ish hajmini tuzatish, xodimni faolsizlantirish, sessiya va Telegramni uzish, adminlikni o‘tkazish; hujjat kompaniya admini nomidan (created_by), audit platforma xodimiga yoziladi (`platform_correction`). Break-glass o‘chirilgan; super admin PostgreSQL SUPERUSER emas.\n\n| Platforma ruxsati | platform_owner | super_admin | support |\n|---|---|---|---|\n' +
+  platformPermissions
+    .map(
+      (p) =>
+        `| ${p} | ✓ | ${platformDefaults.super_admin.includes(p) ? '✓' : '—'} | ${platformDefaults.support.includes(p) ? '✓' : '—'} |`,
+    )
+    .join('\n') +
+  '\n\n## Sezgir maydonlar\n\nprices.read bo‘lmasa unit_price, unit_cost, total, value, value_delta, amount chiqarilmaydi. Finance read alohida huquq. Hash/token/secret hech qachon oddiy employee DTOda yo‘q. RLS faqat tenant chegarasi; project/custodian filtri handlerlarda. Eksport, worker, fayl va jami ham shu chegarani saqlashi kerak.\n';
 await writeFile('../docs/backend/BARPO_PERMISSIONS.md', matrix);
 await app.close();
 await pool.end();
