@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Printer } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
+import { exportTable } from '@/lib/export-table';
 import { api, ApiError, qs } from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -355,6 +357,8 @@ export function ReconciliationPage() {
   const [cpName, setCpName] = useState<string | undefined>();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const toast = useToast();
   const query = useQuery({
     queryKey: ['statement', cp, from, to],
     queryFn: () =>
@@ -373,7 +377,22 @@ export function ReconciliationPage() {
         description={t('fin.rec.sub')}
         actions={
           d ? (
-            <Button icon={<Printer />} onClick={() => window.print()}>
+            <Button
+              icon={<Download />}
+              loading={exporting}
+              onClick={() => {
+                setExporting(true);
+                void exportTable({
+                  filename: `solishtirma-${d.counterparty.name}`,
+                  sheet: t('fin.rec.title'),
+                  title: `${d.counterparty.name}${from || to ? ` · ${from || '…'} — ${to || '…'}` : ''}`,
+                  headers: [t('fin.rec.document'), t('common.date'), t('dash.projects'), t('fin.description'), `${t('fin.amount_col')} (UZS)`, t('fin.rec.running')],
+                  rows: d.items.map((r) => [t(`fin.kind.${r.kind}`), r.document_date.slice(0, 10), r.project_name, r.description, r.amount, r.running_debt]),
+                })
+                  .catch((e: ApiError) => toast.error(errorMessage(t, e.code, e.status)))
+                  .finally(() => setExporting(false));
+              }}
+            >
               {t('fin.rec.generate')}
             </Button>
           ) : undefined

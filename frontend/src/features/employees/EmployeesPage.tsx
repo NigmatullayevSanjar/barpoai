@@ -14,7 +14,6 @@ import {
   Avatar,
   Badge,
   Button,
-  ConfirmDialog,
   Input,
   Modal,
   PageHeader,
@@ -22,7 +21,6 @@ import {
   Select,
   Stat,
   Switch,
-  Textarea,
   useListState,
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -431,7 +429,7 @@ function CreateEmployeeModal({ open, onClose }: { open: boolean; onClose: () => 
 
 function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { t, lang } = useT();
-  const { me, logout } = useAuth();
+  const { me } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -537,21 +535,6 @@ function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     mutationFn: (body: { permission: string; effect: 'grant' | 'deny' | 'inherit' }) =>
       api(`/v1/employees/${id}/permissions`, { method: 'POST', body }),
     onSuccess: refresh,
-    onError,
-  });
-  const [ownership, setOwnership] = useState(false);
-  const [ownershipRole, setOwnershipRole] = useState<string>('manager');
-  const [ownershipReason, setOwnershipReason] = useState('');
-  const transfer = useMutation({
-    mutationFn: () =>
-      api('/v1/company/ownership', {
-        method: 'POST',
-        body: { new_admin_id: id, previous_admin_role: ownershipRole, reason: ownershipReason },
-      }),
-    onSuccess: async () => {
-      toast.success(t('employees.ownership_done'));
-      await logout();
-    },
     onError,
   });
   const assignedIds = new Set(d?.projects.map((p) => p.id));
@@ -784,51 +767,8 @@ function EmployeeDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             </section>
           )}
 
-          {!isAdmin && me?.role === 'tenant_admin' && d.active && (
-            <section className="card">
-              <div className="card-header">
-                <h3>{t('employees.ownership')}</h3>
-                <Button size="sm" variant="danger" onClick={() => setOwnership(true)}>
-                  {t('employees.ownership')}
-                </Button>
-              </div>
-              <div className="card-pad">
-                <p className="muted text-sm">{t('employees.ownership_hint')}</p>
-              </div>
-            </section>
-          )}
         </div>
       )}
-      <ConfirmDialog
-        open={ownership}
-        onClose={() => setOwnership(false)}
-        onConfirm={() => transfer.mutate()}
-        title={t('employees.ownership')}
-        danger
-        loading={transfer.isPending}
-        message={
-          <div className="stack">
-            <p>{t('employees.ownership_hint')}</p>
-            <Select
-              label={t('employees.ownership_role')}
-              value={ownershipRole}
-              onChange={(e) => setOwnershipRole(e.target.value)}
-            >
-              {employeeRoles.map((r) => (
-                <option key={r} value={r}>
-                  {t(`role.${r}`)}
-                </option>
-              ))}
-            </Select>
-            <Textarea
-              label={t('common.reason')}
-              hint={t('common.reason_hint')}
-              value={ownershipReason}
-              onChange={(e) => setOwnershipReason(e.target.value)}
-            />
-          </div>
-        }
-      />
       <span className="sr-only">{lang}</span>
     </Modal>
   );

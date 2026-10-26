@@ -654,41 +654,6 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     },
   });
   add({
-    method: 'POST',
-    path: '/v1/company/ownership',
-    summary: 'Yagona kompaniya adminini almashtirish',
-    permission: 'employees.manage',
-    body: z.strictObject({ new_admin_id: uuid, previous_admin_role: employeeRole, reason }),
-    idempotent: true,
-    handler: async ({ db, actor, body }) => {
-      invariant(actor.role === 'tenant_admin' && actor.id !== body.new_admin_id, 'FORBIDDEN', 403);
-      await db.query(
-        'SELECT id FROM users WHERE tenant_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE',
-        [actor.tenant_id, [actor.id, body.new_admin_id]],
-      );
-      await one(db, 'SELECT id FROM users WHERE tenant_id=$1 AND id=$2 AND active', [
-        actor.tenant_id,
-        body.new_admin_id,
-      ]);
-      await db.query('UPDATE users SET role=$2,version=version+1 WHERE id=$1', [
-        actor.id,
-        body.previous_admin_role,
-      ]);
-      await db.query("UPDATE users SET role='tenant_admin',version=version+1 WHERE id=$1", [
-        body.new_admin_id,
-      ]);
-      await db.query('DELETE FROM permission_overrides WHERE tenant_id=$1 AND user_id=$2', [
-        actor.tenant_id,
-        body.new_admin_id,
-      ]);
-      await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=ANY($1::uuid[])', [
-        [actor.id, body.new_admin_id],
-      ]);
-      await audit(db, actor, 'company.ownership', body.new_admin_id, { reason: body.reason });
-      return { ok: true, login_required: true };
-    },
-  });
-  add({
     method: 'GET',
     path: '/v1/billing',
     page: 'billing',

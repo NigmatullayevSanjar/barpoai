@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Boxes, Printer, Scale, Wallet } from 'lucide-react';
+import { BarChart3, Boxes, Download, Scale, Wallet } from 'lucide-react';
+import { exportTable } from '@/lib/export-table';
 import { api, ApiError, qs } from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney, formatQuantity, monthStart, todayIso } from '@/lib/format';
@@ -453,6 +455,29 @@ export function FinancialReportsPage() {
   });
   const [to, setTo] = useState(todayIso());
   const [open, setOpen] = useState<Report>('cash_flow');
+  const [exporting, setExporting] = useState<Report | null>(null);
+  const toast = useToast();
+  const exportData = (key: Report, r: FinanceReports) =>
+    key === 'cash_flow'
+      ? {
+          filename: 'pul-oqimi',
+          sheet: t('fin.rep.cash_flow'),
+          headers: [t('fin.month'), t('fin.cash_account'), t('fin.cash_in'), t('fin.cash_out')],
+          rows: r.cash_flow.map((x) => [x.month.slice(0, 7), x.account, x.inflow, x.outflow]),
+        }
+      : key === 'expenses'
+        ? {
+            filename: 'obyekt-xarajatlari',
+            sheet: t('fin.rep.expenses'),
+            headers: [t('dash.projects'), t('fin.month'), t('fin.rep.material'), t('fin.rep.other'), t('fin.expense')],
+            rows: r.expenses.map((x) => [x.project, x.month.slice(0, 7), x.material, x.other, x.total]),
+          }
+        : {
+            filename: 'qarz-yoshi',
+            sheet: t('fin.rep.aging'),
+            headers: [t('fin.counterparty'), t('fin.rep.current'), t('fin.rep.d30'), t('fin.rep.d90'), t('fin.rep.older'), t('fin.outstanding')],
+            rows: r.aging.map((x) => [x.counterparty, x.current, x.d30, x.d90, x.older, x.total]),
+          };
   const query = useQuery({
     queryKey: ['finance-reports', f.projectId, from, to],
     queryFn: () =>
@@ -511,13 +536,19 @@ export function FinancialReportsPage() {
               </Button>
               <Button
                 variant="secondary"
-                icon={<Printer />}
+                icon={<Download />}
+                loading={exporting === c.key}
+                disabled={!d}
                 onClick={() => {
-                  setOpen(c.key);
-                  setTimeout(() => window.print(), 50);
+                  if (!d) return;
+                  setExporting(c.key);
+                  const sheet = exportData(c.key, d);
+                  void exportTable({ ...sheet, title: `${c.title} · ${period}` })
+                    .catch((e: ApiError) => toast.error(errorMessage(t, e.code, e.status)))
+                    .finally(() => setExporting(null));
                 }}
               >
-                {t('fin.rep.print')}
+                {t('common.export_excel')}
               </Button>
             </div>
           </section>

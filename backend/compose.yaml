@@ -27,6 +27,7 @@ services:
     environment:
       DATABASE_URL: postgresql://barpo_app:${DB_APP_PASSWORD}@db:5432/barpo
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+      APP_ALLOW_LAN: ${APP_ALLOW_LAN:-0}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-barpoai_bot}
       TELEGRAM_LINK_TOKEN_TTL_SECONDS: ${TELEGRAM_LINK_TOKEN_TTL_SECONDS:-300}

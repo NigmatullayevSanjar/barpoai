@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ChevronDown, Download, History, Pencil, Printer } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronDown, Download, History, Pencil } from 'lucide-react';
 import { saveBase64File } from '@/lib/download';
 import { api, ApiError } from '@/lib/api';
 import { DetailError } from '@/app/guards';
@@ -174,9 +174,6 @@ export function EstimateDetailPage() {
           onClick={() => exportMutation.mutate()}
         >
           {t('est.export')}
-        </Button>
-        <Button variant="secondary" icon={<Printer />} onClick={() => window.print()}>
-          {t('est.print')}
         </Button>
         {can('estimates', 'delete') && (
           <Button

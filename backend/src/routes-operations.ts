@@ -479,7 +479,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           digest(JSON.stringify(input)),
         ],
       );
-      return { ...row, preview: input };
+      return { ...row, preview: input, created: resolved.created };
     },
   });
   add({

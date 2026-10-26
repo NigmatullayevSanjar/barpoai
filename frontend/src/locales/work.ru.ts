@@ -114,7 +114,7 @@ export const workRu: Record<string, string> = {
     'Исходная запись не меняется; разница (плюс или минус) сохраняется отдельно с причиной.',
   'reports.correction_delta': 'Разница (например, -5 или 2.5)',
   'reports.corrections': 'Корректировки',
-  'reports.effective_progress': 'Действующий прогресс',
+  'reports.effective_progress': 'Факт',
   'reports.plan': 'План',
   'reports.detail': 'Карточка отчёта',
   'reports.reviewed_by': 'Проверил',

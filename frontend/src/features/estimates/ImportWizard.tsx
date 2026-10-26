@@ -59,10 +59,12 @@ type Preview = {
   id: string;
   digest: string;
   expires_at: string;
+  /** Import paytida avtomatik yaratilgan material va zonalar soni */
+  created?: { materials: number; zones: number };
   preview: { name: string; lines: { total?: string; unit_price: string; quantity: string }[] };
 };
 
-/** Uch qadam: fayl → ustunlarni moslash → server tekshiruvi → commit. Preview hech narsa yaratmaydi. */
+/** Uch qadam: fayl → ustunlarni moslash → server tekshiruvi → commit. Preview smetani saqlamaydi; Excelda bor, lekin bazada yo'q material va zonalar yaratiladi. */
 export function ImportWizard({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const { t, lang } = useT();
   const toast = useToast();
@@ -314,6 +316,11 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
                 total: formatMoney(total, lang, true, 'UZS'),
               })}
             </Alert>
+            {preview.created && (preview.created.materials > 0 || preview.created.zones > 0) && (
+              <Alert tone="info">
+                {t('est.import_created', { materials: preview.created.materials, zones: preview.created.zones })}
+              </Alert>
+            )}
             <p className="muted text-sm">{t('est.editor_hint')}</p>
           </div>
         )}

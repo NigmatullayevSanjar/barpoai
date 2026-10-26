@@ -297,7 +297,14 @@ const unitAliases: Record<string, string> = {
  * Importda material va zona nomlarini identifikatorlarga aylantiradi.
  * Topilmagan nomlar xato sifatida qaytadi; yashirincha yangi yozuv yaratilmaydi.
  */
+/**
+ * Excel nomlarini bazadagi material va zonalarga bog'laydi. Topilmagan nomlar (material, zona) avtomatik yaratiladi:
+ * obyekt ochilgach smetani darhol yuklash mumkin (egasi qarori, 2026-10-22). Material birligi qatordagi birlikdan
+ * (yo'q bo'lsa "dona"). Yaratilganlar soni `created` da qaytadi.
+ */
 export async function resolveImportNames(db: Db, actor: Row, projectId: string, lines: Row[]) {
+  await projectScope(db, actor, projectId);
+  const created = { materials: 0, zones: 0 };
   const materials = (
     await db.query(
       'SELECT id,name,unit_id FROM materials WHERE tenant_id=$1 AND archived_at IS NULL',
@@ -327,20 +334,31 @@ export async function resolveImportNames(db: Db, actor: Row, projectId: string, 
     услуга: 'service',
   };
   const errors: { row: number; field: string; message: string }[] = [];
-  const out = lines.map((line, index) => {
+  const out: Row[] = [];
+  for (const [index, line] of lines.entries()) {
     const { _row, ...next }: Row = { ...line };
     const row = (_row as number | undefined) ?? index + 2;
     if (next.kind) next.kind = kinds[String(next.kind).trim().toLowerCase()] ?? next.kind;
     if (next.material_name !== undefined) {
       const name = String(next.material_name).trim().toLowerCase();
       const found = materials.find((m) => m.name.toLowerCase() === name);
-      if (!found)
-        errors.push({
-          row,
-          field: 'material_name',
-          message: String(next.material_name),
-        });
-      else {
+      if (!found) {
+        const unitRaw = String(next.unit_id ?? 'pcs').trim().toLowerCase().replace(/\.$/, '');
+        const unit = unitAliases[unitRaw] ?? unitRaw;
+        const known = (await db.query('SELECT 1 FROM units WHERE id=$1', [unit])).rowCount;
+        if (!known) errors.push({ row, field: 'unit_id', message: String(next.unit_id ?? '') });
+        else {
+          const made = await one(
+            db,
+            'INSERT INTO materials(tenant_id,name,unit_id) VALUES($1,$2,$3) RETURNING id,name,unit_id',
+            [actor.tenant_id, String(next.material_name).trim(), unit],
+          );
+          materials.push(made);
+          created.materials++;
+          next.material_id = made.id;
+          next.unit_id ??= made.unit_id;
+        }
+      } else {
         next.material_id = found.id;
         next.unit_id ??= found.unit_id;
       }
@@ -349,8 +367,16 @@ export async function resolveImportNames(db: Db, actor: Row, projectId: string, 
     if (next.zone_name !== undefined) {
       const name = String(next.zone_name).trim().toLowerCase();
       const found = zones.find((z) => z.name.toLowerCase() === name);
-      if (!found) errors.push({ row, field: 'zone_name', message: String(next.zone_name) });
-      else next.zone_id = found.id;
+      if (!found) {
+        const made = await one(
+          db,
+          'INSERT INTO zones(tenant_id,project_id,name) VALUES($1,$2,$3) RETURNING id,name',
+          [actor.tenant_id, projectId, String(next.zone_name).trim()],
+        );
+        zones.push(made);
+        created.zones++;
+        next.zone_id = made.id;
+      } else next.zone_id = found.id;
       delete next.zone_name;
     }
     if (next.unit_id) {
@@ -360,7 +386,7 @@ export async function resolveImportNames(db: Db, actor: Row, projectId: string, 
     for (const key of ['quantity', 'unit_price', 'norm', 'work_quantity', 'loss_percent'])
       if (typeof next[key] === 'string') next[key] = next[key].replace(/\s/g, '').replace(',', '.');
     next.position = index;
-    return next;
-  });
-  return { lines: out, errors };
+    out.push(next);
+  }
+  return { lines: out, errors, created };
 }

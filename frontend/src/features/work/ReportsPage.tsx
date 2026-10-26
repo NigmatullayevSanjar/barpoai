@@ -507,7 +507,8 @@ function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="card-header">
               <h3>{t('reports.works_title')}</h3>
             </div>
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="table-wrap">
+            <table className="table table-dense" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <th>{t('reports.col.work')}</th>
@@ -539,6 +540,7 @@ function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 </tr>
               </tbody>
             </table>
+            </div>
           </section>
         )}
         {d.forecast_end && (
