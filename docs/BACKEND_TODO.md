@@ -145,7 +145,7 @@ Bog‘liqlik: 04–05. Qabul mezoni: parallel jo‘natish mavjud qoldiqdan oshma
 
 - [x] Kontragentlar, bank/kassa hisoblari, moliyaviy hujjatlar, ajratma, invoys, haqiqiy xarajat, to‘lov va budjet endpointlari mavjud.
 - [ ] Invoys narxi kirimdagi narxdan farqlanganda tuzatishni ombordagi va sarflangan qiymatga taqsimlashni yozish.
-- [ ] Bitta invoysni bir nechta kirim bilan bog‘lash va avansni invoys qarziga hisoblashni yozish.
+- [ ] Bitta invoysni bir nechta kirim bilan bog‘lash. *(Avansni invoys qarziga hisoblash 2026-10-26 da bajarildi: `advance_offset`, migratsiya 024.)*
 - [x] 2026-10-04: to‘lov so‘rovlari (migratsiya 010): so‘rov → tasdiqlash/rad etish → to‘lash (payment hujjati, bank/kassa hisobidan, bog‘langan hujjatga allokatsiya), bildirishnomalar, to‘lov kalendari (muddat bo‘yicha hujjatlar va so‘rovlar, muddati o‘tganlar).
 - [x] 2026-10-04: ish haqi: oylik davr, xodim bo‘yicha oklad/bonus/ushlanma/qo‘lga, davrni yopish har xodim uchun `labor` xarajati va qarz (counterparty kind=employee avtomatik), to‘lash payment hujjati bilan qarzni yopadi.
 - [x] 2026-10-04: moliya sahifalari real APIda: Moliya hub (yig‘ma, oylik, obyektlar, qarzdorlik), birlamchi hujjatlar, hisoblar/dalolatnomalar (qoldiq, to‘lash), bank va kassa (hisoblar, qoldiqlar, pul harakatlari), kontragentlar (rekvizitlar, qarz/avans, solishtirish), mablag‘ ajratish, budjetlar (oylik, fakt bilan), to‘lov so‘rovlari, kalendar, ish haqi, reja–fakt (tur/qator/oy), prognoz (3 oylik o‘rtacha), moliyaviy hisobotlar (pul oqimi, obyekt xarajatlari, qarz yoshi), solishtirish. Hujjat ro‘yxati sahifa ruxsatlariga qarab filtrlanadi; narx huquqi bo‘lmasa summalar yashirin. E2e 25/25 (invoys↔kirim GR/IR, to‘lov, so‘rov, ish haqi jurnal summalari tekshirilgan).

@@ -246,7 +246,14 @@ export function DocumentsPage({ page }: { page: Page }) {
         allowPay={page === 'invoices' && can('bank_cash', 'create')}
         pagination={list.pagination}
       />
-      {modal && <DocumentModal projectId={sel.projectId} kinds={kinds} onClose={() => setModal(false)} />}
+      {/* Avans hisobi faqat hisoblar jadvalidagi "Avansdan yopish" tugmasidan (summa serverdan oldindan to'ldiriladi). */}
+      {modal && (
+        <DocumentModal
+          projectId={sel.projectId}
+          kinds={kinds.filter((k) => k !== 'advance_offset')}
+          onClose={() => setModal(false)}
+        />
+      )}
     </div>
   );
 }

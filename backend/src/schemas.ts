@@ -74,6 +74,7 @@ export const financeInput = z.strictObject({
     'payment',
     'receipt',
     'advance',
+    'advance_offset',
     'cash_transfer',
   ]),
   amount: positiveAmount,

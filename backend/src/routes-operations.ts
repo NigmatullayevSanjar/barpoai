@@ -513,7 +513,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/counterparties',
-    summary: 'Yetkazib beruvchi, pudratchi yoki mijoz',
+    summary: 'Yetkazib beruvchi, subpudratchi yoki mijoz',
     permission: 'finance.post',
     page: 'counterparties',
     body: z.strictObject({
@@ -698,6 +698,10 @@ export function operationRoutes(add: (r: Endpoint) => void) {
                     m.name matched_material_name,inv.description allocated_invoice_description,inv.kind allocated_invoice_kind,
                     CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN (f.amount-${paidSql})::text END outstanding,
                     CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN ${paidSql}::text END paid,
+                    CASE WHEN f.kind IN ('supplier_invoice','opening_debt','labor','equipment','service') THEN
+                      (CASE WHEN ${notReversedSql} AND NOT EXISTS(SELECT 1 FROM payroll_entries pe WHERE pe.tenant_id=f.tenant_id AND pe.labor_document_id=f.id)
+                        THEN greatest(0,least(f.amount-${paidSql},(SELECT coalesce(sum(j.amount),0) FROM journal_entries j WHERE j.tenant_id=f.tenant_id AND j.project_id=f.project_id AND j.counterparty_id=f.counterparty_id AND j.account='advance')))
+                        ELSE 0 END)::numeric(20,2)::text END advance_offsettable,
                     EXISTS(SELECT 1 FROM finance_documents r WHERE r.tenant_id=f.tenant_id AND r.reverses_id=f.id) reversed
              FROM finance_documents f
              LEFT JOIN counterparties c ON c.id=f.counterparty_id LEFT JOIN cash_accounts ca ON ca.id=f.cash_account_id LEFT JOIN cash_accounts ta ON ta.id=f.target_cash_account_id

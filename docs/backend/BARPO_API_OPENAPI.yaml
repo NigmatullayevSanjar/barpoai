@@ -7389,7 +7389,7 @@ paths:
               additionalProperties: false
   /v1/counterparties:
     post:
-      summary: Yetkazib beruvchi, pudratchi yoki mijoz
+      summary: Yetkazib beruvchi, subpudratchi yoki mijoz
       operationId: post_v1_counterparties
       security:
         - bearerAuth: []
@@ -7703,6 +7703,7 @@ paths:
                     - payment
                     - receipt
                     - advance
+                    - advance_offset
                     - cash_transfer
                 amount:
                   type: string
