@@ -14,6 +14,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Info, Inbox, Search, X } from
 import { useT } from '@/lib/i18n';
 import { DateInput } from './DateInput';
 import { MonthInput } from './MonthInput';
+import { NumericInput } from './NumericInput';
 import { SelectControl, type SelectControlProps } from './SelectControl';
 
 /* ---------------- Button ---------------- */
@@ -121,6 +122,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       {...rest}
       min={rest.min === undefined ? undefined : String(rest.min)}
       max={rest.max === undefined ? undefined : String(rest.max)}
+    />
+  ) : rest.inputMode === 'decimal' ? (
+    // Summa, miqdor, maydon: minglar bo'sh joy bilan ko'rinadi, qiymat bo'sh joysiz qoladi (NumericInput).
+    <NumericInput
+      ref={ref}
+      id={inputId}
+      className={`input ${className}`}
+      aria-invalid={error ? 'true' : undefined}
+      required={required}
+      {...rest}
     />
   ) : (
     <input

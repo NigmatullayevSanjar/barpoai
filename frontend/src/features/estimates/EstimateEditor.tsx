@@ -10,6 +10,7 @@ import { formatMoney, formatQuantity, monthStart } from '@/lib/format';
 import { Alert, Button, Input, Modal, PageHeader, Select } from '@/components/ui';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { MonthInput } from '@/components/ui/MonthInput';
+import { NumericInput } from '@/components/ui/NumericInput';
 import { useToast } from '@/components/ui/Toast';
 import { useProjects } from '@/features/projects/ProjectsPage';
 import {
@@ -324,7 +325,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                         </button>
                       </span>
                       {l.mode === 'manual' ? (
-                        <input
+                        <NumericInput
                           className="input num grow"
                           inputMode="decimal"
                           value={l.quantity}
@@ -334,7 +335,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                         />
                       ) : (
                         <>
-                          <input
+                          <NumericInput
                             className="input num"
                             style={{ width: 68 }}
                             inputMode="decimal"
@@ -345,7 +346,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                             onChange={(ev) => update(l.key, { norm: ev.target.value })}
                           />
                           <span className="muted">×</span>
-                          <input
+                          <NumericInput
                             className="input num"
                             style={{ width: 104 }}
                             inputMode="decimal"
@@ -363,7 +364,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                     )}
                   </td>
                   <td>
-                    <input
+                    <NumericInput
                       className="input num"
                       inputMode="decimal"
                       value={l.loss_percent}
@@ -375,7 +376,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                   </td>
                   <td className="cell-calc">{formatQuantity(effectiveOf(l))}</td>
                   <td>
-                    <input
+                    <NumericInput
                       className="input num"
                       inputMode="decimal"
                       value={l.unit_price}
@@ -548,7 +549,7 @@ function MonthsModal({
                 setRows((rs) => rs.map((x, j) => (j === i ? { ...x, month: e.target.value + '-01' } : x)))
               }
             />
-            <input
+            <NumericInput
               className="input num"
               inputMode="decimal"
               value={r.quantity}
