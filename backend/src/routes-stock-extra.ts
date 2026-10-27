@@ -107,7 +107,8 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
             `SELECT c.*,m.name material_name,m.unit_id,
                     coalesce(wf.name,uf.display_name) from_name,coalesce(wt.name,ut.display_name) to_name,
                     cb.display_name created_by_name,rb.display_name reviewed_by_name,l.description estimate_line_name,z.name zone_name,
-                    (c.quantity-c.accepted_quantity)::text remaining_quantity
+                    (c.quantity-c.accepted_quantity)::text remaining_quantity,
+                    CASE WHEN c.kind IN ('receipt','opening') THEN (SELECT coalesce(sum(sl.value_delta),0) FROM stock_ledger sl WHERE sl.tenant_id=c.tenant_id AND sl.command_id=c.id)::numeric(20,2)::text END value
              FROM stock_commands c
              JOIN materials m ON m.id=c.material_id
              LEFT JOIN stock_accounts af ON af.id=c.from_account_id LEFT JOIN warehouses wf ON wf.id=af.warehouse_id LEFT JOIN users uf ON uf.id=af.custodian_id

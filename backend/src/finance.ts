@@ -3,6 +3,14 @@ import { permit, projectScope, financialPages, pageAllowed } from './permissions
 import { invariant } from './errors.js';
 import { dec, money } from './money.js';
 import { journal } from './inventory.js';
+/**
+ * Hisob sanasi (O12, 2026-10-27): moliya hujjati — `document_date`; ombor sarfida hujjat sanasi yo'q — yozuvning
+ * Toshkent sanasi. `j` — journal_entries, `f` — LEFT JOIN finance_documents. Oylik fakt hamma joyda (dashboard,
+ * reja–fakt, budjetlar, prognoz, hisobotlar) shu sana bo'yicha; `created_at` (yozuv vaqti) ishlatilmaydi.
+ */
+export const accountingDaySql = `coalesce(f.document_date,(j.created_at AT TIME ZONE 'Asia/Tashkent')::date)`;
+export const accountingMonthSql = `date_trunc('month',${accountingDaySql})::date`;
+export const journalWithDocSql = `journal_entries j LEFT JOIN finance_documents f ON f.tenant_id=j.tenant_id AND f.id=j.finance_document_id`;
 /** FK uchun olinadigan KEY SHARE qulflari bilan to'qnashmaydi; avans hisobi va avans stornosini ketma-ket qiladi. */
 async function lockCounterparty(db: Db, actor: Row, id: string) {
   await one(db, 'SELECT id FROM counterparties WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE', [

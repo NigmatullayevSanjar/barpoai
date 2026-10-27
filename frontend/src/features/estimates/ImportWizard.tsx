@@ -61,7 +61,9 @@ type Preview = {
   expires_at: string;
   /** Import paytida avtomatik yaratilgan material va zonalar soni */
   created?: { materials: number; zones: number };
-  preview: { name: string; lines: { total?: string; unit_price: string; quantity: string }[] };
+  preview: { name: string; lines: { total: string; unit_price: string; quantity: string }[] };
+  /** Jami serverda (decimal); frontend qo'shmaydi */
+  total: string;
 };
 
 /** Uch qadam: fayl → ustunlarni moslash → server tekshiruvi → commit. Preview smetani saqlamaydi; Excelda bor, lekin bazada yo'q material va zonalar yaratiladi. */
@@ -163,8 +165,6 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
     onError: (e: ApiError) =>
       setError(e.code === 'PREVIEW_EXPIRED' ? t('est.import_expired') : errorMessage(t, e.code, e.status)),
   });
-  const total =
-    preview?.preview.lines.reduce((s, l) => s + Number(l.quantity) * Number(l.unit_price), 0) ?? 0;
   const canPreview =
     file &&
     name.trim() &&
@@ -313,7 +313,7 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
             <Alert tone="success">
               {t('est.import_ok', {
                 n: preview.preview.lines.length,
-                total: formatMoney(total, lang, true, 'UZS'),
+                total: formatMoney(preview.total, lang, true, 'UZS'),
               })}
             </Alert>
             {preview.created && (preview.created.materials > 0 || preview.created.zones > 0) && (

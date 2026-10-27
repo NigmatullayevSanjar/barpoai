@@ -3142,6 +3142,18 @@ try {
     assert.equal(factOf(firstMonth), '700.00');
     assert.equal(factOf(monthOf(todayTk)), '-400.00');
   }
+  // O12: reja–fakt, yig'ma (budjetlar sahifasi) va hisobotlar ham hisob sanasi bo'yicha — eski akt o'z oyida, dashboard bilan bir xil
+  const paD = await call('GET', `/v1/finance/plan-actual?project_id=${projectD.id}`, undefined, adminAgain);
+  const sumD = await call('GET', `/v1/finance/summary?project_id=${projectD.id}`, undefined, adminAgain);
+  const repD = await call('GET', `/v1/finance/reports?from=${firstMonth}&to=${todayTk}&project_id=${projectD.id}`, undefined, adminAgain);
+  const monthRow = (rows: any[], month: string) => rows.find((m) => String(m.month).slice(0, 10) === month);
+  assert.equal(monthRow(paD.monthly, firstMonth)?.fact_value, '700.00');
+  assert.equal(monthRow(sumD.monthly, firstMonth)?.expense, '700.00');
+  assert.equal(monthRow(repD.expenses, firstMonth)?.total, '700.00');
+  if (monthOf(reversalDate) === monthOf(todayTk)) {
+    assert.equal(monthRow(paD.monthly, monthOf(todayTk))?.fact_value, '-400.00');
+    assert.equal(monthRow(sumD.monthly, monthOf(todayTk))?.expense, '-400.00');
+  }
   // 3 oylik oynada eski akt yo'q, faqat bugungi xizmat va storno: texnika manfiy, ulushi null
   const dashD3 = await call('GET', `/v1/dashboard?project_id=${projectD.id}&months=3`, undefined, adminAgain);
   assert.deepEqual(
@@ -3649,6 +3661,16 @@ try {
     400,
   );
   assert.equal((await admin!.query("SELECT count(*)::int n FROM materials WHERE name='Boshqa material'")).rows[0].n, 0);
+  // O3: jami serverda — qator `total` va umumiy `total` (decimal), frontend qo'shmaydi
+  assert.equal(smetaPreview.preview.lines[0].total, '2000.00');
+  assert.equal(
+    smetaPreview.total,
+    smetaPreview.preview.lines.reduce((sum: any, l: any) => sum.add(l.total), dec('0')).toFixed(2),
+  );
+  assert.equal(
+    smetaPreview.total,
+    smetaPreview.preview.lines.reduce((sum: any, l: any) => sum.add(dec(l.quantity).mul(l.unit_price)), dec('0')).toFixed(2),
+  );
   passed.push('Estimate import creates missing materials and zones (case-insensitive, once), reports the counts, and rolls back when a unit is unknown');
   // Mijoz admini adminlikni topshira olmaydi (faqat platforma o'tkazadi); jadvalni xlsx qilish
   await call('POST', '/v1/company/ownership', { new_admin_id: foreman.id, previous_admin_role: 'manager', reason: 'Endi mumkin emas' }, adminAgain, undefined, 404);
