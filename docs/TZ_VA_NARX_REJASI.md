@@ -519,7 +519,8 @@ Holat 2026-10-12 ga.
 - **Avans hisobi va subpudratchi (2026-10-26, D22, migratsiya `024_advance_offset`):** bajarildi, `main` da (PR #9). Integratsiya 78/0, rollar 5/5, UI 50 tekshiruv.
 - **Egasi izohlari (O.docx, 2026-10-26):** Subpudratchi — D22 bilan yopildi; raqam maydonlarida minglar bo‘sh joy bilan (`3 000 000`) — bajarildi (`NumericInput`, `Input inputMode="decimal"`, qiymat bo‘sh joysiz). Tugmalar (2026-10-27): ikkinchi darajali va matnli “ghost” tugmalar chegarali, ustiga kelganda bordo; jadvaldagi bir nechta amal tugmasi tor ustunda ustma-ust tushadi (kesilmaydi); “Reversal” → “Teskari qilish / Teskari yozuv”. Shrift o‘lchami: Profil → “Shrift o‘lchami” (Kichik 0,9 / O‘rtacha / Katta 1,15; `--font-scale`, tanlov shu qurilmada). Jadval va kartalardagi summalar ham `1 000 000` (Chrome’da `uz-UZ` “1,000,000” berardi — `formatMoney`/`formatQuantity` endi `ru-RU` guruhlashi bilan).
 - **2026-10-27:** O3, O12, O17 bajarildi (9.4), 2FA poygasi tuzatildi (PR #14).
-- **Keyingi qadam:** PR #11 qo‘shgan 3 ta platforma marshrutini rollar testiga kiritish; video g‘oyalari (A–E, egasi tanlovi); production tayyorgarligi (BACKEND_TODO 12). Keyin 9.4 dagi qolgan ochiq ishlar va 7-bo‘lim.
+- **2026-10-27:** rollar testi D21 tuzatish marshrutlarini (`:doc_id` — ombor harakati, moliyaviy hujjat, hisobot) ham qamraydi; endi har GET marshrut matritsada bo‘lishi shart (`unfillable` bo‘sh bo‘lmasa test yiqiladi).
+- **Keyingi qadam:** video g‘oyalari (A–E, egasi tanlovi); production tayyorgarligi (BACKEND_TODO 12). Keyin 9.4 dagi qolgan ochiq ishlar va 7-bo‘lim.
 
 ### 9.2. Yangi kompyuterni tayyorlash
 
