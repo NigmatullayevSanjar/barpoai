@@ -49,13 +49,21 @@
 
   --sidebar-w: 260px;
   --topbar-h: 56px;
-  --control-h: 40px;
-  --control-h-sm: 32px;
-  --fs-xs: 12px;
-  --fs-sm: 13px;
-  --fs: 14px;
-  --fs-md: 15px;
-  --fs-lg: 18px;
-  --fs-xl: 24px;
-  --fs-2xl: 28px;
+  /* Shrift o'lchami (egasi, O.docx): Profil → Ko'rinish; `html[data-font-size]`, tanlov shu qurilmada saqlanadi. */
+  --font-scale: 1;
+  --control-h: calc(40px * var(--font-scale));
+  --control-h-sm: calc(32px * var(--font-scale));
+  --fs-xs: calc(12px * var(--font-scale));
+  --fs-sm: calc(13px * var(--font-scale));
+  --fs: calc(14px * var(--font-scale));
+  --fs-md: calc(15px * var(--font-scale));
+  --fs-lg: calc(18px * var(--font-scale));
+  --fs-xl: calc(24px * var(--font-scale));
+  --fs-2xl: calc(28px * var(--font-scale));
+}
+:root[data-font-size='small'] {
+  --font-scale: 0.9;
+}
+:root[data-font-size='large'] {
+  --font-scale: 1.15;
 }

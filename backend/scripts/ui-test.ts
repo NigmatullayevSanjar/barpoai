@@ -839,6 +839,8 @@ try {
   assert.equal(fin4.debt, '700000.00');
   await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('cell', { name: 'Avans hisobi', exact: true }).first().waitFor();
+  // Jadvalda ham minglar bo'sh joy bilan (Chrome'da uz-UZ "1,000,000" berardi)
+  await adminPage.getByRole('cell', { name: /^1\s000\s000$/ }).first().waitFor();
   checks.push(
     'Advance offset from the invoices table: the amount is prefilled from the server, the advance closes part of the act and the document shows as "Avans hisobi"; money inputs show grouped digits (300 000, 1 345 000) while typing, Backspace on a separator removes the digit before it, and the saved amounts carry no spaces',
   );
@@ -984,6 +986,23 @@ try {
   await adminPage.getByRole('heading', { name: 'Профиль' }).waitFor();
   await adminPage.getByRole('button', { name: 'UZ', exact: true }).click();
   checks.push('Profile issues one-time Telegram deep link; UI switches between UZ and RU');
+  // Shrift o'lchami (egasi, O.docx): Katta → html[data-font-size=large], matn 14 × 1,15 = 16,1 px; qayta yuklanganda saqlanadi
+  const bodyFont = () => adminPage.evaluate(() => getComputedStyle(document.body).fontSize);
+  assert.equal(await bodyFont(), '14px');
+  await adminPage.getByRole('button', { name: 'Katta', exact: true }).click();
+  assert.equal(await adminPage.evaluate(() => document.documentElement.dataset.fontSize), 'large');
+  assert.equal(await bodyFont(), '16.1px');
+  await adminPage.reload();
+  await adminPage.getByRole('button', { name: 'Katta', exact: true }).waitFor();
+  assert.equal(await bodyFont(), '16.1px');
+  assert.equal(
+    await adminPage.getByRole('button', { name: 'Katta', exact: true }).getAttribute('aria-pressed'),
+    'true',
+  );
+  await adminPage.getByRole('button', { name: 'O‘rtacha', exact: true }).click();
+  assert.equal(await adminPage.evaluate(() => document.documentElement.dataset.fontSize), undefined);
+  assert.equal(await bodyFont(), '14px');
+  checks.push('Profile font size: Katta scales text to 16.1px and survives a reload; O‘rtacha restores 14px');
 
   // 6b. 09-bosqich: dashboard bloklari, sozlamalar, bildirishnomalar, audit, fayllar, eksport, texnik panel
   const projectId = projectUrl.split('/').pop()!;

@@ -35,7 +35,7 @@ export const financeUz: Record<string, string> = {
   'fin.kind.advance': 'Avans berish',
   'fin.kind.advance_offset': 'Avans hisobi',
   'fin.kind.cash_transfer': 'Hisoblar aro o‘tkazma',
-  'fin.kind.reversal': 'Reversal',
+  'fin.kind.reversal': 'Teskari yozuv',
   'fin.counterparty': 'Kontragent',
   'fin.cash_account': 'Bank/kassa hisobi',
   'fin.target_cash_account': 'Qabul qiluvchi hisob',
@@ -52,7 +52,7 @@ export const financeUz: Record<string, string> = {
   'fin.outstanding': 'Qoldiq',
   'fin.paid': 'To‘langan',
   'fin.overdue': 'Muddati o‘tgan',
-  'fin.reverse': 'Reversal',
+  'fin.reverse': 'Teskari qilish',
   'fin.reverse_confirm':
     'Hujjat o‘chirilmaydi: qarama-qarshi yozuv yaratiladi. Bog‘langan to‘lovlar bo‘lsa avval ular teskari qilinadi.',
   'fin.reversed': 'Teskari qilingan',
@@ -106,7 +106,7 @@ export const financeUz: Record<string, string> = {
   'fin.invoices.new': 'Invoys / dalolatnoma',
 
   'fin.docs.title': 'Birlamchi hujjatlar',
-  'fin.docs.sub': 'Barcha moliyaviy hujjatlar jurnali: ajratma, xarid, invoys, xarajat, to‘lov, reversal',
+  'fin.docs.sub': 'Barcha moliyaviy hujjatlar jurnali: ajratma, xarid, invoys, xarajat, to‘lov, teskari yozuv',
 
   'fin.alloc.title': 'Talabnomalarga pul ajratish',
   'fin.alloc.sub':

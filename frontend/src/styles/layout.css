@@ -30,7 +30,7 @@
   padding: 20px 20px 8px;
   color: #fff;
   font-weight: 700;
-  font-size: 17px;
+  font-size: calc(17px * var(--font-scale));
   letter-spacing: 0.02em;
 }
 .sidebar-brand:hover {
@@ -64,7 +64,7 @@
 }
 .nav-group {
   padding: 14px 12px 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -117,7 +117,7 @@
 .nav-link .count {
   margin-left: auto;
   background: var(--brand-500);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   padding: 1px 7px;
   border-radius: 999px;
 }
@@ -218,7 +218,7 @@
   border-radius: 8px;
   background: var(--danger);
   color: #fff;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -265,7 +265,7 @@
   margin-top: 2px;
 }
 .notif-item time {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--text-3);
 }
 /* Bildirishnomalar sahifasi: sarlavha va matn bosiladigan tugma. */
@@ -311,7 +311,7 @@
   justify-content: space-between;
 }
 .auth-side h1 {
-  font-size: 34px;
+  font-size: calc(34px * var(--font-scale));
   max-width: 520px;
   line-height: 1.15;
 }

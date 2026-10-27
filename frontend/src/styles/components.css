@@ -8,7 +8,7 @@
   padding: 0 14px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  font-weight: 500;
+  font-weight: 600;
   font-size: var(--fs);
   white-space: nowrap;
   transition:
@@ -28,21 +28,28 @@
 .btn-primary:hover:not(:disabled) {
   background: var(--brand-800);
 }
+/* Egasi (O.docx): tugmalar oddiy matndan ajralib tursin — ikkinchi darajali va "ghost" tugmalar ham chegarali,
+   ustiga kelganda bordo rangga o'tadi. Faqat ikonkali "ghost" tugma (jadval qatorlari, yopish) chegarasiz qoladi. */
 .btn-secondary {
   background: var(--surface);
-  border-color: var(--border-strong);
+  border-color: #b8bec8;
   color: var(--text);
+  box-shadow: var(--shadow-sm);
 }
-.btn-secondary:hover:not(:disabled) {
-  background: var(--surface-2);
+.btn-secondary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) {
+  background: var(--brand-50);
+  border-color: var(--brand-500);
+  color: var(--brand-700);
 }
 .btn-ghost {
   background: transparent;
-  color: var(--text-2);
-}
-.btn-ghost:hover:not(:disabled) {
-  background: var(--surface-2);
+  border-color: var(--border-strong);
   color: var(--text);
+}
+.btn-ghost.btn-icon {
+  border-color: transparent;
+  color: var(--text-2);
 }
 .btn-danger {
   background: var(--danger);
@@ -626,7 +633,7 @@
 }
 .stat .stat-value {
   font-family: var(--font-mono);
-  font-size: 26px;
+  font-size: calc(26px * var(--font-scale));
   font-weight: 700;
   margin-top: 8px;
   font-variant-numeric: tabular-nums;
@@ -753,6 +760,10 @@
 .table td.actions {
   text-align: right;
   white-space: nowrap;
+}
+/* Bir nechta amal tugmasi tor ustunda ustma-ust tushadi — jadval o'ng chetida kesilib qolmaydi. */
+.table td.actions .row {
+  flex-wrap: wrap;
 }
 /* Raqamli ustun: .table td (0,1,1) umumiy .num (0,1,0) ni bosib ketmasin — sarlavha va qiymat bir tomonda. */
 .table th.num,
@@ -1314,7 +1325,7 @@
   background: var(--surface);
   padding: 0 6px;
   height: 30px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--text-3);
 }
 .grid-editor .mode-toggle button[aria-pressed='true'] {
@@ -1323,7 +1334,7 @@
 }
 .cell-error {
   display: block;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--danger);
   margin-top: 2px;
 }
@@ -1415,11 +1426,11 @@
 }
 .chart-axis {
   fill: var(--text-3);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .chart-center {
   fill: var(--text);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   font-weight: 600;
 }
 .chart-hover {
@@ -1990,7 +2001,7 @@
   border-radius: 9px;
   background: var(--brand-900);
   color: #fff;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   line-height: 18px;
   text-align: center;
   padding: 0 5px;
