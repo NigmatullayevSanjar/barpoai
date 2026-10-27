@@ -3929,6 +3929,28 @@ try {
     const c2 = await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass });
     for (let i = 0; i < 4; i++) await call('POST', '/v1/auth/login/verify', { challenge: c2.challenge, code: '111111' }, undefined, undefined, 401);
     await call('POST', '/v1/auth/login/verify', { challenge: c2.challenge, code: '111111' }, undefined, undefined, 410);
+    // Parallel urinishlar ham 5 tadan oshmaydi: 20 ta bir vaqtdagi noto'g'ri koddan faqat 5 tasi tekshiriladi,
+    // keyin to'g'ri kod ham rad etiladi (oldin har so'rov qatorni o'qib, alohida solishtirardi — 20 ta tekshiruv)
+    const c3 = await call('POST', '/v1/auth/login', { login: 'superadmin', password: pass });
+    const code3 = /kirish kodi: (\d{6})/.exec(sent.at(-1) ?? '')![1]!;
+    const wrong3 = code3 === '222222' ? '333333' : '222222';
+    const burst = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        app!.inject({
+          method: 'POST',
+          url: '/v1/auth/login/verify',
+          payload: { challenge: c3.challenge, code: wrong3 },
+          headers: { 'idempotency-key': randomUUID() },
+        }),
+      ),
+    );
+    const burstStatus = burst.map((r) => r.statusCode);
+    assert.equal(burstStatus.filter((s) => s === 401).length, 4, String(burstStatus));
+    assert.equal(burstStatus.filter((s) => s === 410).length, 16, String(burstStatus));
+    const c3Row = (await admin.query('SELECT attempts,used_at FROM login_codes WHERE challenge_hash=$1', [digest(c3.challenge)])).rows[0];
+    assert.equal(c3Row.attempts, 5);
+    assert(c3Row.used_at);
+    assert.equal((await call('POST', '/v1/auth/login/verify', { challenge: c3.challenge, code: code3 }, undefined, undefined, 410)).error.code, 'LOGIN_CODE_EXPIRED');
     // support uchun 2FA yo'q (Telegram ulangan bo'lsa ham oddiy kirish)
     const techId = (await admin.query("SELECT id FROM users WHERE login='tech'")).rows[0].id;
     const supLink = await transaction(appPool!, null, (db) => createLinkToken(db, { id: techId, tenant_id: null, role: 'support' }));
@@ -3937,7 +3959,7 @@ try {
   } finally {
     globalThis.fetch = realFetch;
   }
-  passed.push('2FA: a Telegram-linked super_admin gets a 6-digit code instead of a session, wrong codes are limited to 5, a used or expired challenge is rejected, support logs in without a code');
+  passed.push('2FA: a Telegram-linked super_admin gets a 6-digit code instead of a session, wrong codes are limited to 5 (also under 20 parallel requests: exactly 5 codes are compared), a used or expired challenge is rejected, support logs in without a code');
   // ---- Blok kartasi: maydon, sanalar, mas'ullar, rasm; holat sanalardan; smeta jami blok zonalaridan
   const blockImage = await call(
     'POST',

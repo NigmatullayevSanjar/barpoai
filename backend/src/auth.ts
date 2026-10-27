@@ -1,5 +1,4 @@
 import { randomInt } from 'node:crypto';
-import type pg from 'pg';
 import { type Db, type Row, one, audit } from './db.js';
 import { digest, token, hashPassword, verifyPassword } from './security.js';
 import { invariant } from './errors.js';
@@ -142,45 +141,24 @@ async function startLoginChallenge(
 }
 /**
  * Kodni tekshiradi: 5 marta xato — challenge bekor; to'g'ri bo'lsa sessiya (kanal challenge'dan).
- * Xato urinish `pool` orqali alohida yoziladi: so'rov tranzaksiyasi xato bilan ROLLBACK bo'ladi, hisob esa saqlanishi shart.
+ * Urinish hisobi, kodni solishtirish va challenge'ni yopish bitta UPDATE — parallel so'rovlar qator qulfida
+ * navbatga turadi, shuning uchun 5 tadan ortiq kod solishtirilmaydi. Xato urinish ham saqlanishi shart:
+ * natija `failure` bilan qaytadi (throw so'rov tranzaksiyasini qaytarib, hisobni o'chirardi).
  */
-export async function verifyLoginCode(
-  db: Db,
-  pool: pg.Pool,
-  input: { challenge: string; code: string },
-) {
+export async function verifyLoginCode(db: Db, input: { challenge: string; code: string }) {
   const row = (
     await db.query(
-      'SELECT c.*,u.active FROM login_codes c JOIN users u ON u.id=c.user_id WHERE c.challenge_hash=$1',
-      [digest(input.challenge)],
+      `UPDATE login_codes SET attempts=attempts+1,used_at=CASE WHEN code_hash=$2 OR attempts+1>=5 THEN now() ELSE used_at END
+       WHERE challenge_hash=$1 AND used_at IS NULL AND expires_at>now()
+       RETURNING user_id,channel,attempts,code_hash=$2 AS ok`,
+      [digest(input.challenge), digest(input.code)],
     )
   ).rows[0];
-  invariant(
-    row && !row.used_at && new Date(row.expires_at).getTime() > Date.now(),
-    'LOGIN_CODE_EXPIRED',
-    410,
-  );
-  invariant(row.active, 'INVALID_CREDENTIALS', 401);
-  const ok = digest(input.code) === row.code_hash;
-  if (!ok) {
-    const attempts = (
-      await pool.query(
-        'UPDATE login_codes SET attempts=attempts+1,used_at=CASE WHEN attempts+1>=5 THEN now() ELSE used_at END WHERE id=$1 RETURNING attempts',
-        [row.id],
-      )
-    ).rows[0].attempts as number;
-    invariant(
-      false,
-      attempts >= 5 ? 'LOGIN_CODE_EXPIRED' : 'LOGIN_CODE_INVALID',
-      attempts >= 5 ? 410 : 401,
-    );
-  }
-  const claimed = await db.query(
-    'UPDATE login_codes SET used_at=now() WHERE id=$1 AND used_at IS NULL',
-    [row.id],
-  );
-  invariant(claimed.rowCount === 1, 'LOGIN_CODE_EXPIRED', 410);
+  if (!row || (!row.ok && row.attempts >= 5))
+    return { failure: { code: 'LOGIN_CODE_EXPIRED', status: 410 } };
+  if (!row.ok) return { failure: { code: 'LOGIN_CODE_INVALID', status: 401 } };
   const user = await one(db, 'SELECT * FROM users WHERE id=$1', [row.user_id]);
+  invariant(user.active, 'INVALID_CREDENTIALS', 401);
   await audit(db, user, 'auth.login', user.id, { channel: row.channel, two_factor: true });
   return issueSession(db, user, row.channel);
 }
