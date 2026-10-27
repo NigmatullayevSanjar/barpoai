@@ -68,7 +68,7 @@ export const stockUz: Record<string, string> = {
   'stock.kind.consumption': 'Sarf',
   'stock.kind.return': 'Qaytarish',
   'stock.kind.adjustment': 'Tuzatish',
-  'stock.kind.reversal': 'Reversal',
+  'stock.kind.reversal': 'Teskari yozuv',
   'stock.status.pending': 'Kutilmoqda',
   'stock.status.partial': 'Qisman',
   'stock.status.posted': 'Bajarildi',
@@ -89,7 +89,7 @@ export const stockUz: Record<string, string> = {
   'stock.review': 'Tasdiqlash',
   'stock.cancel_rest': 'Qolganini bekor qilish',
   'stock.dispute': 'Kelishmovchilik',
-  'stock.reverse': 'Reversal (teskari yozuv)',
+  'stock.reverse': 'Teskari qilish',
   'stock.reverse_confirm':
     'Yozuv o‘chirilmaydi: teskari yozuv yaratiladi. Keyingi sarf allaqachon bo‘lgan bo‘lsa amal rad etiladi.',
   'stock.counted': 'Sanalgan miqdor',

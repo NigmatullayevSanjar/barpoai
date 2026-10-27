@@ -9,6 +9,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT, type Lang } from '@/lib/i18n';
 import { formatDateTime } from '@/lib/format';
+import { getFontSize, setFontSize, type FontSize } from '@/lib/font-size';
 import { Alert, Badge, Button, ConfirmDialog, Input, PageHeader, Segmented } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 
@@ -192,6 +193,7 @@ export function ProfilePage() {
   const { me, refresh } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
+  const [fontSize, setFontSizeState] = useState<FontSize>(getFontSize);
   const schema = z.object({
     display_name: z.string().trim().min(2, t('common.required')).max(120),
     phone: z.string().trim(),
@@ -253,6 +255,22 @@ export function ProfilePage() {
                   { key: 'ru', label: 'Русский' },
                 ]}
               />
+            </div>
+            <div className="field">
+              <span className="field-label">{t('profile.font_size')}</span>
+              <Segmented<FontSize>
+                value={fontSize}
+                onChange={(v) => {
+                  setFontSize(v);
+                  setFontSizeState(v);
+                }}
+                items={[
+                  { key: 'small', label: t('profile.font_size.small') },
+                  { key: 'normal', label: t('profile.font_size.normal') },
+                  { key: 'large', label: t('profile.font_size.large') },
+                ]}
+              />
+              <span className="field-hint">{t('profile.font_size_hint')}</span>
             </div>
             <div className="row-between">
               <Button variant="secondary" onClick={() => navigate('/change-password')}>

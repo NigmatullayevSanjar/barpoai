@@ -4,6 +4,11 @@ import { ru } from '@/locales/ru';
 
 /** UZS, miqdor va sana formatlari. Pul qiymatlari API'dan string keladi; hisob-kitob qilinmaydi. */
 /**
+ * Raqamlar ikkala tilda ham "1 000 000,5" (egasi, O.docx). Chrome'da `uz-UZ` raqam ma'lumoti yo'q va u
+ * inglizcha "1,000,000.5" ga tushib qoladi; `ru-RU` aynan bo'sh joy (NBSP) bilan guruhlaydi va vergul — o'zbekcha ham shunday.
+ */
+const NUMBER_LOCALE = 'ru-RU';
+/**
  * Pul summasi tanlangan ko'rsatish valyutasida (D7). Konvertatsiya faqat shu yerda: decimal bilan, Number emas.
  * `pin='UZS'` — formalar ichida (kiritilgan summa UZS'da ko'rinsin).
  * `pin='USD'` — qiymat serverdan allaqachon USD: konvertatsiyasiz USD sifatida ko'rsatiladi.
@@ -18,7 +23,7 @@ export function formatMoney(
   const shown = toDisplay(String(value), pin);
   if (!shown) return String(value);
   // Intl decimal satrni aniq formatlaydi (Number ga o'tkazilmaydi).
-  const formatted = new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'uz-UZ', {
+  const formatted = new Intl.NumberFormat(NUMBER_LOCALE, {
     // USD sentlari doim 2 xona (20 947,30 $); so'm odatdagidek.
     minimumFractionDigits: shown.currency === 'USD' ? 2 : 0,
     maximumFractionDigits: 2,
@@ -30,7 +35,7 @@ export function formatQuantity(value: string | number | null | undefined, unit?:
   if (value === null || value === undefined || value === '') return '—';
   const n = Number(value);
   const s = Number.isFinite(n)
-    ? new Intl.NumberFormat('uz-UZ', { maximumFractionDigits: 6 }).format(n)
+    ? new Intl.NumberFormat(NUMBER_LOCALE, { maximumFractionDigits: 6 }).format(n)
     : String(value);
   return unit ? `${s} ${unit}` : s;
 }
