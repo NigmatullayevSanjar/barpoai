@@ -798,6 +798,8 @@ try {
   await dialog()
     .getByLabel(/^Summa/)
     .fill('300000');
+  // Raqam maydoni (egasi, O.docx): minglar bo'sh joy bilan ko'rinadi, serverga bo'sh joysiz boradi
+  assert.match(await dialog().getByLabel(/^Summa/).inputValue(), /^300\s000$/);
   await dialog().getByLabel('Tavsif').fill('Beton nasos uchun avans');
   await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
   await dialog().waitFor({ state: 'detached' });
@@ -805,14 +807,25 @@ try {
   await adminPage.getByRole('button', { name: 'Invoys / dalolatnoma' }).first().click();
   await dialog().getByLabel('Turi').selectOption('service');
   await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
-  await dialog()
-    .getByLabel(/^Summa/)
-    .fill('1000000');
+  // Klaviaturada yozish: "12345" → "12 345"; ajratuvchidan keyin Backspace oldingi raqamni o'chiradi → "1 345";
+  // oxiriga "000" yozilsa guruhlar qayta quriladi → "1 345 000"
+  const amountField = dialog().getByLabel(/^Summa/);
+  await amountField.pressSequentially('12345');
+  assert.match(await amountField.inputValue(), /^12\s345$/);
+  await amountField.press('Home');
+  for (let i = 0; i < 3; i++) await amountField.press('ArrowRight');
+  await amountField.press('Backspace');
+  assert.match(await amountField.inputValue(), /^1\s345$/);
+  await amountField.press('End');
+  await amountField.pressSequentially('000');
+  assert.match(await amountField.inputValue(), /^1\s345\s000$/);
+  await amountField.fill('1000000');
+  assert.match(await amountField.inputValue(), /^1\s000\s000$/);
   await dialog().getByLabel('Tavsif').fill('Beton nasos xizmati');
   await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
   await dialog().waitFor({ state: 'detached' });
   await adminPage.getByRole('button', { name: 'Avansdan yopish', exact: true }).first().click();
-  assert.match(await dialog().getByLabel(/^Summa/).inputValue(), /^300000(\.00)?$/);
+  assert.match(await dialog().getByLabel(/^Summa/).inputValue(), /^300\s000(\.00)?$/);
   await dialog().getByLabel('Tavsif').fill('Avansni nasos xizmatiga hisoblash');
   await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
   await dialog().waitFor({ state: 'detached' });
@@ -827,7 +840,7 @@ try {
   await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('cell', { name: 'Avans hisobi', exact: true }).first().waitFor();
   checks.push(
-    'Advance offset from the invoices table: the amount is prefilled from the server, the advance closes part of the act and the document shows as "Avans hisobi"',
+    'Advance offset from the invoices table: the amount is prefilled from the server, the advance closes part of the act and the document shows as "Avans hisobi"; money inputs show grouped digits (300 000, 1 345 000) while typing, Backspace on a separator removes the digit before it, and the saved amounts carry no spaces',
   );
   // 5f. Vazifa va hisobot: yaratish → bajaruvchi → tekshiruv; hisobot + foto + progress tuzatish (stage 08)
   await adminPage.goto(webURL + '/app/tasks?project=' + projectUrl.split('/').pop());
