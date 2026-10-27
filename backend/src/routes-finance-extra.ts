@@ -16,7 +16,7 @@ import {
 } from './schemas.js';
 import { projectScope, allowed, pageAllowed } from './permissions.js';
 import { invariant } from './errors.js';
-import { postFinance } from './finance.js';
+import { postFinance, accountingDaySql, accountingMonthSql, journalWithDocSql } from './finance.js';
 import { notify, projectRecipients } from './notify.js';
 import { dec, money } from './money.js';
 
@@ -64,7 +64,7 @@ export async function planActual(db: Db, actor: Row, projectId: string) {
   const monthly = (
     await db.query(
       `WITH plan AS (SELECT m.month,sum(m.quantity*l.unit_price) v FROM estimate_months m JOIN estimate_lines l ON l.tenant_id=m.tenant_id AND l.id=m.line_id JOIN estimates e ON e.id=l.estimate_id WHERE m.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL GROUP BY m.month),
-       fact AS (SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,sum(amount) v FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1),
+       fact AS (SELECT ${accountingMonthSql} AS month,sum(j.amount) v FROM ${journalWithDocSql} WHERE j.tenant_id=$1 AND j.project_id=$2 AND j.account='expense' GROUP BY 1),
        budget AS (SELECT month,amount FROM budgets WHERE tenant_id=$1 AND project_id=$2)
        SELECT coalesce(p.month,f.month,b.month) AS month,coalesce(p.v,0)::text plan_value,coalesce(f.v,0)::text fact_value,coalesce(b.amount,0)::text budget
        FROM plan p FULL JOIN fact f ON f.month=p.month FULL JOIN budget b ON b.month=coalesce(p.month,f.month) ORDER BY 1`,
@@ -321,11 +321,11 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       const monthly = (
         await db.query(
           `WITH months AS (
-             SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,
-                    coalesce(sum(amount) FILTER(WHERE account='expense'),0) expense,
-                    coalesce(sum(amount) FILTER(WHERE account='cash' AND amount<0),0) cash_out,
-                    coalesce(sum(amount) FILTER(WHERE account='cash' AND amount>0),0) cash_in
-             FROM journal_entries WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) GROUP BY 1),
+             SELECT ${accountingMonthSql} AS month,
+                    coalesce(sum(j.amount) FILTER(WHERE j.account='expense'),0) expense,
+                    coalesce(sum(j.amount) FILTER(WHERE j.account='cash' AND j.amount<0),0) cash_out,
+                    coalesce(sum(j.amount) FILTER(WHERE j.account='cash' AND j.amount>0),0) cash_in
+             FROM ${journalWithDocSql} WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) GROUP BY 1),
            budget AS (SELECT month,sum(amount) amount FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) GROUP BY month)
            SELECT coalesce(m.month,b.month) AS month,coalesce(m.expense,0)::numeric(20,2)::text expense,coalesce(m.cash_out,0)::numeric(20,2)::text cash_out,coalesce(m.cash_in,0)::numeric(20,2)::text cash_in,coalesce(b.amount,0)::numeric(20,2)::text budget
            FROM months m FULL JOIN budget b ON b.month=m.month ORDER BY 1`,
@@ -909,7 +909,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       );
       const months = (
         await db.query(
-          `SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01') AS month,sum(amount)::text expense FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1 ORDER BY 1 DESC LIMIT 6`,
+          `SELECT to_char(${accountingMonthSql},'YYYY-MM-01') AS month,sum(j.amount)::text expense FROM ${journalWithDocSql} WHERE j.tenant_id=$1 AND j.project_id=$2 AND j.account='expense' GROUP BY 1 ORDER BY 1 DESC LIMIT 6`,
           [actor.tenant_id, query.project_id],
         )
       ).rows;
@@ -965,16 +965,16 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
         : await projectIds(db, actor);
       const cashFlow = (
         await db.query(
-          `SELECT to_char(date_trunc('month',j.created_at),'YYYY-MM-01') AS month,c.name account,c.kind,coalesce(sum(j.amount) FILTER(WHERE j.amount>0),0)::text inflow,coalesce(sum(-j.amount) FILTER(WHERE j.amount<0),0)::text outflow
-         FROM journal_entries j JOIN cash_accounts c ON c.id=j.cash_account_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='cash' AND j.created_at::date BETWEEN $3 AND $4 GROUP BY 1,2,3 ORDER BY 1,2`,
+          `SELECT to_char(${accountingMonthSql},'YYYY-MM-01') AS month,c.name account,c.kind,coalesce(sum(j.amount) FILTER(WHERE j.amount>0),0)::text inflow,coalesce(sum(-j.amount) FILTER(WHERE j.amount<0),0)::text outflow
+         FROM ${journalWithDocSql} JOIN cash_accounts c ON c.id=j.cash_account_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='cash' AND ${accountingDaySql} BETWEEN $3 AND $4 GROUP BY 1,2,3 ORDER BY 1,2`,
           [actor.tenant_id, projects, query.from, query.to],
         )
       ).rows;
       const expenses = (
         await db.query(
-          `SELECT p.name project,to_char(date_trunc('month',j.created_at),'YYYY-MM-01') AS month,
+          `SELECT p.name project,to_char(${accountingMonthSql},'YYYY-MM-01') AS month,
                 coalesce(sum(j.amount) FILTER(WHERE j.stock_command_id IS NOT NULL),0)::text material,coalesce(sum(j.amount) FILTER(WHERE j.finance_document_id IS NOT NULL),0)::text other,sum(j.amount)::text total
-         FROM journal_entries j JOIN projects p ON p.id=j.project_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='expense' AND j.created_at::date BETWEEN $3 AND $4 GROUP BY 1,2 ORDER BY 1,2`,
+         FROM ${journalWithDocSql} JOIN projects p ON p.id=j.project_id WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='expense' AND ${accountingDaySql} BETWEEN $3 AND $4 GROUP BY 1,2 ORDER BY 1,2`,
           [actor.tenant_id, projects, query.from, query.to],
         )
       ).rows;
@@ -992,7 +992,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       ).rows;
       const income = await one(
         db,
-        `SELECT (-coalesce(sum(amount),0))::text income FROM journal_entries WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) AND account='income' AND created_at::date BETWEEN $3 AND $4`,
+        `SELECT (-coalesce(sum(j.amount),0))::text income FROM ${journalWithDocSql} WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='income' AND ${accountingDaySql} BETWEEN $3 AND $4`,
         [actor.tenant_id, projects, query.from, query.to],
       );
       return { cash_flow: cashFlow, expenses, aging, income: income.income };

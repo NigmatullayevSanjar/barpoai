@@ -52,8 +52,13 @@ export function authRoutes(add: (r: Endpoint) => void) {
       challenge: z.string().min(32).max(100),
       code: z.string().regex(/^\d{6}$/),
     }),
-    handler: async ({ db, pool, body }) =>
-      verifyLoginCode(db, pool, body as { challenge: string; code: string }),
+    handler: async ({ db, body, request, reply }) => {
+      const result = await verifyLoginCode(db, body as { challenge: string; code: string });
+      if (!('failure' in result)) return result;
+      // Xato urinish saqlanishi uchun tranzaksiya COMMIT bo'ladi: xato javob throw'siz, setErrorHandler shaklida.
+      reply.code(result.failure.status);
+      return { error: { code: result.failure.code }, request_id: request.id };
+    },
   });
   add({
     method: 'POST',

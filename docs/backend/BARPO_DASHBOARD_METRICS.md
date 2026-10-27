@@ -39,7 +39,7 @@
 | | | `period_expense` | davr: xarajat yozuvlari, hisob sanasi davrda; = `by_kind` yig‘indisi = `monthly.fact` yig‘indisi |
 | | | `monthly[]` | davr oylari (bo‘sh oy ham `0.00` bilan): `plan` — `estimate_months.quantity × unit_price` (joriy smetalar), `budget`, `fact` — hisob sanasi oyi |
 | | | `by_kind[]` | davr: `material`, `labor`, `equipment`, `service` (qat’iy tartib); `share_percent` = tur / `period_expense` × 100, 1 xona; jami 0 bo‘lsa `null` |
-| | | `over_budget[]` | hozirgi holat, «Budjetlar» sahifasi ta’rifi: budjet kiritilgan oylar fakti (yozuv oyi, `created_at`) yig‘indisi > shu oylar budjeti; `over` = fakt − budjet; budjeti yo‘q obyekt kirmaydi. Oy manbasi farqi — `TZ_VA_NARX_REJASI.md` 9.4, O12 |
+| | | `over_budget[]` | hozirgi holat, «Budjetlar» sahifasi ta’rifi: budjet kiritilgan oylar fakti (hisob sanasi oyi: hujjat `document_date`, sarf — Toshkent sanasi; O12, 2026-10-27) yig‘indisi > shu oylar budjeti; `over` = fakt − budjet; budjeti yo‘q obyekt kirmaydi. Budjetlar, reja–fakt, prognoz va hisobotlar ham shu sana bo‘yicha |
 | | | `remaining_budget` | `budget_total − actual_cost` (decimal) |
 | | | `net_cash_flow` | `account='cash'` yig‘indisi |
 | | | `supplier_debt` | `−sum(account='payable')` |

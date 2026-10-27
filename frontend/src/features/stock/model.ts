@@ -46,6 +46,8 @@ export type StockCommand = {
   accepted_quantity: string;
   remaining_quantity: string;
   unit_cost?: string | null;
+  /** Kirim/ochilish: omborga kirgan qiymat (serverda, ledger); yetkazib beruvchi invoysi summasi shunga teng bo'ladi */
+  value?: string | null;
   estimate_line_id: string | null;
   estimate_line_name: string | null;
   zone_id: string | null;

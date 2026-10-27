@@ -17,6 +17,7 @@ import { listTasks, listAudit, auditQuery } from './routes-work.js';
 import { stockOverview } from './routes-stock-extra.js';
 import { xlsxFile, cell } from './xlsx.js';
 import { dec, money } from './money.js';
+import { accountingDaySql, accountingMonthSql, journalWithDocSql } from './finance.js';
 
 const TZ = 'Asia/Tashkent';
 const todaySql = (col: string) =>
@@ -29,7 +30,7 @@ const accountScopeSql = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'wareho
 /** Xarajat yozuvlari ($1 tenant, $2 obyektlar): tur va hisob sanasi. Hujjat — `document_date`, ombor sarfida hujjat sanasi yo'q,
  *  shuning uchun yozuvning Toshkent sanasi. Storno asl hujjat turida hisoblanadi. Yetkazib beruvchi invoysi xarajat emas (clearing). */
 const expenseSql = `SELECT j.amount,CASE WHEN j.stock_command_id IS NOT NULL THEN 'material' ELSE coalesce(o.kind,f.kind) END kind,
-    coalesce(f.document_date,(j.created_at AT TIME ZONE '${TZ}')::date) AS day
+    ${accountingDaySql} AS day
   FROM journal_entries j LEFT JOIN finance_documents f ON f.tenant_id=j.tenant_id AND f.id=j.finance_document_id
        LEFT JOIN finance_documents o ON o.tenant_id=f.tenant_id AND o.id=f.reverses_id
   WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='expense'`;
@@ -302,12 +303,12 @@ async function dashboard(db: Db, actor: Row, query: Row) {
       };
     });
     // Budjetdan oshgan obyektlar — "Budjetlar" sahifasidagi ta'rif: budjet kiritilgan oylar bo'yicha fakt xarajat
-    // (yozuv oyi, created_at) yig'indisi shu oylar budjeti yig'indisidan katta.
+    // (hisob sanasi oyi, O12) yig'indisi shu oylar budjeti yig'indisidan katta.
     const overBudget = (
       await db.query(
         `WITH b AS (SELECT project_id,month,amount FROM budgets WHERE tenant_id=$1 AND project_id=ANY($2::uuid[])),
-              a AS (SELECT project_id,to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,sum(amount) v FROM journal_entries
-                    WHERE tenant_id=$1 AND project_id=ANY($2::uuid[]) AND account='expense' GROUP BY 1,2)
+              a AS (SELECT j.project_id,${accountingMonthSql} AS month,sum(j.amount) v FROM ${journalWithDocSql}
+                    WHERE j.tenant_id=$1 AND j.project_id=ANY($2::uuid[]) AND j.account='expense' GROUP BY 1,2)
          SELECT p.id,p.name,p.code,sum(b.amount)::text budget,coalesce(sum(a.v),0)::text actual
          FROM b JOIN projects p ON p.tenant_id=$1 AND p.id=b.project_id LEFT JOIN a ON a.project_id=b.project_id AND a.month=b.month
          GROUP BY p.id HAVING coalesce(sum(a.v),0)>sum(b.amount) ORDER BY coalesce(sum(a.v),0)-sum(b.amount) DESC`,

@@ -32,8 +32,8 @@ import { invariant } from './errors.js';
 import { digest } from './security.js';
 import { writeEstimate, validateEstimate, parseWorkbook, resolveImportNames } from './estimates.js';
 import { createStock, transitionStock, reverseStock, reconcileStock } from './inventory.js';
-import { postFinance, reverseFinance } from './finance.js';
-import { money } from './money.js';
+import { postFinance, reverseFinance, accountingMonthSql, journalWithDocSql } from './finance.js';
+import { dec, money, plannedQuantity } from './money.js';
 export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -479,7 +479,13 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           digest(JSON.stringify(input)),
         ],
       );
-      return { ...row, preview: input, created: resolved.created };
+      // Jami serverda (O3): qator jami = hisobiy miqdor × narx — saqlashdagi formula; frontend qo'shmaydi.
+      const lines = input.lines.map((l) => ({
+        ...l,
+        total: money(dec(plannedQuantity(l as any)).mul(l.unit_price)),
+      }));
+      const total = money(lines.reduce((s, l) => s.add(l.total), dec('0')));
+      return { ...row, preview: { ...input, lines }, total, created: resolved.created };
     },
   });
   add({
@@ -778,7 +784,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       // Figma F5 "Budjetlar boshqaruvi": Yillik/Oylik ko'rinish va KPI — hamma yig'indilar serverda.
-      const fact = `fact AS (SELECT to_char(date_trunc('month',created_at),'YYYY-MM-01')::date AS month,sum(amount) v FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND account='expense' GROUP BY 1)`;
+      const fact = `fact AS (SELECT ${accountingMonthSql} AS month,sum(j.amount) v FROM ${journalWithDocSql} WHERE j.tenant_id=$1 AND j.project_id=$2 AND j.account='expense' GROUP BY 1)`;
       const pct = (amount: string, actual: string) =>
         `CASE WHEN ${amount}>0 THEN round(100*${actual}/${amount},1)::text END`;
       return {

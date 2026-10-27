@@ -49,9 +49,8 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
   const needsCounterparty = [...payableKinds, 'payment', 'advance', 'advance_offset'].includes(kind);
   const allocates = kind === 'payment' || kind === 'advance_offset';
   const needsCash = cashKinds.includes(kind);
-  const receiptValue = selectedReceipt
-    ? (Number(selectedReceipt.unit_cost ?? 0) * Number(selectedReceipt.accepted_quantity)).toFixed(2)
-    : null;
+  // Kirim qiymati serverdan (ledger): invoys summasi aynan shunga teng bo'lishi shart.
+  const receiptValue = selectedReceipt?.value ?? null;
   const save = useFinanceMutation(
     () =>
       api('/v1/finance/documents', {
@@ -187,8 +186,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
               onChange={(id, r) => {
                 setReceipt(id);
                 setSelectedReceipt(r);
-                if (r && r.unit_cost)
-                  setAmount((Number(r.unit_cost) * Number(r.accepted_quantity)).toFixed(2));
+                if (r?.value) setAmount(r.value);
               }}
               getId={(r) => r.id}
               getLabel={(r) =>
