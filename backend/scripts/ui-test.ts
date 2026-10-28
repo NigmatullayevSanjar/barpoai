@@ -1037,6 +1037,15 @@ try {
   checks.push(
     'Dashboard charts: expense kinds, plan/budget/fact by month, over-budget and overdue lists render; period and project filters refetch from the server; brigadier sees no finance charts',
   );
+  // D (D23): obyekt sahifasida moliya kartasi — admin ko'radi, brigadir (narx huquqisiz) ko'rmaydi
+  await adminPage.goto(projectUrl);
+  await adminPage.getByRole('heading', { name: 'Obyekt moliyasi' }).waitFor();
+  await adminPage.getByText(/^Smeta \(reja\)/).waitFor();
+  await adminPage.getByText(/^Kontragentlarga qarz/).waitFor();
+  await brigadierPage.goto(projectUrl);
+  await brigadierPage.getByText('Ochiq vazifalar', { exact: true }).waitFor();
+  assert.equal(await brigadierPage.getByRole('heading', { name: 'Obyekt moliyasi' }).count(), 0);
+  checks.push('Project page finance card (plan, fact, paid, debt, advances, income) renders for the admin and is absent for the brigadier');
   await adminPage.goto(webURL + '/app/settings');
   await adminPage.getByLabel('Kompaniya nomi').fill('UI Sinov Qurilish MCHJ');
   await adminPage.getByLabel('Telefon').fill('+998 71 200 00 11');

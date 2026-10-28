@@ -490,6 +490,12 @@ try {
     '/v1/progress-entries': report.id,
     '/v1/pricing/price-lists': priceList.id,
   };
+  // D21 tuzatish marshrutlari (`:doc_id`): kompaniya A ning ombor harakati, moliyaviy hujjati va hisoboti.
+  const docIds: Record<string, string> = {
+    '/v1/platform/tenants/:id/stock-commands': receipt.id,
+    '/v1/platform/tenants/:id/finance-documents': labor.id,
+    '/v1/platform/tenants/:id/reports': report.id,
+  };
   const queryValues: Record<string, string> = {
     project_id: projectA1.id,
     report_id: report.id,
@@ -512,6 +518,8 @@ try {
       if (!prefix) return null;
       path = path.replace(/:id/g, ids[prefix]!);
     }
+    const docPrefix = Object.keys(docIds).find((p) => route.path.startsWith(p + '/:doc_id'));
+    if (docPrefix) path = path.replace(':doc_id', docIds[docPrefix]!);
     if (/:[a-z_]+/.test(path)) return null;
     const params: string[] = [];
     if (route.query) {
@@ -525,6 +533,8 @@ try {
   };
   const gets = definitions.filter((r) => r.method === 'GET' && !r.public);
   const unfillable = gets.filter((r) => fillUrl(r) === null).map((r) => r.path);
+  // Har GET marshrut matritsada bo'lishi shart: yangi parametrli marshrut qo'shilsa, `ids`/`docIds` ham to'ldiriladi.
+  assert.deepEqual(unfillable, [], 'every GET route must be fillable for the role matrix');
   const matrix: Record<string, { allowed: number; denied: number; mismatches: string[] }> = {};
   const expectTenant = (route: Endpoint, snap: any) => {
     if (route.platform) return false;
