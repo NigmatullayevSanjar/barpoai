@@ -1876,10 +1876,13 @@ try {
     adminAgain,
   );
   assert.equal(requests.items.length, 1);
+  // V-B: Telegram so'rovi bitta qatorli talabnoma
+  assert.equal(requests.items[0].lines.length, 1);
+  const tgLineId = requests.items[0].lines[0].id;
   // Talabnomani faqat ombor mudiri hal qiladi (2026-10-16); admin faqat ko'radi
   await call(
     'POST',
-    `/v1/stock/requests/${requests.items[0].id}/actions`,
+    `/v1/stock/requests/${tgLineId}/actions`,
     { version: 1, action: 'reject', note: 'Sinov: rad etish' },
     adminAgain,
     undefined,
@@ -1887,13 +1890,116 @@ try {
   );
   const fulfilled = await call(
     'POST',
-    `/v1/stock/requests/${requests.items[0].id}/actions`,
+    `/v1/stock/requests/${tgLineId}/actions`,
     { version: 1, action: 'reject', note: 'Sinov: rad etish' },
     whTg,
   );
   assert.equal(fulfilled.status, 'rejected');
   passed.push(
     'Telegram multi-step material request creates a pending request; the admin only reads it, the warehouse manager resolves it via API',
+  );
+  // ---- V-B (D23): ko'p qatorli talabnoma — bitta so'rovda bir nechta material; holat va amallar qatorma-qator
+  const armatura = (await call('GET', '/v1/materials?q=Armatura', undefined, whTg)).items[0];
+  const multi = await call(
+    'POST',
+    '/v1/stock/requests',
+    {
+      project_id: project.id,
+      lines: [
+        { material_id: material.id, quantity: '10' },
+        { material_id: armatura.id, quantity: '2.5' },
+      ],
+      note: 'Ikki qatorli talabnoma',
+    },
+    brigadierAgain2,
+  );
+  assert.equal(multi.lines.length, 2);
+  assert(multi.lines.every((l: any) => l.group_id === multi.group_id));
+  assert.deepEqual(
+    multi.lines.map((l: any) => l.position),
+    [1, 2],
+  );
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/stock/requests',
+        {
+          project_id: project.id,
+          lines: [
+            { material_id: material.id, quantity: '1' },
+            { material_id: material.id, quantity: '2' },
+          ],
+        },
+        brigadierAgain2,
+        undefined,
+        400,
+      )
+    ).error.code,
+    'REQUEST_LINE_DUPLICATE',
+  );
+  const grouped = await call(
+    'GET',
+    `/v1/stock/requests?project_id=${project.id}`,
+    undefined,
+    adminAgain,
+  );
+  assert.deepEqual(grouped.summary, { total: 2, pending: 1, fulfilled: 0, rejected: 1 });
+  const group = grouped.items.find((g: any) => g.group_id === multi.group_id);
+  assert.equal(group.status, 'pending');
+  assert.equal(group.note, 'Ikki qatorli talabnoma');
+  assert.deepEqual(
+    group.lines.map((l: any) => [l.material_name, l.quantity, l.status]),
+    [
+      ['Sement', '10.000000', 'pending'],
+      ['Armatura 12', '2.500000', 'pending'],
+    ],
+  );
+  // Telegram so'rovi bitta qatorli talabnoma sifatida ko'rinadi
+  assert.equal(grouped.items.find((g: any) => g.status === 'rejected').lines.length, 1);
+  // KPI talabnomalarni (qatorlarni emas) sanaydi
+  assert.equal((await call('GET', '/v1/dashboard', undefined, adminAgain)).stock.pending_requests, 1);
+  // 1-qator rad etiladi — talabnoma hali kutilmoqda; 2-qatorni so'rovchi bekor qiladi — talabnoma rad etilgan
+  await call(
+    'POST',
+    `/v1/stock/requests/${group.lines[0].id}/actions`,
+    { version: 1, action: 'reject', note: 'Omborda yo‘q' },
+    whTg,
+  );
+  const stillPending = await call(
+    'GET',
+    `/v1/stock/requests?project_id=${project.id}&status=pending`,
+    undefined,
+    brigadierAgain2,
+  );
+  assert.deepEqual(
+    stillPending.items.map((g: any) => g.group_id),
+    [multi.group_id],
+  );
+  assert.deepEqual(
+    stillPending.items[0].lines.map((l: any) => [l.status, l.review_note]),
+    [
+      ['rejected', 'Omborda yo‘q'],
+      ['pending', null],
+    ],
+  );
+  await call(
+    'POST',
+    `/v1/stock/requests/${group.lines[1].id}/actions`,
+    { version: 1, action: 'cancel' },
+    brigadierAgain2,
+  );
+  const closed = await call(
+    'GET',
+    `/v1/stock/requests?project_id=${project.id}`,
+    undefined,
+    adminAgain,
+  );
+  assert.equal(closed.items.find((g: any) => g.group_id === multi.group_id).status, 'rejected');
+  assert.deepEqual(closed.summary, { total: 2, pending: 0, fulfilled: 0, rejected: 2 });
+  assert.equal((await call('GET', '/v1/dashboard', undefined, adminAgain)).stock.pending_requests, 0);
+  passed.push(
+    'Multi-line material request: one group with ordered lines, duplicate material rejected, group status and KPIs derive from the lines (pending while any line is open), line-by-line reject and cancel',
   );
   // Telegram progress oqimi: obyekt bitta → ish qatori → miqdor → matn → rasmsiz → kunlik hisobot
   const p1 = await startProgressReport(appPool!, brigadierUser, 'uz');

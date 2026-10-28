@@ -984,6 +984,16 @@ CREATE INDEX tasks_estimate_line ON tasks(tenant_id,estimate_line_id) WHERE esti
 
 ```
 
+## 026_material_request_groups.sql
+
+```sql
+-- V-B (D23): ko'p qatorli talabnoma — bitta so'rovda bir nechta material. Har qator alohida yozuv (holati, bajarilishi
+-- qatorma-qator), umumiy group_id bilan bitta talabnomaga birlashadi. Eski yozuvlar o'z guruhida qoladi.
+ALTER TABLE material_requests ADD COLUMN group_id uuid NOT NULL DEFAULT gen_random_uuid(), ADD COLUMN position smallint NOT NULL DEFAULT 1;
+CREATE INDEX material_requests_group ON material_requests(tenant_id,group_id);
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

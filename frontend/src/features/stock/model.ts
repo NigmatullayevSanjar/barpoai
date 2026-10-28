@@ -94,8 +94,24 @@ export type MaterialRequest = {
   fulfilled_command_id: string | null;
   version: number;
   created_at: string;
+  group_id: string;
+  position: number;
 };
-/** GET /v1/stock/requests `summary` — Figma talabnomalar KPI (ro'yxat doirasida). */
+/** V-B (D23): talabnoma — umumiy `group_id` bilan birlashgan qatorlar; holati qatorlardan (serverda) hisoblanadi. */
+export type MaterialRequestGroup = {
+  group_id: string;
+  project_id: string;
+  status: MaterialRequest['status'];
+  created_at: string;
+  requested_by: string;
+  requested_by_name: string;
+  zone_id: string | null;
+  zone_name: string | null;
+  needed_by: string | null;
+  note: string | null;
+  lines: MaterialRequest[];
+};
+/** GET /v1/stock/requests `summary` — Figma talabnomalar KPI: talabnomalar soni holat bo'yicha (ro'yxat doirasida). */
 export type RequestsSummary = { total: number; pending: number; fulfilled: number; rejected: number };
 export const statusTone: Record<CommandStatus, Tone> = {
   pending: 'warning',
@@ -136,7 +152,7 @@ export const useRequests = (projectId: string, page: { offset: number; limit: nu
   useQuery({
     queryKey: ['stock-requests', projectId, page.offset, page.limit],
     queryFn: () =>
-      api<ListResponse<MaterialRequest> & { summary?: RequestsSummary }>(
+      api<ListResponse<MaterialRequestGroup> & { summary?: RequestsSummary }>(
         `/v1/stock/requests${qs({ project_id: projectId, limit: page.limit, offset: page.offset })}`,
       ),
     enabled: Boolean(projectId),

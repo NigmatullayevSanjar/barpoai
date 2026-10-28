@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit, type Db, type Row } from './db.js';
@@ -65,7 +66,7 @@ export async function stockOverview(db: Db, actor: Row, projectId: string) {
   );
   const requests = await one(
     db,
-    "SELECT count(*)::int pending FROM material_requests WHERE tenant_id=$1 AND project_id=$2 AND status='pending'",
+    "SELECT count(DISTINCT group_id) FILTER(WHERE status='pending')::int pending FROM material_requests WHERE tenant_id=$1 AND project_id=$2",
     [actor.tenant_id, projectId],
   );
   return { accounts, balances, pending: { ...pending, requests: requests.pending } };
@@ -178,43 +179,67 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
   });
 
   // ---------------------------------------------------------------- Material so'rovlari
+  // V-B (D23): bitta talabnomada bir nechta material; har qator alohida yozuv (holati qatorma-qator), umumiy group_id.
   add({
     method: 'POST',
     path: '/v1/stock/requests',
-    summary: 'Material so‘rovi; qoldiqni o‘zgartirmaydi, ombor mudiri jo‘natish bilan bajaradi',
+    summary:
+      'Ko‘p qatorli material so‘rovi; qoldiqni o‘zgartirmaydi, ombor mudiri qatorma-qator jo‘natish bilan bajaradi',
     page: 'stock',
     action: 'create',
     body: z.strictObject({
       project_id: uuid,
-      material_id: uuid,
+      lines: z
+        .array(z.strictObject({ material_id: uuid, quantity: positiveQty }))
+        .min(1)
+        .max(50),
       zone_id: uuid.optional(),
-      quantity: positiveQty,
       needed_by: date.optional(),
       note: z.string().trim().max(1000).optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
       await projectScope(db, actor, body.project_id);
-      const material = await one(
-        db,
-        'SELECT * FROM materials WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL',
-        [actor.tenant_id, body.material_id],
+      const requestLines: { material_id: string; quantity: string }[] = body.lines;
+      const materialIds = requestLines.map((l) => l.material_id);
+      invariant(new Set(materialIds).size === materialIds.length, 'REQUEST_LINE_DUPLICATE', 400);
+      const materials = new Map(
+        (
+          await db.query(
+            'SELECT id,name,unit_id FROM materials WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND archived_at IS NULL',
+            [actor.tenant_id, materialIds],
+          )
+        ).rows.map((m) => [m.id as string, m]),
       );
-      const row = await one(
-        db,
-        'INSERT INTO material_requests(tenant_id,project_id,material_id,zone_id,requested_by,quantity,needed_by,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-        [
-          actor.tenant_id,
-          body.project_id,
-          body.material_id,
-          body.zone_id ?? null,
-          actor.id,
-          body.quantity,
-          body.needed_by ?? null,
-          body.note ?? null,
-        ],
-      );
+      invariant(materials.size === materialIds.length, 'NOT_FOUND', 404);
+      const groupId = randomUUID();
+      const lines: Row[] = [];
+      for (const [i, line] of requestLines.entries())
+        lines.push(
+          await one(
+            db,
+            'INSERT INTO material_requests(tenant_id,project_id,group_id,position,material_id,zone_id,requested_by,quantity,needed_by,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+            [
+              actor.tenant_id,
+              body.project_id,
+              groupId,
+              i + 1,
+              line.material_id,
+              body.zone_id ?? null,
+              actor.id,
+              line.quantity,
+              body.needed_by ?? null,
+              body.note ?? null,
+            ],
+          ),
+        );
       const project = await one(db, 'SELECT name FROM projects WHERE id=$1', [body.project_id]);
+      const lineText = requestLines
+        .map((l) => {
+          const m = materials.get(l.material_id) as Row;
+          return `• ${m.name}: ${quantity(l.quantity)} ${m.unit_id}`;
+        })
+        .join('\n');
       for (const user of await projectRecipients(
         db,
         actor.tenant_id,
@@ -228,18 +253,18 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
           project_id: body.project_id,
           kind: 'stock.request',
           title: '📦 Material so‘rovi',
-          body: `Obyekt: ${project.name}\nMaterial: ${material.name}\nMiqdor: ${quantity(body.quantity)} ${material.unit_id}\nSo‘ragan: ${actor.display_name}${body.note ? `\nIzoh: ${body.note}` : ''}`,
-          payload: { request_id: row.id },
-          dedup_key: `stock.request:${row.id}:${user}`,
+          body: `Obyekt: ${project.name}\nMateriallar:\n${lineText}\nSo‘ragan: ${actor.display_name}${body.note ? `\nIzoh: ${body.note}` : ''}`,
+          payload: { request_id: lines[0]?.id ?? null, group_id: groupId },
+          dedup_key: `stock.request:${groupId}:${user}`,
         });
-      await audit(db, actor, 'stock.request', row.id);
-      return row;
+      await audit(db, actor, 'stock.request', groupId, { lines: lines.length });
+      return { group_id: groupId, lines };
     },
   });
   add({
     method: 'GET',
     path: '/v1/stock/requests',
-    summary: 'Material so‘rovlari ro‘yxati',
+    summary: 'Material so‘rovlari ro‘yxati: talabnomalar (guruh) va ularning qatorlari',
     permission: 'stock.read',
     query: pageQuery.extend({
       project_id: uuid,
@@ -251,32 +276,55 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
         (await allowed(db, actor, 'stock.send')) ||
         actor.role === 'tenant_admin' ||
         (await allowed(db, actor, 'stock.review'));
+      // Talabnoma holati qatorlardan: bittasi kutilsa — kutilmoqda; aks holda bajarilgan > rad etilgan > bekor.
+      const groupsSql = `SELECT group_id,min(created_at) created_at,
+          CASE WHEN bool_or(status='pending') THEN 'pending' WHEN bool_or(status='fulfilled') THEN 'fulfilled'
+               WHEN bool_or(status='rejected') THEN 'rejected' ELSE 'cancelled' END status
+        FROM material_requests WHERE tenant_id=$1 AND project_id=$2 AND ($3 OR requested_by=$4) GROUP BY group_id`;
+      const scope = [actor.tenant_id, query.project_id, manage, actor.id];
+      const groups = (
+        await db.query(
+          `SELECT group_id,status FROM (${groupsSql}) g WHERE ($5::text IS NULL OR g.status=$5)
+           ORDER BY (g.status='pending') DESC,g.created_at DESC LIMIT $6 OFFSET $7`,
+          [...scope, query.status ?? null, query.limit, query.offset],
+        )
+      ).rows;
+      const lines = groups.length
+        ? (
+            await db.query(
+              `SELECT r.*,m.name material_name,m.unit_id,u.display_name requested_by_name,rb.display_name reviewed_by_name,z.name zone_name
+               FROM material_requests r JOIN materials m ON m.id=r.material_id JOIN users u ON u.id=r.requested_by LEFT JOIN users rb ON rb.id=r.reviewed_by LEFT JOIN zones z ON z.id=r.zone_id
+               WHERE r.tenant_id=$1 AND r.group_id=ANY($2::uuid[]) ORDER BY r.position,r.created_at,r.id`,
+              [actor.tenant_id, groups.map((g) => g.group_id)],
+            )
+          ).rows
+        : [];
       return {
-        // Figma "Material talabnomalari" KPI kartalari: holat bo'yicha sonlar (sahifalashsiz), ro'yxat bilan bir xil doira.
+        // Figma "Material talabnomalari" KPI kartalari: talabnomalar soni holat bo'yicha (sahifalashsiz), ro'yxat doirasida.
         summary: await one(
           db,
           `SELECT count(*)::int total,count(*) FILTER(WHERE status='pending')::int pending,
                   count(*) FILTER(WHERE status='fulfilled')::int fulfilled,count(*) FILTER(WHERE status='rejected')::int rejected
-           FROM material_requests WHERE tenant_id=$1 AND project_id=$2 AND ($3 OR requested_by=$4)`,
-          [actor.tenant_id, query.project_id, manage, actor.id],
+           FROM (${groupsSql}) g`,
+          scope,
         ),
-        items: (
-          await db.query(
-            `SELECT r.*,m.name material_name,m.unit_id,u.display_name requested_by_name,rb.display_name reviewed_by_name,z.name zone_name
-             FROM material_requests r JOIN materials m ON m.id=r.material_id JOIN users u ON u.id=r.requested_by LEFT JOIN users rb ON rb.id=r.reviewed_by LEFT JOIN zones z ON z.id=r.zone_id
-             WHERE r.tenant_id=$1 AND r.project_id=$2 AND ($3::text IS NULL OR r.status=$3) AND ($4 OR r.requested_by=$5)
-             ORDER BY (r.status='pending') DESC,r.created_at DESC LIMIT $6 OFFSET $7`,
-            [
-              actor.tenant_id,
-              query.project_id,
-              query.status ?? null,
-              manage,
-              actor.id,
-              query.limit,
-              query.offset,
-            ],
-          )
-        ).rows,
+        items: groups.map((g) => {
+          const own = lines.filter((l) => l.group_id === g.group_id);
+          const head = own[0];
+          return {
+            group_id: g.group_id,
+            status: g.status,
+            project_id: head.project_id,
+            created_at: head.created_at,
+            requested_by: head.requested_by,
+            requested_by_name: head.requested_by_name,
+            zone_id: head.zone_id,
+            zone_name: head.zone_name,
+            needed_by: head.needed_by,
+            note: head.note,
+            lines: own,
+          };
+        }),
       };
     },
   });
