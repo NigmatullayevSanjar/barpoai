@@ -391,6 +391,8 @@ try {
   await row1.getByLabel('Birlik', { exact: true }).selectOption('m3');
   await row1.getByLabel('Miqdor', { exact: true }).fill('120');
   await row1.getByLabel('Birlik narxi').fill('250000');
+  // V-C (D23): ish qatoriga brigada stavkasi (so'm/m3)
+  await row1.getByLabel('Brigada stavkasi').fill('100000');
   await adminPage.getByRole('button', { name: 'Qator qo‘shish' }).click();
   const row2 = adminPage.locator('table.grid-editor tbody tr').nth(1);
   await row2.getByLabel('Turi', { exact: true }).selectOption('material');
@@ -1056,6 +1058,10 @@ try {
   await brigadierPage.goto(webURL + '/app');
   await brigadierPage.getByRole('heading', { name: 'Brigadir paneli' }).waitFor();
   await brigadierPage.getByText('Mening vazifalarim', { exact: true }).waitFor();
+  // V-C (D23): brigadir paneli — qabul qilingan 35 m3 × 100 000 = 3 500 000 ishlab topilgan
+  await brigadierPage.getByText('Mening hisobim').first().waitFor();
+  await brigadierPage.getByText(/3[\s\u00a0]500[\s\u00a0]000/).first().waitFor();
+  checks.push('Brigadier dashboard shows the piece-rate earnings card with the accepted quantity times the line rate');
   assert.equal(await brigadierPage.getByText('Davr xarajati', { exact: true }).count(), 0);
   checks.push(
     'Role dashboards follow permissions in the browser: admin sees cost blocks, brigadier does not; no notifications card on home pages',

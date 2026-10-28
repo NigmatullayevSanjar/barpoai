@@ -168,6 +168,12 @@ export const financeUz: Record<string, string> = {
   'fin.payroll.bonus': 'Bonus',
   'fin.payroll.deduction': 'Ushlanma',
   'fin.payroll.net': 'Jami (net)',
+  'fin.payroll.piece': 'Akkord',
+  'fin.payroll.piece_pending': 'Kutilayotgan akkord',
+  'fin.payroll.piece_pending_hint':
+    'Brigadirlarning davr oyi oxirigacha qabul qilingan, hali davrga kirmagan ishlab topgani; davr yopilganda yozuv avtomatik qo‘shiladi',
+  'fin.payroll.advance_applied': 'Avansdan hisoblanadi',
+  'fin.payroll.paid_cash': 'Kassadan to‘lanadi',
   'fin.payroll.add_entry': 'Xodim qo‘shish',
   'fin.payroll.post': 'Davrni yopish (hisoblash)',
   'fin.payroll.post_confirm':

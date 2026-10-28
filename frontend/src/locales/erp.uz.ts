@@ -55,6 +55,8 @@ export const erpUz: Record<string, string> = {
   'projects.zones_empty': 'Zonalar hali qo‘shilmagan',
   'projects.area_m2': 'Maydon, m²',
   'projects.area_invalid': 'Musbat son, ko‘pi bilan 2 kasr xona (masalan 1250.50)',
+  'projects.brigade_percent': 'Brigada stavkasi, % (smeta narxidan)',
+  'projects.brigade_percent_invalid': '0 dan 100 gacha son, ko‘pi bilan 2 kasr xona',
   'projects.date_order': 'Tugash sanasi boshlanishdan oldin bo‘lmasin',
   'projects.image': 'Obyekt rasmi',
   'projects.image_pick': 'Rasm tanlash',

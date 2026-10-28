@@ -91,7 +91,16 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
             [actor.tenant_id, params.id],
           )
         : null;
-      return { ...project, zones, members, warehouses, counters, finance };
+      // V-C: brigada foizi — pul ko'rsatkichi, faqat narx huquqi bilan (prorab ko'rmaydi, D20)
+      return {
+        ...project,
+        brigade_percent: prices ? project.brigade_percent : undefined,
+        zones,
+        members,
+        warehouses,
+        counters,
+        finance,
+      };
     },
   });
   // V-E (D23): qavat × ish progress matritsasi. Qavat — kind='floor' zona, ichidagi zonalar o'sha qavatga yig'iladi

@@ -298,6 +298,7 @@ function LinesTable({
             <th className="num">{t('est.col.quantity')}</th>
             <th className="num">{t('est.col.effective')}</th>
             {pricesVisible && <th className="num">{t('est.col.unit_price')}</th>}
+            {pricesVisible && <th className="num">{t('est.col.labor_rate')}</th>}
             {pricesVisible && <th className="num">{t('est.col.total')}</th>}
             <th className="num">{t('est.col.fact')}</th>
             <th>{t('est.col.months')}</th>
@@ -350,6 +351,9 @@ function LinesTable({
                 </td>
                 <td className="num">{formatQuantity(l.effective_quantity)}</td>
                 {pricesVisible && <td className="num">{formatMoney(l.unit_price, lang, false)}</td>}
+                {pricesVisible && (
+                  <td className="num">{l.labor_rate ? formatMoney(l.labor_rate, lang, false) : <span className="muted">—</span>}</td>
+                )}
                 {pricesVisible && (
                   <td className="num">
                     <b>{formatMoney(l.total, lang, false)}</b>

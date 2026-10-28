@@ -58,6 +58,13 @@ export function projectSchema(t: (k: string) => string) {
       .string()
       .trim()
       .refine((x) => x === '' || (AREA_RE.test(x) && /[1-9]/.test(x)), t('projects.area_invalid')),
+    brigade_percent: z
+      .string()
+      .trim()
+      .refine(
+        (x) => x === '' || /^(100|\d{1,2})(\.\d{1,2})?$/.test(x),
+        t('projects.brigade_percent_invalid'),
+      ),
   });
 }
 export type ProjectForm = z.infer<ReturnType<typeof projectSchema>>;
@@ -71,6 +78,7 @@ export const toProjectBody = (v: ProjectForm) => ({
   planned_start: v.planned_start || null,
   planned_end: v.planned_end || null,
   area_m2: v.area_m2 || null,
+  brigade_percent: v.brigade_percent || null,
 });
 export function ProjectFields({ form }: { form: ReturnType<typeof useForm<ProjectForm>> }) {
   const { t } = useT();
@@ -116,6 +124,13 @@ export function ProjectFields({ form }: { form: ReturnType<typeof useForm<Projec
         placeholder="1250.50"
         error={e.area_m2?.message}
         {...form.register('area_m2')}
+      />
+      <Input
+        label={t('projects.brigade_percent')}
+        inputMode="decimal"
+        placeholder="20"
+        error={e.brigade_percent?.message}
+        {...form.register('brigade_percent')}
       />
       <Textarea
         wrapClassName="span-2"
@@ -286,6 +301,7 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
       planned_start: '',
       planned_end: '',
       area_m2: '',
+      brigade_percent: '',
     },
   });
   const create = useMutation({

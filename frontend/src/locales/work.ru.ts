@@ -124,6 +124,8 @@ export const workRu: Record<string, string> = {
   'reports.correction_delta': 'Разница (например, -5 или 2.5)',
   'reports.corrections': 'Корректировки',
   'reports.effective_progress': 'Факт',
+  'reports.labor_amount': 'Заработано',
+  'reports.rate_missing': 'Ставка не задана',
   'reports.plan': 'План',
   'reports.detail': 'Карточка отчёта',
   'reports.reviewed_by': 'Проверил',
