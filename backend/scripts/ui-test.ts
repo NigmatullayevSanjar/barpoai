@@ -919,12 +919,27 @@ try {
   assert.equal(taskStatus, 'accepted');
   checks.push('Assignee starts and submits the task; reviewer accepts it with a note');
   await adminPage.getByRole('dialog').getByRole('button', { name: 'close' }).click();
+  // V-E (D23): blok ichida qavat zonasi — hisobot shu zonaga yoziladi, obyekt sahifasida qavat × ish jadvali chiqadi
+  const floorProjectId = projectUrl.split('/').pop();
+  const floorProject = await adminPage.request
+    .get(webURL + '/v1/projects/' + floorProjectId)
+    .then((r) => r.json());
+  const floorRes = await adminPage.request.post(webURL + `/v1/projects/${floorProjectId}/zones`, {
+    data: {
+      name: '3-qavat',
+      kind: 'floor',
+      parent_id: floorProject.zones.find((z: any) => z.kind === 'block').id,
+    },
+    headers: { 'Idempotency-Key': randomUUID(), Origin: webURL },
+  });
+  assert.equal(floorRes.status(), 200, await floorRes.text());
   await brigadierPage.goto(webURL + '/app/reports?project=' + projectUrl.split('/').pop());
   await brigadierPage.getByRole('button', { name: 'Hisobot yaratish' }).first().click();
   await brigadierPage
     .getByRole('dialog')
     .getByLabel('Bajarilgan ishlar')
     .fill('Beton quyish ishlari bajarildi, 40 m3');
+  await brigadierPage.getByRole('dialog').getByLabel('Zona', { exact: true }).selectOption({ label: '3-qavat' });
   await brigadierPage
     .getByRole('dialog')
     .getByLabel(/Smeta qatori/)
@@ -1071,6 +1086,16 @@ try {
   await brigadierPage.getByText('Ochiq vazifalar', { exact: true }).waitFor();
   assert.equal(await brigadierPage.getByRole('heading', { name: 'Obyekt moliyasi' }).count(), 0);
   checks.push('Project page finance card (plan, fact, paid, debt, advances, income) renders for the admin and is absent for the brigadier');
+  // E (D23): qavat × ish jadvali — 3-qavat qatori, "Beton quyish" ustuni, qabul qilingan 35 m3 (tuzatishdan keyin); brigadir ham hajmlarni ko'radi
+  await adminPage.goto(projectUrl);
+  await adminPage.getByRole('tab', { name: /Qavatlar progressi/ }).click();
+  await adminPage.getByRole('columnheader', { name: /Beton quyish/ }).waitFor();
+  await adminPage.getByRole('rowheader', { name: /3-qavat/ }).waitFor();
+  await adminPage.getByRole('cell', { name: /35 m3/ }).first().waitFor();
+  await brigadierPage.goto(projectUrl);
+  await brigadierPage.getByRole('tab', { name: /Qavatlar progressi/ }).click();
+  await brigadierPage.getByRole('cell', { name: /35 m3/ }).first().waitFor();
+  checks.push('Floor × work progress matrix on the project page shows the accepted report quantity on the floor zone for the admin and the brigadier');
   await adminPage.goto(webURL + '/app/settings');
   await adminPage.getByLabel('Kompaniya nomi').fill('UI Sinov Qurilish MCHJ');
   await adminPage.getByLabel('Telefon').fill('+998 71 200 00 11');

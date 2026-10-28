@@ -2997,6 +2997,83 @@ try {
   passed.push(
     'Premises Excel import: server template, real sheet row numbers, errors block the commit, re-upload updates or skips instead of duplicating, stale preview rejected, audit',
   );
+  // ---- V-E (D23): qavat × ish progress matritsasi — qavat zonalari, ish qatorlari rejasi va qabul qilingan hajm
+  const floorA1 = await zone({ name: '1-qavat', kind: 'floor', parent_id: entA.id });
+  const roomB3 = await zone({ name: '150-xonadon', kind: 'other', parent_id: floorB3.id });
+  const floorEst = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: px.id,
+      name: 'Qavat ishlari',
+      lines: [
+        { kind: 'labor', description: 'Shtukaturka', unit_id: 'm2', quantity: '100', unit_price: '1', zone_id: floorB3.id },
+        { kind: 'labor', description: 'Shtukaturka', unit_id: 'm2', quantity: '80', unit_price: '1', zone_id: floorA1.id },
+        { kind: 'labor', description: 'Pol', unit_id: 'm2', quantity: '50', unit_price: '1' },
+        { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '10', unit_price: '1', zone_id: floorB3.id },
+      ],
+    },
+    adminAgain,
+  );
+  await call('POST', `/v1/employees/${brigadier.id}/assignments`, { project_id: px.id }, adminAgain);
+  const floorReport = async (body: Record<string, unknown>) => {
+    const r = await call(
+      'POST',
+      '/v1/reports',
+      { project_id: px.id, kind: 'daily', report_date: '2026-10-05', content: 'Qavat ishi', ...body },
+      brigadierAgain2,
+    );
+    await call(
+      'POST',
+      `/v1/reports/${r.id}/review`,
+      { version: 1, action: 'accepted', reason: 'Tekshirildi' },
+      adminAgain,
+    );
+  };
+  // hisobot zonasi qavat ichidagi zona → B / 3-qavat; zonasiz hisobot → qator zonasi (A / 1-qavat); rejasiz qavat ustuni (Pol zonasiz)
+  await floorReport({ zone_id: roomB3.id, estimate_line_id: floorEst.lines[0].id, progress_quantity: '40' });
+  await floorReport({ estimate_line_id: floorEst.lines[1].id, progress_quantity: '20' });
+  await floorReport({ zone_id: floorA1.id, estimate_line_id: floorEst.lines[2].id, progress_quantity: '10' });
+  // yuborilgan, qabul qilinmagan hisobot hisobga olinmaydi
+  await call(
+    'POST',
+    '/v1/reports',
+    { project_id: px.id, kind: 'daily', report_date: '2026-10-06', content: 'Kutilmoqda', zone_id: floorB3.id, estimate_line_id: floorEst.lines[0].id, progress_quantity: '99' },
+    brigadierAgain2,
+  );
+  const matrix = await call('GET', `${pxUrl}/floor-progress`, undefined, brigadierAgain2);
+  assert.deepEqual(
+    matrix.floors.map((f: any) => [f.parent_name, f.name, f.plan, f.fact, f.percent]),
+    [
+      ['1', '1-qavat', '80.000000', '30.000000', '37.5'],
+      ['B', '3-qavat', '100.000000', '40.000000', '40.0'],
+    ],
+  );
+  assert.deepEqual(
+    matrix.works.map((w: any) => [w.description, w.unit_id, w.plan, w.fact, w.percent]),
+    [
+      ['Shtukaturka', 'm2', '180.000000', '60.000000', '33.3'],
+      ['Pol', 'm2', '50.000000', '10.000000', '20.0'],
+    ],
+  );
+  const cellOf = (zoneId: string, d: string) =>
+    matrix.cells.find((c: any) => c.zone_id === zoneId && c.description === d);
+  assert.deepEqual(
+    [floorB3.id, floorA1.id].map((z) => {
+      const c = cellOf(z, 'Shtukaturka');
+      return [c.plan, c.fact, c.percent];
+    }),
+    [
+      ['100.000000', '40.000000', '40.0'],
+      ['80.000000', '20.000000', '25.0'],
+    ],
+  );
+  const polA1 = cellOf(floorA1.id, 'Pol');
+  assert.deepEqual([polA1.plan, polA1.fact, polA1.percent], [null, '10.000000', null]);
+  assert.equal(cellOf(floorB3.id, 'Pol'), undefined);
+  passed.push(
+    'Floor × work progress matrix: floor zones (nested zones roll up), plan from floor-bound work lines, fact from accepted reports by report zone or line zone, per-floor and per-work totals, unaccepted reports and material lines excluded',
+  );
   // ---- G3: platforma ro'yxatidagi state filtri har bir kartadagi access_state bilan mos
   const pendingTenant = await call(
     'POST',

@@ -35,6 +35,14 @@ export const erpRu: Record<string, string> = {
   'projects.tab.zones': 'Зоны / блоки',
   'projects.tab.members': 'Сотрудники',
   'projects.tab.warehouses': 'Склады',
+  'projects.tab.progress': 'Прогресс по этажам',
+  'projects.progress.floor': 'Этаж',
+  'projects.progress.total': 'Итого',
+  'projects.progress.hint':
+    'План — строки работ сметы, привязанные к этажу; факт — принятые отчёты (по зоне отчёта, иначе по зоне строки сметы). Только объёмы, без цен.',
+  'projects.progress.no_floors':
+    'Нет зон типа «этаж». Добавьте этаж внутри блока или подъезда в разделе «Зоны / блоки».',
+  'projects.progress.no_works': 'В смете нет строк работ.',
   'projects.counter.open_tasks': 'Открытые задачи',
   'projects.counter.overdue_tasks': 'Просрочено',
   'projects.counter.estimates': 'Сметы',

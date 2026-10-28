@@ -36,6 +36,14 @@ export const erpUz: Record<string, string> = {
   'projects.tab.zones': 'Zonalar / bloklar',
   'projects.tab.members': 'Xodimlar',
   'projects.tab.warehouses': 'Omborlar',
+  'projects.tab.progress': 'Qavatlar progressi',
+  'projects.progress.floor': 'Qavat',
+  'projects.progress.total': 'Jami',
+  'projects.progress.hint':
+    'Reja — qavatga biriktirilgan smeta ish qatorlari; fakt — qabul qilingan hisobotlar (hisobot zonasi, bo‘lmasa smeta qatori zonasi bo‘yicha). Faqat hajmlar, narx yo‘q.',
+  'projects.progress.no_floors':
+    'Qavat turidagi zona yo‘q. «Zonalar / bloklar» bo‘limida blok yoki kirish ichiga qavat qo‘shing.',
+  'projects.progress.no_works': 'Smetada ish qatorlari yo‘q.',
   'projects.counter.open_tasks': 'Ochiq vazifalar',
   'projects.counter.overdue_tasks': 'Muddati o‘tgan',
   'projects.counter.estimates': 'Smetalar',
