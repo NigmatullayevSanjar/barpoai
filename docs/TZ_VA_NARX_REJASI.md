@@ -111,6 +111,16 @@ F2 tafsiloti: `GET /v1/projects` kartalar uchun `progress_percent` (dashboard qo
 
 F1a tafsiloti: `backend/src/permissions.ts` (admin uchun `adminReadOnlyStock` qattiq taqiq, `pageAllowed` da `stock` faqat o‘qish; `manager`, `accountant`, `warehouse_manager` bazaviy siyosati), `POST /v1/materials` admin uchun 403, talabnoma amallari faqat `stock.send`, `POST /v1/projects` “Asosiy ombor” yaratadi, `GET /v1/employees*` `employees.read`. Testlar: admin o‘rniga ombor mudiri/prorab/finansist ishlatadi, admin uchun 403 tekshiruvlari qo‘shildi, UI testda `ui.warehouse` va `ui.foreman` foydalanuvchilari. Frontend (minimal): `can()` admin uchun server ruxsatini ishlatadi, ombor sahifasi va smeta muharriri adminga amal tugmalarini ko‘rsatmaydi. Qoidalar `docs/backend/BARPO_BUSINESS_RULES.md` oxirgi bo‘limida.
 
+**Video tahlili g‘oyalari (D23, 2026-10-28):**
+
+| Bosqich | Ish | Holat |
+|---|---|---|
+| V-D | Obyekt moliya kartasi: smeta, fakt, qolgan, bajarilish, to‘langan, qarz, avans, tushum — `GET /v1/projects/:id` `finance` (faqat `prices.read`) | bajarildi 2026-10-28 |
+| V-A | Vazifani smeta qatoriga bog‘lash (kartada reja, qabul qilingan hajm, material sarfi; boshlanish sanasi) | rejalashtirilgan |
+| V-B | Ko‘p qatorli talabnoma | rejalashtirilgan |
+| V-E | Qavat × ish progress jadvali | rejalashtirilgan |
+| V-C | Brigada akkord hisobi (qoidalar D23) | rejalashtirilgan |
+
 Hajm: S — bir necha kun, M — 1–2 hafta, L — 2+ hafta (taxminiy).
 
 ---

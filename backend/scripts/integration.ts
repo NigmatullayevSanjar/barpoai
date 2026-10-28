@@ -3110,7 +3110,7 @@ try {
       adminAgain,
     );
   const oldEquipment = await docD('equipment', '700.00', firstMonth);
-  await docD('service', '300.00', todayTk);
+  const serviceD = await docD('service', '300.00', todayTk);
   await call('POST', `/v1/finance/documents/${oldEquipment.id}/reverse`, { reason: 'Dashboard storno testi' }, adminAgain);
   const reversalDate = (
     await admin.query("SELECT document_date::text d FROM finance_documents WHERE reverses_id=$1", [oldEquipment.id])
@@ -3164,6 +3164,38 @@ try {
     ],
   );
   assert.equal(dashD3.finance.period_expense, '-400.00');
+  // D (D23): obyekt moliya kartasi — GET /v1/projects/:id `finance` faqat narx huquqi bilan; to'langan = to'lov + avans
+  // (storno asl tur bilan netto), kassalar aro o'tkazma kirmaydi; tushum — buyurtmachidan kirim
+  const finD = async () => (await call('GET', `/v1/projects/${projectD.id}`, undefined, adminAgain)).finance;
+  assert.deepEqual(await finD(), {
+    plan_total: '0.00',
+    fact_total: '300.00',
+    remaining_plan: '-300.00',
+    fact_percent: null,
+    paid: '0.00',
+    debt: '300.00',
+    advances: '0.00',
+    income: '0.00',
+    progress_percent: null,
+  });
+  const cashD = (body: any) =>
+    call('POST', '/v1/finance/documents', { project_id: projectD.id, document_date: todayTk, cash_account_id: treasury.id, ...body }, adminAgain);
+  await cashD({ kind: 'receipt', amount: '1000.00', description: 'Buyurtmachidan tushum (karta testi)' });
+  const payD = await cashD({ kind: 'payment', amount: '300.00', counterparty_id: supplier.id, allocated_invoice_id: serviceD.id, description: 'Xizmat to‘lovi (karta testi)' });
+  await cashD({ kind: 'advance', amount: '50.00', counterparty_id: supplier.id, description: 'Avans (karta testi)' });
+  const cardCashbox = await call('POST', '/v1/cash-accounts', { name: 'Karta kassa', kind: 'cash' }, adminAgain);
+  await cashD({ kind: 'cash_transfer', amount: '100.00', target_cash_account_id: cardCashbox.id, description: 'Kassalar aro o‘tkazma (karta testi)' });
+  let finCard = await finD();
+  assert.deepEqual([finCard.paid, finCard.debt, finCard.advances, finCard.income], ['350.00', '0.00', '50.00', '1000.00']);
+  await call('POST', `/v1/finance/documents/${payD.id}/reverse`, { reason: 'To‘lov stornosi (karta testi)' }, adminAgain);
+  finCard = await finD();
+  assert.deepEqual([finCard.paid, finCard.debt, finCard.fact_total], ['50.00', '300.00', '300.00']);
+  const foreCard = (await call('POST', '/v1/auth/login', { login: 'foreman', password: pass + '2' })).access_token;
+  assert.equal((await call('GET', `/v1/projects/${project.id}`, undefined, foreCard)).finance, null);
+  assert((await call('GET', `/v1/projects/${project.id}`, undefined, adminAgain)).finance.plan_total !== undefined);
+  passed.push(
+    'Project finance card: plan, fact, remaining, paid (payments and advances net of reversals, transfers excluded), debt, advances and customer income come from the server, only with prices.read',
+  );
   // Budjetdan oshgan obyekt "Budjetlar" sahifasi bilan bir xil: budjet oylari fakti > budjet
   const thisMonth = `${dash6.period.to.slice(0, 7)}-01`;
   await call('POST', '/v1/budgets', { project_id: projectP.id, month: thisMonth, amount: '1000000000.00' }, adminAgain);

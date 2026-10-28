@@ -8,7 +8,8 @@ import { api, apiAll, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DetailError } from '@/app/guards';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
+import { displayCurrency } from '@/lib/currency-store';
 import {
   Badge,
   Button,
@@ -16,6 +17,7 @@ import {
   Input,
   Modal,
   Select,
+  Stat,
   Tabs,
   Textarea,
 } from '@/components/ui';
@@ -166,6 +168,49 @@ export function ProjectDetailPage() {
           </div>
         </dl>
       </div>
+      {d.finance && (
+        <section className="stack" style={{ gap: 8 }}>
+          <h3 style={{ margin: 0 }}>{t('projects.finance.title')}</h3>
+          <div className="grid-4">
+            <Stat
+              label={`${t('projects.finance.plan')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.plan_total, lang, false)}
+            />
+            <Stat
+              label={`${t('projects.finance.fact')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.fact_total, lang, false)}
+              sub={d.finance.fact_percent !== null ? t('projects.finance.fact_percent', { p: d.finance.fact_percent }) : undefined}
+            />
+            <Stat
+              label={`${t('projects.finance.remaining')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.remaining_plan, lang, false)}
+              tone={d.finance.remaining_plan.startsWith('-') ? 'danger' : undefined}
+              sub={d.finance.remaining_plan.startsWith('-') ? t('projects.finance.over_plan') : undefined}
+            />
+            <Stat
+              label={t('projects.finance.progress')}
+              value={d.finance.progress_percent !== null ? `${d.finance.progress_percent} %` : '—'}
+            />
+            <Stat
+              label={`${t('projects.finance.paid')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.paid, lang, false)}
+            />
+            <Stat
+              label={`${t('projects.finance.debt')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.debt, lang, false)}
+              tone={Number(d.finance.debt) > 0 ? 'warning' : undefined}
+            />
+            <Stat
+              label={`${t('projects.finance.advances')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.advances, lang, false)}
+            />
+            <Stat
+              label={`${t('projects.finance.income')} (${displayCurrency()})`}
+              value={formatMoney(d.finance.income, lang, false)}
+            />
+          </div>
+        </section>
+      )}
       <Tabs<Tab>
         value={tab}
         onChange={setTab}

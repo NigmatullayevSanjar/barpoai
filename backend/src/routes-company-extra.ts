@@ -4,6 +4,7 @@ import { one, audit } from './db.js';
 import { uuid, idParams, pageQuery } from './schemas.js';
 import { projectScope, permissions, allowed } from './permissions.js';
 import { invariant } from './errors.js';
+import { workFactSql } from './routes-dashboard.js';
 /** Obyekt kartasi, xodim kartasi, biriktirishni olib tashlash va omborlar ro'yxati. */
 export function companyExtraRoutes(add: (r: Endpoint) => void) {
   add({
@@ -61,7 +62,35 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
            (SELECT count(*)::int FROM reports r WHERE r.tenant_id=$1 AND r.project_id=$2 AND r.archived_at IS NULL AND r.status='submitted') pending_reports`,
         [actor.tenant_id, params.id],
       );
-      return { ...project, zones, members, warehouses, counters };
+      // Obyekt moliya kartasi (D23/D, 2026-10-28): faqat narx huquqi bilan, hamma raqam serverda. To'langan —
+      // kontragentlarga to'lov va avans (storno asl hujjat turi bilan netto), kassalar aro o'tkazma kirmaydi.
+      const finance = prices
+        ? await one(
+            db,
+            `WITH je AS (
+               SELECT j.account,j.amount,coalesce(o.kind,f.kind) kind
+               FROM journal_entries j LEFT JOIN finance_documents f ON f.tenant_id=j.tenant_id AND f.id=j.finance_document_id
+                    LEFT JOIN finance_documents o ON o.tenant_id=f.tenant_id AND o.id=f.reverses_id
+               WHERE j.tenant_id=$1 AND j.project_id=$2),
+             t AS (
+               SELECT (SELECT coalesce(sum(l.total),0) FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id
+                        WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL) plan,
+                      coalesce(sum(amount) FILTER(WHERE account='expense'),0) fact,
+                      -coalesce(sum(amount) FILTER(WHERE account='cash' AND kind IN ('payment','advance')),0) paid,
+                      -coalesce(sum(amount) FILTER(WHERE account='payable'),0) debt,
+                      coalesce(sum(amount) FILTER(WHERE account='advance'),0) advances,
+                      -coalesce(sum(amount) FILTER(WHERE account='income'),0) income
+               FROM je)
+             SELECT plan::numeric(20,2)::text plan_total,fact::numeric(20,2)::text fact_total,(plan-fact)::numeric(20,2)::text remaining_plan,
+                    CASE WHEN plan>0 THEN round(100*fact/plan,1)::text END fact_percent,
+                    paid::numeric(20,2)::text paid,debt::numeric(20,2)::text debt,advances::numeric(20,2)::text advances,income::numeric(20,2)::text income,
+                    (SELECT avg(least(100,100*${workFactSql}/l.effective_quantity))::numeric(5,1)::text FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id
+                      WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.kind<>'material' AND l.archived_at IS NULL AND e.archived_at IS NULL AND l.effective_quantity>0) progress_percent
+             FROM t`,
+            [actor.tenant_id, params.id],
+          )
+        : null;
+      return { ...project, zones, members, warehouses, counters, finance };
     },
   });
   add({

@@ -61,6 +61,18 @@ export type ProjectDetail = Project & {
   members: Member[];
   warehouses: Warehouse[];
   counters: { open_tasks: number; overdue_tasks: number; estimates: number; pending_reports: number };
+  /** Moliya kartasi (D23/D): faqat narx huquqi bilan, aks holda null; hamma raqam serverda (decimal satr) */
+  finance: {
+    plan_total: string;
+    fact_total: string;
+    remaining_plan: string;
+    fact_percent: string | null;
+    paid: string;
+    debt: string;
+    advances: string;
+    income: string;
+    progress_percent: string | null;
+  } | null;
 };
 export type Employee = {
   id: string;
