@@ -5,6 +5,7 @@ import { uuid, idParams, pageQuery } from './schemas.js';
 import { projectScope, permissions, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { workFactSql } from './routes-dashboard.js';
+import { dec, quantity } from './money.js';
 /** Obyekt kartasi, xodim kartasi, biriktirishni olib tashlash va omborlar ro'yxati. */
 export function companyExtraRoutes(add: (r: Endpoint) => void) {
   add({
@@ -91,6 +92,83 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
           )
         : null;
       return { ...project, zones, members, warehouses, counters, finance };
+    },
+  });
+  // V-E (D23): qavat × ish progress matritsasi. Qavat — kind='floor' zona, ichidagi zonalar o'sha qavatga yig'iladi
+  // (boshqa qavatga kirmaydi). Reja — qavatga biriktirilgan ish qatorlari; fakt — qabul qilingan hisobot progressi
+  // (+tuzatishlar), qavati hisobot zonasidan, zonasiz hisobotda qator zonasidan. Narx yo'q — hajmlar hamma rolga.
+  add({
+    method: 'GET',
+    path: '/v1/projects/:id/floor-progress',
+    summary:
+      'Qavat × ish progress matritsasi: qavat zonalari bo‘yicha ish qatorlarining reja va qabul qilingan hajmi (narxsiz)',
+    permission: 'projects.read',
+    action: 'read',
+    params: idParams,
+    handler: async ({ db, actor, params }) => {
+      await projectScope(db, actor, params.id);
+      const args = [actor.tenant_id, params.id];
+      const workFrom = `estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id`;
+      const workWhere = `WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.kind<>'material' AND l.archived_at IS NULL AND e.archived_at IS NULL`;
+      const progressFrom = `progress_entries pe JOIN reports r ON r.tenant_id=pe.tenant_id AND r.id=pe.report_id
+           JOIN estimate_lines l ON l.tenant_id=pe.tenant_id AND l.id=pe.estimate_line_id
+           LEFT JOIN (SELECT progress_entry_id,sum(quantity_delta) delta FROM progress_corrections WHERE tenant_id=$1 GROUP BY 1) c ON c.progress_entry_id=pe.id`;
+      const progressWhere = `WHERE pe.tenant_id=$1 AND l.project_id=$2`;
+      const floors = (
+        await db.query(
+          `SELECT z.id,z.name,p.name parent_name FROM zones z LEFT JOIN zones p ON p.tenant_id=z.tenant_id AND p.id=z.parent_id
+           WHERE z.tenant_id=$1 AND z.project_id=$2 AND z.kind='floor'`,
+          args,
+        )
+      ).rows;
+      const works = (
+        await db.query(
+          `WITH cur AS (SELECT l.description,l.unit_id,sum(l.effective_quantity) plan,min(e.name) est,min(l.position) pos FROM ${workFrom} ${workWhere} GROUP BY 1,2),
+                f AS (SELECT l.description,l.unit_id,sum(pe.quantity+coalesce(c.delta,0)) fact FROM ${progressFrom} ${progressWhere} GROUP BY 1,2)
+           SELECT coalesce(cur.description,f.description) description,coalesce(cur.unit_id,f.unit_id) unit_id,cur.plan::text plan,
+                  coalesce(f.fact,0)::text fact,CASE WHEN cur.plan>0 THEN round(100*coalesce(f.fact,0)/cur.plan,1)::text END percent
+           FROM cur FULL JOIN f ON f.description=cur.description AND f.unit_id=cur.unit_id
+           ORDER BY cur.est NULLS LAST,cur.pos NULLS LAST,1`,
+          args,
+        )
+      ).rows;
+      const cells = (
+        await db.query(
+          `WITH RECURSIVE tree AS (
+             SELECT id floor_id,id zone_id FROM zones WHERE tenant_id=$1 AND project_id=$2 AND kind='floor'
+             UNION
+             SELECT t.floor_id,z.id FROM tree t JOIN zones z ON z.tenant_id=$1 AND z.parent_id=t.zone_id AND z.kind<>'floor'),
+           p AS (SELECT t.floor_id,l.description,l.unit_id,sum(l.effective_quantity) plan FROM ${workFrom} JOIN tree t ON t.zone_id=l.zone_id ${workWhere} GROUP BY 1,2,3),
+           f AS (SELECT t.floor_id,l.description,l.unit_id,sum(pe.quantity+coalesce(c.delta,0)) fact
+                 FROM ${progressFrom} JOIN tree t ON t.zone_id=coalesce(r.zone_id,l.zone_id) ${progressWhere} GROUP BY 1,2,3)
+           SELECT coalesce(p.floor_id,f.floor_id) zone_id,coalesce(p.description,f.description) description,coalesce(p.unit_id,f.unit_id) unit_id,
+                  p.plan::text plan,coalesce(f.fact,0)::text fact,CASE WHEN p.plan>0 THEN round(100*coalesce(f.fact,0)/p.plan,1)::text END percent
+           FROM p FULL JOIN f ON f.floor_id=p.floor_id AND f.description=p.description AND f.unit_id=p.unit_id`,
+          args,
+        )
+      ).rows;
+      const byFloor = (zoneId: string) => cells.filter((c) => c.zone_id === zoneId);
+      const total = (rows: { plan: string | null; fact: string }[]) => {
+        const planned = rows.filter((c) => c.plan !== null);
+        const plan = planned.length
+          ? planned.reduce((a, c) => a.plus(c.plan as string), dec('0'))
+          : null;
+        const fact = rows.reduce((a, c) => a.plus(c.fact), dec('0'));
+        return {
+          plan: plan ? quantity(plan) : null,
+          fact: quantity(fact),
+          percent: plan && plan.gt(0) ? fact.times(100).div(plan).toFixed(1) : null,
+        };
+      };
+      const compare = (a: string | null, b: string | null) =>
+        (a ?? '').localeCompare(b ?? '', undefined, { numeric: true });
+      return {
+        floors: floors
+          .sort((a, b) => compare(a.parent_name, b.parent_name) || compare(a.name, b.name))
+          .map((f) => ({ ...f, ...total(byFloor(f.id)) })),
+        works,
+        cells,
+      };
     },
   });
   add({

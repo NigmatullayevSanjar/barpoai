@@ -33,11 +33,12 @@ import {
   type ProjectForm,
 } from './ProjectsPage';
 import { PremisesTab } from './PremisesTab';
+import { FloorProgressTab } from './FloorProgressTab';
 import { BlocksSection } from './BlocksSection';
 import { useImageSrc } from './blocks';
 import { zoneKinds, type Employee, type Member, type ProjectDetail, type Zone, type ZoneKind } from './types';
 
-type Tab = 'overview' | 'zones' | 'premises' | 'members' | 'warehouses';
+type Tab = 'overview' | 'zones' | 'premises' | 'progress' | 'members' | 'warehouses';
 export function ProjectDetailPage() {
   const { id = '' } = useParams();
   const { t, lang } = useT();
@@ -49,7 +50,11 @@ export function ProjectDetailPage() {
   const startTab = params.get('tab');
   // Figma "obyekt ko'rish": sahifa bloklar bilan ochiladi; qolgan bo'limlar tablarda.
   const [tab, setTab] = useState<Tab>(
-    startTab === 'overview' || startTab === 'premises' || startTab === 'members' || startTab === 'warehouses'
+    startTab === 'overview' ||
+    startTab === 'premises' ||
+    startTab === 'progress' ||
+    startTab === 'members' ||
+    startTab === 'warehouses'
       ? startTab
       : 'zones',
   );
@@ -218,6 +223,7 @@ export function ProjectDetailPage() {
           { key: 'overview', label: t('projects.tab.overview') },
           { key: 'zones', label: t('projects.tab.zones'), count: d.zones.length },
           { key: 'premises', label: t('premises.tab') },
+          { key: 'progress', label: t('projects.tab.progress') },
           { key: 'members', label: t('projects.tab.members'), count: d.members.length },
           { key: 'warehouses', label: t('projects.tab.warehouses'), count: d.warehouses.length },
         ]}
@@ -230,6 +236,7 @@ export function ProjectDetailPage() {
         </>
       )}
       {tab === 'premises' && <PremisesTab d={d} />}
+      {tab === 'progress' && <FloorProgressTab projectId={id} />}
       {tab === 'members' && <MembersTab d={d} canEdit={canManageMembers} onChange={refresh} />}
       {tab === 'warehouses' && <WarehousesTab d={d} canEdit={canEdit} onChange={refresh} />}
       {edit && <EditProjectModal d={d} onClose={() => setEdit(false)} onDone={refresh} />}
