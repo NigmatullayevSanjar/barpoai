@@ -6404,6 +6404,18 @@ paths:
                     - normal
                     - high
                     - urgent
+                estimate_line_id:
+                  anyOf:
+                    - type: string
+                      format: uuid
+                      pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                    - type: "null"
+                planned_start:
+                  anyOf:
+                    - type: string
+                      format: date
+                      pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                    - type: "null"
               required:
                 - version
                 - title
@@ -7791,17 +7803,38 @@ paths:
         "410": *a129
         "429": *a129
         "503": *a129
-  /v1/estimates/{id}:
+  /v1/estimate-lines:
     get:
-      summary: Joriy smeta va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona bo‘yicha guruhlar
-        (decimal)
-      operationId: get_v1_estimates__id
+      summary: "Obyektning joriy smeta qatorlari (vazifaga bog‘lash tanlovi): nom, birlik, reja hajmi, smeta nomi; narxsiz"
+      operationId: get_v1_estimate_lines
       security:
         - bearerAuth: []
         - cookieAuth: []
       parameters:
-        - name: id
-          in: path
+        - name: limit
+          in: query
+          required: true
+          schema:
+            default: 30
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: true
+          schema:
+            default: 0
+            type: integer
+            minimum: 0
+            maximum: 100000
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: project_id
+          in: query
           required: true
           schema:
             type: string
@@ -7831,6 +7864,46 @@ paths:
         "410": *a130
         "429": *a130
         "503": *a130
+  /v1/estimates/{id}:
+    get:
+      summary: Joriy smeta va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona bo‘yicha guruhlar
+        (decimal)
+      operationId: get_v1_estimates__id
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+      x-permission: estimates.read
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a131
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a131
+        "402": *a131
+        "403": *a131
+        "404": *a131
+        "409": *a131
+        "410": *a131
+        "429": *a131
+        "503": *a131
     patch:
       summary: Smetaning yangi immutable reviziyasi; eski qatorlar fakt bog‘lanishi uchun qoladi
       operationId: patch_v1_estimates__id
@@ -7862,20 +7935,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a131
+        "400": &a132
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a131
-        "402": *a131
-        "403": *a131
-        "404": *a131
-        "409": *a131
-        "410": *a131
-        "429": *a131
-        "503": *a131
+        "401": *a132
+        "402": *a132
+        "403": *a132
+        "404": *a132
+        "409": *a132
+        "410": *a132
+        "429": *a132
+        "503": *a132
       requestBody:
         required: true
         content:
@@ -8016,20 +8089,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a132
+        "400": &a133
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a132
-        "402": *a132
-        "403": *a132
-        "404": *a132
-        "409": *a132
-        "410": *a132
-        "429": *a132
-        "503": *a132
+        "401": *a133
+        "402": *a133
+        "403": *a133
+        "404": *a133
+        "409": *a133
+        "410": *a133
+        "429": *a133
+        "503": *a133
       requestBody:
         required: true
         content:
@@ -8075,20 +8148,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a133
+        "400": &a134
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a133
-        "402": *a133
-        "403": *a133
-        "404": *a133
-        "409": *a133
-        "410": *a133
-        "429": *a133
-        "503": *a133
+        "401": *a134
+        "402": *a134
+        "403": *a134
+        "404": *a134
+        "409": *a134
+        "410": *a134
+        "429": *a134
+        "503": *a134
       requestBody:
         required: true
         content:
@@ -8184,20 +8257,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a134
+        "400": &a135
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a134
-        "402": *a134
-        "403": *a134
-        "404": *a134
-        "409": *a134
-        "410": *a134
-        "429": *a134
-        "503": *a134
+        "401": *a135
+        "402": *a135
+        "403": *a135
+        "404": *a135
+        "409": *a135
+        "410": *a135
+        "429": *a135
+        "503": *a135
       requestBody:
         required: true
         content:
@@ -8238,20 +8311,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a135
+        "400": &a136
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a135
-        "402": *a135
-        "403": *a135
-        "404": *a135
-        "409": *a135
-        "410": *a135
-        "429": *a135
-        "503": *a135
+        "401": *a136
+        "402": *a136
+        "403": *a136
+        "404": *a136
+        "409": *a136
+        "410": *a136
+        "429": *a136
+        "503": *a136
       requestBody:
         required: true
         content:
@@ -8344,20 +8417,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a136
+        "400": &a137
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a136
-        "402": *a136
-        "403": *a136
-        "404": *a136
-        "409": *a136
-        "410": *a136
-        "429": *a136
-        "503": *a136
+        "401": *a137
+        "402": *a137
+        "403": *a137
+        "404": *a137
+        "409": *a137
+        "410": *a137
+        "429": *a137
+        "503": *a137
   /v1/cash-accounts:
     post:
       summary: UZS bank yoki kassa hisobi
@@ -8383,20 +8456,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a137
+        "400": &a138
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a137
-        "402": *a137
-        "403": *a137
-        "404": *a137
-        "409": *a137
-        "410": *a137
-        "429": *a137
-        "503": *a137
+        "401": *a138
+        "402": *a138
+        "403": *a138
+        "404": *a138
+        "409": *a138
+        "410": *a138
+        "429": *a138
+        "503": *a138
       requestBody:
         required: true
         content:
@@ -8451,20 +8524,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a138
+        "400": &a139
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a138
-        "402": *a138
-        "403": *a138
-        "404": *a138
-        "409": *a138
-        "410": *a138
-        "429": *a138
-        "503": *a138
+        "401": *a139
+        "402": *a139
+        "403": *a139
+        "404": *a139
+        "409": *a139
+        "410": *a139
+        "429": *a139
+        "503": *a139
   /v1/finance/documents:
     post:
       summary: Ajratma, invoys, haqiqiy xarajat va pul harakatlari
@@ -8490,20 +8563,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a139
+        "400": &a140
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a139
-        "402": *a139
-        "403": *a139
-        "404": *a139
-        "409": *a139
-        "410": *a139
-        "429": *a139
-        "503": *a139
+        "401": *a140
+        "402": *a140
+        "403": *a140
+        "404": *a140
+        "409": *a140
+        "410": *a140
+        "429": *a140
+        "503": *a140
       requestBody:
         required: true
         content:
@@ -8665,20 +8738,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a140
+        "400": &a141
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a140
-        "402": *a140
-        "403": *a140
-        "404": *a140
-        "409": *a140
-        "410": *a140
-        "429": *a140
-        "503": *a140
+        "401": *a141
+        "402": *a141
+        "403": *a141
+        "404": *a141
+        "409": *a141
+        "410": *a141
+        "429": *a141
+        "503": *a141
   /v1/finance/documents/{id}/reverse:
     post:
       summary: Moliyaviy reversal; manba sahifasining delete ruxsati tekshiriladi
@@ -8711,20 +8784,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a141
+        "400": &a142
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a141
-        "402": *a141
-        "403": *a141
-        "404": *a141
-        "409": *a141
-        "410": *a141
-        "429": *a141
-        "503": *a141
+        "401": *a142
+        "402": *a142
+        "403": *a142
+        "404": *a142
+        "409": *a142
+        "410": *a142
+        "429": *a142
+        "503": *a142
       requestBody:
         required: true
         content:
@@ -8765,20 +8838,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a142
+        "400": &a143
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a142
-        "402": *a142
-        "403": *a142
-        "404": *a142
-        "409": *a142
-        "410": *a142
-        "429": *a142
-        "503": *a142
+        "401": *a143
+        "402": *a143
+        "403": *a143
+        "404": *a143
+        "409": *a143
+        "410": *a143
+        "429": *a143
+        "503": *a143
       requestBody:
         required: true
         content:
@@ -8827,20 +8900,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a143
+        "400": &a144
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a143
-        "402": *a143
-        "403": *a143
-        "404": *a143
-        "409": *a143
-        "410": *a143
-        "429": *a143
-        "503": *a143
+        "401": *a144
+        "402": *a144
+        "403": *a144
+        "404": *a144
+        "409": *a144
+        "410": *a144
+        "429": *a144
+        "503": *a144
       requestBody:
         required: true
         content:
@@ -8910,20 +8983,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a144
+        "400": &a145
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a144
-        "402": *a144
-        "403": *a144
-        "404": *a144
-        "409": *a144
-        "410": *a144
-        "429": *a144
-        "503": *a144
+        "401": *a145
+        "402": *a145
+        "403": *a145
+        "404": *a145
+        "409": *a145
+        "410": *a145
+        "429": *a145
+        "503": *a145
   /v1/projects/{id}/dashboard:
     get:
       summary: Tannarx, cash flow, qarz; material sarfi progress deb olinmaydi
@@ -8949,20 +9022,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a145
+        "400": &a146
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a145
-        "402": *a145
-        "403": *a145
-        "404": *a145
-        "409": *a145
-        "410": *a145
-        "429": *a145
-        "503": *a145
+        "401": *a146
+        "402": *a146
+        "403": *a146
+        "404": *a146
+        "409": *a146
+        "410": *a146
+        "429": *a146
+        "503": *a146
   /v1/tasks:
     post:
       summary: Vazifa yaratish; assignee va reviewer obyekt doirasida
@@ -8988,20 +9061,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a146
+        "400": &a147
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a146
-        "402": *a146
-        "403": *a146
-        "404": *a146
-        "409": *a146
-        "410": *a146
-        "429": *a146
-        "503": *a146
+        "401": *a147
+        "402": *a147
+        "403": *a147
+        "404": *a147
+        "409": *a147
+        "410": *a147
+        "429": *a147
+        "503": *a147
       requestBody:
         required: true
         content:
@@ -9044,6 +9117,14 @@ paths:
                 description:
                   type: string
                   maxLength: 4000
+                estimate_line_id:
+                  type: string
+                  format: uuid
+                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                planned_start:
+                  type: string
+                  format: date
+                  pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
               required:
                 - project_id
                 - title
@@ -9108,20 +9189,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a147
+        "400": &a148
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a147
-        "402": *a147
-        "403": *a147
-        "404": *a147
-        "409": *a147
-        "410": *a147
-        "429": *a147
-        "503": *a147
+        "401": *a148
+        "402": *a148
+        "403": *a148
+        "404": *a148
+        "409": *a148
+        "410": *a148
+        "429": *a148
+        "503": *a148
   /v1/tasks/{id}/transition:
     post:
       summary: Vazifa bajarish, yuborish, qaytarish va qabul qilish
@@ -9154,20 +9235,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a148
+        "400": &a149
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a148
-        "402": *a148
-        "403": *a148
-        "404": *a148
-        "409": *a148
-        "410": *a148
-        "429": *a148
-        "503": *a148
+        "401": *a149
+        "402": *a149
+        "403": *a149
+        "404": *a149
+        "409": *a149
+        "410": *a149
+        "429": *a149
+        "503": *a149
       requestBody:
         required: true
         content:
@@ -9220,20 +9301,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a149
+        "400": &a150
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a149
-        "402": *a149
-        "403": *a149
-        "404": *a149
-        "409": *a149
-        "410": *a149
-        "429": *a149
-        "503": *a149
+        "401": *a150
+        "402": *a150
+        "403": *a150
+        "404": *a150
+        "409": *a150
+        "410": *a150
+        "429": *a150
+        "503": *a150
       requestBody:
         required: true
         content:
@@ -9337,20 +9418,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a150
+        "400": &a151
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a150
-        "402": *a150
-        "403": *a150
-        "404": *a150
-        "409": *a150
-        "410": *a150
-        "429": *a150
-        "503": *a150
+        "401": *a151
+        "402": *a151
+        "403": *a151
+        "404": *a151
+        "409": *a151
+        "410": *a151
+        "429": *a151
+        "503": *a151
   /v1/reports/{id}/review:
     post:
       summary: Hisobotni qabul yoki qaytarish; stock sarfi qayta post qilinmaydi
@@ -9383,20 +9464,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a151
+        "400": &a152
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a151
-        "402": *a151
-        "403": *a151
-        "404": *a151
-        "409": *a151
-        "410": *a151
-        "429": *a151
-        "503": *a151
+        "401": *a152
+        "402": *a152
+        "403": *a152
+        "404": *a152
+        "409": *a152
+        "410": *a152
+        "429": *a152
+        "503": *a152
       requestBody:
         required: true
         content:
@@ -9455,20 +9536,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a152
+        "400": &a153
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a152
-        "402": *a152
-        "403": *a152
-        "404": *a152
-        "409": *a152
-        "410": *a152
-        "429": *a152
-        "503": *a152
+        "401": *a153
+        "402": *a153
+        "403": *a153
+        "404": *a153
+        "409": *a153
+        "410": *a153
+        "429": *a153
+        "503": *a153
       requestBody:
         required: true
         content:
@@ -9514,20 +9595,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a153
+        "400": &a154
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a153
-        "402": *a153
-        "403": *a153
-        "404": *a153
-        "409": *a153
-        "410": *a153
-        "429": *a153
-        "503": *a153
+        "401": *a154
+        "402": *a154
+        "403": *a154
+        "404": *a154
+        "409": *a154
+        "410": *a154
+        "429": *a154
+        "503": *a154
     delete:
       summary: Private faylni arxivlash
       operationId: delete_v1_files__id
@@ -9559,20 +9640,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a154
+        "400": &a155
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a154
-        "402": *a154
-        "403": *a154
-        "404": *a154
-        "409": *a154
-        "410": *a154
-        "429": *a154
-        "503": *a154
+        "401": *a155
+        "402": *a155
+        "403": *a155
+        "404": *a155
+        "409": *a155
+        "410": *a155
+        "429": *a155
+        "503": *a155
       requestBody:
         required: true
         content:
@@ -9606,20 +9687,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a155
+        "400": &a156
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a155
-        "402": *a155
-        "403": *a155
-        "404": *a155
-        "409": *a155
-        "410": *a155
-        "429": *a155
-        "503": *a155
+        "401": *a156
+        "402": *a156
+        "403": *a156
+        "404": *a156
+        "409": *a156
+        "410": *a156
+        "429": *a156
+        "503": *a156
   /v1/billing/checkout:
     post:
       summary: Haqiqiy provider tanlanmaguncha checkout yopiq
@@ -9638,20 +9719,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a156
+        "400": &a157
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a156
-        "402": *a156
-        "403": *a156
-        "404": *a156
-        "409": *a156
-        "410": *a156
-        "429": *a156
-        "503": *a156
+        "401": *a157
+        "402": *a157
+        "403": *a157
+        "404": *a157
+        "409": *a157
+        "410": *a157
+        "429": *a157
+        "503": *a157
       requestBody:
         required: true
         content:
@@ -9728,38 +9809,6 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a157
-          description: Xato; error.code mashina uchun barqaror identifikator.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401": *a157
-        "402": *a157
-        "403": *a157
-        "404": *a157
-        "409": *a157
-        "410": *a157
-        "429": *a157
-        "503": *a157
-  /v1/company:
-    get:
-      summary: Kompaniya profili, Telegram bildirishnoma sozlamalari va obuna holati
-      operationId: get_v1_company
-      security:
-        - bearerAuth: []
-        - cookieAuth: []
-      parameters: []
-      x-permission: authenticated
-      x-tenant-scope: true
-      responses:
-        "200":
-          description: Muvaffaqiyat
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
         "400": &a158
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
@@ -9774,20 +9823,14 @@ paths:
         "410": *a158
         "429": *a158
         "503": *a158
-    patch:
-      summary: Kompaniya nomi, manzili, telefoni va bildirishnoma toifalarini saqlash (optimistic version)
-      operationId: patch_v1_company
+  /v1/company:
+    get:
+      summary: Kompaniya profili, Telegram bildirishnoma sozlamalari va obuna holati
+      operationId: get_v1_company
       security:
         - bearerAuth: []
         - cookieAuth: []
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            minLength: 8
-            maxLength: 128
+      parameters: []
       x-permission: authenticated
       x-tenant-scope: true
       responses:
@@ -9812,6 +9855,44 @@ paths:
         "410": *a159
         "429": *a159
         "503": *a159
+    patch:
+      summary: Kompaniya nomi, manzili, telefoni va bildirishnoma toifalarini saqlash (optimistic version)
+      operationId: patch_v1_company
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      x-permission: authenticated
+      x-tenant-scope: true
+      responses:
+        "200":
+          description: Muvaffaqiyat
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": &a160
+          description: Xato; error.code mashina uchun barqaror identifikator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401": *a160
+        "402": *a160
+        "403": *a160
+        "404": *a160
+        "409": *a160
+        "410": *a160
+        "429": *a160
+        "503": *a160
       requestBody:
         required: true
         content:
@@ -9893,20 +9974,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a160
+        "400": &a161
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a160
-        "402": *a160
-        "403": *a160
-        "404": *a160
-        "409": *a160
-        "410": *a160
-        "429": *a160
-        "503": *a160
+        "401": *a161
+        "402": *a161
+        "403": *a161
+        "404": *a161
+        "409": *a161
+        "410": *a161
+        "429": *a161
+        "503": *a161
   /v1/finance/plan-actual/export:
     get:
       summary: "Reja–fakt Excel: qatorlar, zonalar va oylar; narx huquqi bo‘lmasa summalar yo‘q"
@@ -9932,20 +10013,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a161
+        "400": &a162
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a161
-        "402": *a161
-        "403": *a161
-        "404": *a161
-        "409": *a161
-        "410": *a161
-        "429": *a161
-        "503": *a161
+        "401": *a162
+        "402": *a162
+        "403": *a162
+        "404": *a162
+        "409": *a162
+        "410": *a162
+        "429": *a162
+        "503": *a162
   /v1/tasks/export:
     get:
       summary: Vazifalar ro‘yxati Excel (ruxsat doirasida, filtrlar bilan)
@@ -9988,20 +10069,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a162
+        "400": &a163
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a162
-        "402": *a162
-        "403": *a162
-        "404": *a162
-        "409": *a162
-        "410": *a162
-        "429": *a162
-        "503": *a162
+        "401": *a163
+        "402": *a163
+        "403": *a163
+        "404": *a163
+        "409": *a163
+        "410": *a163
+        "429": *a163
+        "503": *a163
   /v1/stock/overview/export:
     get:
       summary: Ombor qoldiqlari Excel (rol doirasidagi hisoblar; narx huquqi bo‘lmasa qiymat ustuni yo‘q)
@@ -10027,20 +10108,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a163
+        "400": &a164
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a163
-        "402": *a163
-        "403": *a163
-        "404": *a163
-        "409": *a163
-        "410": *a163
-        "429": *a163
-        "503": *a163
+        "401": *a164
+        "402": *a164
+        "403": *a164
+        "404": *a164
+        "409": *a164
+        "410": *a164
+        "429": *a164
+        "503": *a164
   /v1/audit/export:
     get:
       summary: Audit jurnali Excel (kompaniya admini, filtrlar bilan, 5000 tagacha yozuv)
@@ -10086,20 +10167,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a164
+        "400": &a165
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a164
-        "402": *a164
-        "403": *a164
-        "404": *a164
-        "409": *a164
-        "410": *a164
-        "429": *a164
-        "503": *a164
+        "401": *a165
+        "402": *a165
+        "403": *a165
+        "404": *a165
+        "409": *a165
+        "410": *a165
+        "429": *a165
+        "503": *a165
   /v1/projects/{id}/premises:
     get:
       summary: Obyekt xonadonlari; q — raqam; block_id (yoki none — bloksiz), zone_id (shu zona va ichidagilar, masalan kirish
@@ -10199,20 +10280,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a165
+        "400": &a166
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a165
-        "402": *a165
-        "403": *a165
-        "404": *a165
-        "409": *a165
-        "410": *a165
-        "429": *a165
-        "503": *a165
+        "401": *a166
+        "402": *a166
+        "403": *a166
+        "404": *a166
+        "409": *a166
+        "410": *a166
+        "429": *a166
+        "503": *a166
     post:
       summary: Xonadon yaratish; raqam blok ichida (blok yo‘q bo‘lsa obyekt ichida) takrorlanmaydi — PREMISE_NUMBER_CONFLICT
       operationId: post_v1_projects__id_premises
@@ -10244,20 +10325,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a166
+        "400": &a167
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a166
-        "402": *a166
-        "403": *a166
-        "404": *a166
-        "409": *a166
-        "410": *a166
-        "429": *a166
-        "503": *a166
+        "401": *a167
+        "402": *a167
+        "403": *a167
+        "404": *a167
+        "409": *a167
+        "410": *a167
+        "429": *a167
+        "503": *a167
       requestBody:
         required: true
         content:
@@ -10345,20 +10426,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a167
+        "400": &a168
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a167
-        "402": *a167
-        "403": *a167
-        "404": *a167
-        "409": *a167
-        "410": *a167
-        "429": *a167
-        "503": *a167
+        "401": *a168
+        "402": *a168
+        "403": *a168
+        "404": *a168
+        "409": *a168
+        "410": *a168
+        "429": *a168
+        "503": *a168
       requestBody:
         required: true
         content:
@@ -10420,20 +10501,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a168
+        "400": &a169
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a168
-        "402": *a168
-        "403": *a168
-        "404": *a168
-        "409": *a168
-        "410": *a168
-        "429": *a168
-        "503": *a168
+        "401": *a169
+        "402": *a169
+        "403": *a169
+        "404": *a169
+        "409": *a169
+        "410": *a169
+        "429": *a169
+        "503": *a169
       requestBody:
         required: true
         content:
@@ -10526,20 +10607,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a169
+        "400": &a170
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a169
-        "402": *a169
-        "403": *a169
-        "404": *a169
-        "409": *a169
-        "410": *a169
-        "429": *a169
-        "503": *a169
+        "401": *a170
+        "402": *a170
+        "403": *a170
+        "404": *a170
+        "409": *a170
+        "410": *a170
+        "429": *a170
+        "503": *a170
       requestBody:
         required: true
         content:
@@ -10594,20 +10675,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a170
+        "400": &a171
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a170
-        "402": *a170
-        "403": *a170
-        "404": *a170
-        "409": *a170
-        "410": *a170
-        "429": *a170
-        "503": *a170
+        "401": *a171
+        "402": *a171
+        "403": *a171
+        "404": *a171
+        "409": *a171
+        "410": *a171
+        "429": *a171
+        "503": *a171
       requestBody:
         required: true
         content:
@@ -10658,20 +10739,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a171
+        "400": &a172
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a171
-        "402": *a171
-        "403": *a171
-        "404": *a171
-        "409": *a171
-        "410": *a171
-        "429": *a171
-        "503": *a171
+        "401": *a172
+        "402": *a172
+        "403": *a172
+        "404": *a172
+        "409": *a172
+        "410": *a172
+        "429": *a172
+        "503": *a172
   /v1/projects/{id}/premises/import/preview:
     post:
       summary: "Shablon bo‘yicha import rejasi: har qator create/update/unchanged/error, xatolar varaqdagi qator raqami bilan;
@@ -10705,20 +10786,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a172
+        "400": &a173
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a172
-        "402": *a172
-        "403": *a172
-        "404": *a172
-        "409": *a172
-        "410": *a172
-        "429": *a172
-        "503": *a172
+        "401": *a173
+        "402": *a173
+        "403": *a173
+        "404": *a173
+        "409": *a173
+        "410": *a173
+        "429": *a173
+        "503": *a173
       requestBody:
         required: true
         content:
@@ -10773,20 +10854,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a173
+        "400": &a174
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a173
-        "402": *a173
-        "403": *a173
-        "404": *a173
-        "409": *a173
-        "410": *a173
-        "429": *a173
-        "503": *a173
+        "401": *a174
+        "402": *a174
+        "403": *a174
+        "404": *a174
+        "409": *a174
+        "410": *a174
+        "429": *a174
+        "503": *a174
       requestBody:
         required: true
         content:
@@ -10827,20 +10908,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a174
+        "400": &a175
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a174
-        "402": *a174
-        "403": *a174
-        "404": *a174
-        "409": *a174
-        "410": *a174
-        "429": *a174
-        "503": *a174
+        "401": *a175
+        "402": *a175
+        "403": *a175
+        "404": *a175
+        "409": *a175
+        "410": *a175
+        "429": *a175
+        "503": *a175
   /v1/pricing/price-lists:
     get:
       summary: Obyektning narx varaqasi versiyalari (yangisi birinchi)
@@ -10882,20 +10963,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a175
+        "400": &a176
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a175
-        "402": *a175
-        "403": *a175
-        "404": *a175
-        "409": *a175
-        "410": *a175
-        "429": *a175
-        "503": *a175
+        "401": *a176
+        "402": *a176
+        "403": *a176
+        "404": *a176
+        "409": *a176
+        "410": *a176
+        "429": *a176
+        "503": *a176
     post:
       summary: "Yangi o‘zgarmas versiya: ustama foizi, R1 qadamlari va joriy CBU kursi bilan hisob (4-bo‘lim); xonadon yoki
         xarajat bo‘lmasa 409"
@@ -10921,20 +11002,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a176
+        "400": &a177
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a176
-        "402": *a176
-        "403": *a176
-        "404": *a176
-        "409": *a176
-        "410": *a176
-        "429": *a176
-        "503": *a176
+        "401": *a177
+        "402": *a177
+        "403": *a177
+        "404": *a177
+        "409": *a177
+        "410": *a177
+        "429": *a177
+        "503": *a177
       requestBody:
         required: true
         content:
@@ -11014,20 +11095,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a177
+        "400": &a178
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a177
-        "402": *a177
-        "403": *a177
-        "404": *a177
-        "409": *a177
-        "410": *a177
-        "429": *a177
-        "503": *a177
+        "401": *a178
+        "402": *a178
+        "403": *a178
+        "404": *a178
+        "409": *a178
+        "410": *a178
+        "429": *a178
+        "503": *a178
   /v1/pricing/price-lists/{id}/export:
     get:
       summary: Narx varaqasi Excel tanlangan valyutada (USD — versiya kursi bilan; kurs bo‘lmasa 409); prices.read shart;
@@ -11063,20 +11144,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-        "400": &a178
+        "400": &a179
           description: Xato; error.code mashina uchun barqaror identifikator.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "401": *a178
-        "402": *a178
-        "403": *a178
-        "404": *a178
-        "409": *a178
-        "410": *a178
-        "429": *a178
-        "503": *a178
+        "401": *a179
+        "402": *a179
+        "403": *a179
+        "404": *a179
+        "409": *a179
+        "410": *a179
+        "429": *a179
+        "503": *a179
 components:
   securitySchemes:
     bearerAuth:

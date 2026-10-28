@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
 import { one, audit } from './db.js';
-import { idParams, version, reason, uuid, text, timestamp } from './schemas.js';
+import { idParams, version, reason, uuid, text, timestamp, date } from './schemas.js';
+import { assertEstimateLine } from './estimates.js';
 import { projectScope, assignedUser } from './permissions.js';
 import { invariant } from './errors.js';
 export function lifecycleRoutes(add: (r: Endpoint) => void) {
@@ -57,6 +58,9 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
       description: z.string().trim().max(4000).nullable().optional(),
       zone_id: uuid.nullable().optional(),
       priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+      // V-A (D23): null — bog'lanishni olib tashlash; berilmasa — o'zgarmaydi.
+      estimate_line_id: uuid.nullable().optional(),
+      planned_start: date.nullable().optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, params, body }) => {
@@ -71,9 +75,12 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
       await assignedUser(db, actor.tenant_id, task.project_id, body.assignee_id);
       await assignedUser(db, actor.tenant_id, task.project_id, body.reviewer_id);
       invariant(body.assignee_id !== body.reviewer_id, 'SELF_REVIEW_FORBIDDEN');
+      // Bog'lanish o'zgarmasa (shu jumladan eski reviziya qatori) tekshirilmaydi — oddiy tahrir bloklanmaydi
+      if (body.estimate_line_id && body.estimate_line_id !== task.estimate_line_id)
+        await assertEstimateLine(db, actor.tenant_id, task.project_id, body.estimate_line_id);
       const row = await one(
         db,
-        'UPDATE tasks SET title=$2,assignee_id=$3,reviewer_id=$4,deadline=$5,description=CASE WHEN $6::boolean THEN $7 ELSE description END,zone_id=CASE WHEN $8::boolean THEN $9 ELSE zone_id END,priority=coalesce($10,priority),version=version+1 WHERE id=$1 RETURNING *',
+        'UPDATE tasks SET title=$2,assignee_id=$3,reviewer_id=$4,deadline=$5,description=CASE WHEN $6::boolean THEN $7 ELSE description END,zone_id=CASE WHEN $8::boolean THEN $9 ELSE zone_id END,priority=coalesce($10,priority),estimate_line_id=CASE WHEN $11::boolean THEN $12 ELSE estimate_line_id END,planned_start=CASE WHEN $13::boolean THEN $14 ELSE planned_start END,version=version+1 WHERE id=$1 RETURNING *',
         [
           params.id,
           body.title,
@@ -85,6 +92,10 @@ export function lifecycleRoutes(add: (r: Endpoint) => void) {
           body.zone_id !== undefined,
           body.zone_id ?? null,
           body.priority ?? null,
+          body.estimate_line_id !== undefined,
+          body.estimate_line_id ?? null,
+          body.planned_start !== undefined,
+          body.planned_start ?? null,
         ],
       );
       await audit(db, actor, 'task.update', params.id);

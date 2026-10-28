@@ -1091,6 +1091,166 @@ try {
     400,
   );
   passed.push('Task list mine=false/0 equals the unfiltered list, mine=true keeps only own tasks');
+  // ---- V-A (D23): vazifa ixtiyoriy smeta qatoriga bog'lanadi; reja/fakt qatordan, hajm faqat hisobot orqali
+  const lineTask = await call(
+    'POST',
+    '/v1/tasks',
+    {
+      project_id: project.id,
+      title: 'Devor vazifasi',
+      assignee_id: brigadier.id,
+      reviewer_id: foreman.id,
+      priority: 'normal',
+      estimate_line_id: workEstimate.lines[0].id,
+      planned_start: '2026-10-20',
+    },
+    adminToken,
+  );
+  const lineRow = (
+    await call('GET', `/v1/tasks?project_id=${project.id}`, undefined, adminToken)
+  ).items.find((x: any) => x.id === lineTask.id);
+  assert.equal(lineRow.planned_start, '2026-10-20');
+  assert.equal(lineRow.estimate_line_name, 'Devor qurish');
+  assert.equal(lineRow.estimate_kind, 'labor');
+  assert.equal(lineRow.estimate_unit, 'hour');
+  assert.equal(lineRow.estimate_plan_quantity, '10.000000');
+  assert.equal(lineRow.estimate_fact_quantity, '3.000000');
+  assert.equal(lineRow.estimate_percent, '30.0');
+  assert.equal(lineRow.estimate_line_archived, false);
+  const lineDetail = await call('GET', `/v1/tasks/${lineTask.id}`, undefined, adminToken);
+  assert.equal(lineDetail.estimate_percent, '30.0');
+  assert.equal(lineDetail.estimate_fact_value, null);
+  // qator qidiruvi: faqat obyektning joriy smeta qatorlari, q — tavsif/smeta nomi bo'yicha
+  const lineSearch = await call(
+    'GET',
+    `/v1/estimate-lines?project_id=${project.id}&q=devor`,
+    undefined,
+    adminToken,
+  );
+  assert(
+    lineSearch.items.some(
+      (l: any) => l.id === workEstimate.lines[0].id && l.estimate_name === 'Ish smetasi',
+    ),
+  );
+  assert(!lineSearch.items.some((l: any) => l.id === est.lines[0].id));
+  // boshqa obyekt qatori yoki mavjud bo'lmagan qator — 400
+  for (const badLine of [randomUUID(), est2After.lines[0].id])
+    assert.equal(
+      (
+        await call(
+          'PATCH',
+          `/v1/tasks/${lineTask.id}`,
+          {
+            version: 1,
+            title: 'Devor vazifasi',
+            assignee_id: brigadier.id,
+            reviewer_id: foreman.id,
+            deadline: null,
+            estimate_line_id: badLine,
+          },
+          adminToken,
+          undefined,
+          400,
+        )
+      ).error.code,
+      'ESTIMATE_LINE_NOT_FOUND',
+    );
+  // reviziya: vazifa yangi reviziyadagi o'sha qatorga o'tadi; qator yo'qolsa — eski (arxivlangan) qatorda qoladi
+  const revEstimate = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: project.id,
+      name: 'Reviziya smetasi',
+      lines: [
+        { kind: 'labor', description: 'Shtukaturka', unit_id: 'hour', quantity: '4', unit_price: '1' },
+      ],
+    },
+    adminToken,
+  );
+  const revTask = await call(
+    'PATCH',
+    `/v1/tasks/${lineTask.id}`,
+    {
+      version: 1,
+      title: 'Devor vazifasi',
+      assignee_id: brigadier.id,
+      reviewer_id: foreman.id,
+      deadline: null,
+      estimate_line_id: revEstimate.lines[0].id,
+    },
+    adminToken,
+  );
+  assert.equal(revTask.estimate_line_id, revEstimate.lines[0].id);
+  const revised = await call(
+    'PATCH',
+    `/v1/estimates/${revEstimate.id}`,
+    {
+      project_id: project.id,
+      name: 'Reviziya smetasi',
+      version: 1,
+      lines: [
+        { kind: 'labor', description: 'Shtukaturka', unit_id: 'hour', category: '', quantity: '6', unit_price: '1' },
+      ],
+    },
+    adminToken,
+  );
+  assert.notEqual(revised.lines[0].id, revEstimate.lines[0].id);
+  const afterRevision = await call('GET', `/v1/tasks/${lineTask.id}`, undefined, adminToken);
+  assert.equal(afterRevision.estimate_line_id, revised.lines[0].id);
+  assert.equal(afterRevision.estimate_plan_quantity, '6.000000');
+  assert.equal(afterRevision.estimate_line_archived, false);
+  await call(
+    'PATCH',
+    `/v1/estimates/${revEstimate.id}`,
+    {
+      project_id: project.id,
+      name: 'Reviziya smetasi',
+      version: 2,
+      lines: [
+        { kind: 'labor', description: 'Boʻyoq', unit_id: 'hour', category: '', quantity: '6', unit_price: '1' },
+      ],
+    },
+    adminToken,
+  );
+  const afterRename = await call('GET', `/v1/tasks/${lineTask.id}`, undefined, adminToken);
+  assert.equal(afterRename.estimate_line_id, revised.lines[0].id);
+  assert.equal(afterRename.estimate_line_archived, true);
+  // eski qator bilan oddiy tahrir bloklanmaydi (bog'lanish o'zgarmagan)
+  const keptOld = await call(
+    'PATCH',
+    `/v1/tasks/${lineTask.id}`,
+    {
+      version: 2,
+      title: 'Devor vazifasi (tahrir)',
+      assignee_id: brigadier.id,
+      reviewer_id: foreman.id,
+      deadline: null,
+      estimate_line_id: revised.lines[0].id,
+    },
+    adminToken,
+  );
+  assert.equal(keptOld.estimate_line_id, revised.lines[0].id);
+  // null — bog'lanish olib tashlanadi
+  const unlinked = await call(
+    'PATCH',
+    `/v1/tasks/${lineTask.id}`,
+    {
+      version: 3,
+      title: 'Devor vazifasi',
+      assignee_id: brigadier.id,
+      reviewer_id: foreman.id,
+      deadline: null,
+      estimate_line_id: null,
+      planned_start: null,
+    },
+    adminToken,
+  );
+  assert.equal(unlinked.estimate_line_id, null);
+  assert.equal(unlinked.planned_start, null);
+  passed.push(
+    'Tasks link to one current estimate line: plan/fact/percent from the line, line search per project, revision re-points the task, missing match flags the archived line without blocking edits, null unlinks',
+  );
   await call(
     'POST',
     `/v1/tasks/${task.id}/transition`,

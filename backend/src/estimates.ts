@@ -5,6 +5,36 @@ import { permit, projectScope } from './permissions.js';
 import { estimateInput } from './schemas.js';
 import { DomainError, invariant } from './errors.js';
 import { dec, money, plannedQuantity } from './money.js';
+/** Ish qatori fakti (`l` — estimate_lines): qabul qilingan hisobot hajmlari + tuzatishlar. */
+export const workFactSql = `(coalesce((SELECT sum(pe.quantity) FROM progress_entries pe WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0)
+  +coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))`;
+/**
+ * Vazifalar uchun smeta qatori maydonlari (`t` — tasks, `l` — LEFT JOIN estimate_lines). Fakt: material qatorida
+ * tasdiqlangan sarf, ish qatorida qabul qilingan hajm. Reviziyadan keyin qator arxivlangan bo'lishi mumkin (`estimate_line_archived`).
+ */
+export const taskLineSql = `l.description estimate_line_name,l.kind estimate_kind,l.unit_id estimate_unit,l.effective_quantity::text estimate_plan_quantity,
+    CASE WHEN l.id IS NULL THEN NULL WHEN l.kind='material'
+      THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
+      ELSE ${workFactSql} END::text estimate_fact_quantity,
+    CASE WHEN l.id IS NULL OR l.effective_quantity<=0 THEN NULL ELSE round(100*(CASE WHEN l.kind='material'
+      THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
+      ELSE ${workFactSql} END)/l.effective_quantity,1)::text END estimate_percent,
+    (l.archived_at IS NOT NULL) estimate_line_archived`;
+export const taskLineJoinSql = `LEFT JOIN estimate_lines l ON l.tenant_id=t.tenant_id AND l.id=t.estimate_line_id`;
+/** Obyektning joriy smetasidagi (arxivlanmagan) qator; boshqa obyekt yoki eski reviziya — xato. */
+export async function assertEstimateLine(db: Db, tenantId: string, projectId: string, lineId: string) {
+  invariant(
+    (
+      await db.query(
+        `SELECT 1 FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id
+         WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.id=$3 AND l.archived_at IS NULL AND e.archived_at IS NULL`,
+        [tenantId, projectId, lineId],
+      )
+    ).rowCount,
+    'ESTIMATE_LINE_NOT_FOUND',
+    400,
+  );
+}
 export async function validateEstimate(db: Db, actor: Row, input: Row) {
   estimateInput.parse(input);
   await projectScope(db, actor, input.project_id);
@@ -111,6 +141,22 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
       );
     lines.push({ ...row, months: line.months ?? [] });
   }
+  // V-A: reviziyada vazifalar yangi reviziyadagi "o'sha" qatorga o'tadi (tur, nom, birlik, zona, material bir xil;
+  // bir nechta bo'lsa — birinchisi). Mos qator bo'lmasa vazifa eski (arxivlangan) qatorda qoladi va kartada belgilanadi.
+  if (existing)
+    await db.query(
+      `UPDATE tasks t SET estimate_line_id=(
+         SELECT n.id FROM estimate_lines n WHERE n.tenant_id=t.tenant_id AND n.estimate_id=$2 AND n.archived_at IS NULL
+           AND n.kind=o.kind AND n.description=o.description AND n.unit_id=o.unit_id
+           AND n.zone_id IS NOT DISTINCT FROM o.zone_id AND n.material_id IS NOT DISTINCT FROM o.material_id
+         ORDER BY n.position,n.id LIMIT 1)
+       FROM estimate_lines o
+       WHERE t.tenant_id=$1 AND t.archived_at IS NULL AND o.tenant_id=$1 AND o.id=t.estimate_line_id AND o.estimate_id=$2 AND o.archived_at IS NOT NULL
+         AND EXISTS(SELECT 1 FROM estimate_lines n WHERE n.tenant_id=t.tenant_id AND n.estimate_id=$2 AND n.archived_at IS NULL
+           AND n.kind=o.kind AND n.description=o.description AND n.unit_id=o.unit_id
+           AND n.zone_id IS NOT DISTINCT FROM o.zone_id AND n.material_id IS NOT DISTINCT FROM o.material_id)`,
+      [actor.tenant_id, estimate.id],
+    );
   const result = { ...estimate, name: input.name, lines };
   await db.query(
     'INSERT INTO estimate_revisions(tenant_id,estimate_id,revision,snapshot,created_by) VALUES($1,$2,$3,$4,$5)',

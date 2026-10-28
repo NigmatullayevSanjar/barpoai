@@ -4,7 +4,7 @@ import { Archive, Pencil, Plus } from 'lucide-react';
 import { api, ApiError, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/lib/format';
 import {
   Alert,
   Avatar,
@@ -22,6 +22,7 @@ import {
   useListState,
 } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { ExportButton } from '@/features/common/ExportButton';
 import { useZones } from '@/features/estimates/model';
@@ -85,7 +86,9 @@ export function TasksPage() {
     (x) =>
       (!priority || x.priority === priority) &&
       (!needle ||
-        [x.title, x.assignee_name, x.zone_name].some((f) => (f ?? '').toLocaleLowerCase().includes(needle))),
+        [x.title, x.assignee_name, x.zone_name, x.estimate_line_name].some((f) =>
+          (f ?? '').toLocaleLowerCase().includes(needle),
+        )),
   );
   const Deadline = ({ task }: { task: Task }) => {
     if (!task.deadline) return <span className="muted">—</span>;
@@ -122,7 +125,15 @@ export function TasksPage() {
         <>
           <div className="cell-main">{r.title}</div>
           <div className="cell-sub">
-            {[r.zone_name, r.file_count ? `📎 ${r.file_count}` : null].filter(Boolean).join(' · ')}
+            {[
+              r.estimate_line_name
+                ? `${r.estimate_line_name}${r.estimate_percent ? ` · ${r.estimate_percent} %` : ''}`
+                : null,
+              r.zone_name,
+              r.file_count ? `📎 ${r.file_count}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </div>
         </>
       ),
@@ -275,6 +286,12 @@ export function TasksPage() {
                       </small>
                     </div>
                     <b>{task.title}</b>
+                    {task.estimate_line_name && (
+                      <small className="muted truncate">
+                        {task.estimate_line_name}
+                        {task.estimate_percent ? ` · ${task.estimate_percent} %` : ''}
+                      </small>
+                    )}
                     <div className="kanban-card-foot">
                       <span className="truncate">{task.zone_name ?? ''}</span>
                       <span className="row">
@@ -317,8 +334,16 @@ export function TasksPage() {
   );
 }
 
+type EstimateLineOption = {
+  id: string;
+  description: string;
+  unit_id: string;
+  effective_quantity: string;
+  estimate_name: string;
+};
 function TaskModal({ projectId, task, onClose }: { projectId: string; task?: Task; onClose: () => void }) {
   const { t } = useT();
+  const { can } = useAuth();
   const members = useMembers(projectId);
   const zones = useZones(projectId);
   const [form, setForm] = useState({
@@ -329,6 +354,8 @@ function TaskModal({ projectId, task, onClose }: { projectId: string; task?: Tas
     priority: task?.priority ?? 'normal',
     deadline: task?.deadline ? task.deadline.slice(0, 16) : '',
     zone_id: task?.zone_id ?? '',
+    estimate_line_id: task?.estimate_line_id ?? '',
+    planned_start: task?.planned_start ?? '',
   });
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const same = form.assignee_id && form.assignee_id === form.reviewer_id;
@@ -347,6 +374,8 @@ function TaskModal({ projectId, task, onClose }: { projectId: string; task?: Tas
               description: form.description.trim() || null,
               zone_id: form.zone_id || null,
               priority: form.priority,
+              estimate_line_id: form.estimate_line_id || null,
+              planned_start: form.planned_start || null,
             },
           })
         : api('/v1/tasks', {
@@ -360,6 +389,8 @@ function TaskModal({ projectId, task, onClose }: { projectId: string; task?: Tas
               ...(deadline ? { deadline } : {}),
               ...(form.zone_id ? { zone_id: form.zone_id } : {}),
               ...(form.description.trim() ? { description: form.description.trim() } : {}),
+              ...(form.estimate_line_id ? { estimate_line_id: form.estimate_line_id } : {}),
+              ...(form.planned_start ? { planned_start: form.planned_start } : {}),
             },
           });
     },
@@ -448,6 +479,27 @@ function TaskModal({ projectId, task, onClose }: { projectId: string; task?: Tas
             </option>
           ))}
         </Select>
+        <Input
+          type="date"
+          label={t('tasks.planned_start')}
+          value={form.planned_start}
+          onChange={(e) => set('planned_start', e.target.value)}
+        />
+        {can('estimates') && (
+          <SearchSelect<EstimateLineOption>
+            wrapClassName="span-2"
+            path="/v1/estimate-lines"
+            params={{ project_id: projectId }}
+            label={t('tasks.estimate_line')}
+            hint={t('tasks.estimate_line_hint')}
+            value={form.estimate_line_id}
+            valueLabel={task?.estimate_line_name ?? undefined}
+            onChange={(id) => set('estimate_line_id', id)}
+            getId={(l) => l.id}
+            getLabel={(l) => l.description}
+            getSub={(l) => `${formatQuantity(l.effective_quantity, l.unit_id)} · ${l.estimate_name}`}
+          />
+        )}
         <Textarea
           wrapClassName="span-2"
           label={t('tasks.description')}
@@ -526,6 +578,31 @@ function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               <dt>{t('tasks.deadline')}</dt>
               <dd>{d.deadline ? formatDateTime(d.deadline, lang) : t('tasks.no_deadline')}</dd>
             </div>
+            {d.planned_start && (
+              <div>
+                <dt>{t('tasks.planned_start')}</dt>
+                <dd>{formatDate(d.planned_start, lang)}</dd>
+              </div>
+            )}
+            {d.estimate_line_name && (
+              <div>
+                <dt>{t('tasks.estimate_line')}</dt>
+                <dd>
+                  {d.estimate_line_name}{' '}
+                  {d.estimate_line_archived && (
+                    <Badge tone="warning">{t('tasks.estimate_old_revision')}</Badge>
+                  )}
+                  <small className="muted" style={{ display: 'block' }}>
+                    {t('tasks.estimate_plan')}: {formatQuantity(d.estimate_plan_quantity, d.estimate_unit)} ·{' '}
+                    {t('tasks.estimate_fact')}: {formatQuantity(d.estimate_fact_quantity, d.estimate_unit)}
+                    {d.estimate_percent ? ` (${d.estimate_percent} %)` : ''}
+                    {d.estimate_fact_value
+                      ? ` · ${t('tasks.estimate_consumed')}: ${formatMoney(d.estimate_fact_value, lang)}`
+                      : ''}
+                  </small>
+                </dd>
+              </div>
+            )}
             <div>
               <dt>{t('tasks.created_by')}</dt>
               <dd>

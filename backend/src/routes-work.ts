@@ -16,6 +16,7 @@ import {
   timestamp,
   queryBool,
 } from './schemas.js';
+import { assertEstimateLine, taskLineSql, taskLineJoinSql } from './estimates.js';
 import { projectScope, assignedUser, allowed } from './permissions.js';
 import { notify, projectRecipients } from './notify.js';
 import { invariant } from './errors.js';
@@ -25,10 +26,10 @@ export async function listTasks(db: Db, actor: Row, query: Row) {
   return {
     items: (
       await db.query(
-        `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,z.name zone_name,
+        `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,z.name zone_name,${taskLineSql},
                 (t.deadline IS NOT NULL AND t.deadline<now() AND t.status<>'accepted') overdue,
                 (SELECT count(*)::int FROM files f WHERE f.tenant_id=t.tenant_id AND f.task_id=t.id AND f.archived_at IS NULL) file_count
-         FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id LEFT JOIN zones z ON z.id=t.zone_id
+         FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id LEFT JOIN zones z ON z.id=t.zone_id ${taskLineJoinSql}
          WHERE t.tenant_id=$1 AND t.project_id=$2 AND t.archived_at IS NULL AND (($3 AND NOT $7::boolean) OR t.assignee_id=$4 OR t.reviewer_id=$4)
            AND ($8::text IS NULL OR ($8='open' AND t.status<>'accepted') OR t.status=$8)
          ORDER BY CASE t.status WHEN 'accepted' THEN 1 ELSE 0 END,t.deadline NULLS LAST,t.created_at LIMIT $5 OFFSET $6`,
@@ -93,6 +94,9 @@ export function workRoutes(add: (r: Endpoint) => void) {
       priority: z.enum(['low', 'normal', 'high', 'urgent']),
       deadline: timestamp.optional(),
       description: z.string().trim().max(4000).optional(),
+      // V-A (D23): ixtiyoriy smeta qatori (shu obyektning joriy smetasidan) va rejadagi boshlanish sanasi.
+      estimate_line_id: uuid.optional(),
+      planned_start: date.optional(),
     }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
@@ -100,9 +104,11 @@ export function workRoutes(add: (r: Endpoint) => void) {
       await assignedUser(db, actor.tenant_id, body.project_id, body.assignee_id);
       await assignedUser(db, actor.tenant_id, body.project_id, body.reviewer_id);
       invariant(body.assignee_id !== body.reviewer_id, 'SELF_REVIEW_FORBIDDEN');
+      if (body.estimate_line_id)
+        await assertEstimateLine(db, actor.tenant_id, body.project_id, body.estimate_line_id);
       const row = await one(
         db,
-        'INSERT INTO tasks(tenant_id,project_id,zone_id,title,assignee_id,reviewer_id,priority,deadline,created_by,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+        'INSERT INTO tasks(tenant_id,project_id,zone_id,title,assignee_id,reviewer_id,priority,deadline,created_by,description,estimate_line_id,planned_start) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
         [
           actor.tenant_id,
           body.project_id,
@@ -114,6 +120,8 @@ export function workRoutes(add: (r: Endpoint) => void) {
           body.deadline ?? null,
           actor.id,
           body.description || null,
+          body.estimate_line_id ?? null,
+          body.planned_start ?? null,
         ],
       );
       await audit(db, actor, 'task.create', row.id);

@@ -25,6 +25,16 @@ export type Task = {
   version: number;
   created_by: string;
   created_at: string;
+  /** V-A: ixtiyoriy smeta qatori va rejadagi boshlanish sanasi; reja/fakt serverdan */
+  estimate_line_id: string | null;
+  planned_start: string | null;
+  estimate_line_name: string | null;
+  estimate_kind: 'material' | 'labor' | 'equipment' | 'service' | null;
+  estimate_unit: string | null;
+  estimate_plan_quantity: string | null;
+  estimate_fact_quantity: string | null;
+  estimate_percent: string | null;
+  estimate_line_archived: boolean;
 };
 export type HistoryItem = {
   action: string;
@@ -43,6 +53,8 @@ export type FileMeta = {
 export type TaskDetail = Task & {
   project_name: string;
   created_by_name: string;
+  /** Material qatorida sarf summasi (faqat narx huquqi bilan), aks holda null */
+  estimate_fact_value: string | null;
   files: FileMeta[];
   history: HistoryItem[];
 };

@@ -116,12 +116,14 @@ F1a tafsiloti: `backend/src/permissions.ts` (admin uchun `adminReadOnlyStock` qa
 | Bosqich | Ish | Holat |
 |---|---|---|
 | V-D | Obyekt moliya kartasi: smeta, fakt, qolgan, bajarilish, to‘langan, qarz, avans, tushum — `GET /v1/projects/:id` `finance` (faqat `prices.read`) | bajarildi 2026-10-28 |
-| V-A | Vazifani smeta qatoriga bog‘lash (kartada reja, qabul qilingan hajm, material sarfi; boshlanish sanasi) | rejalashtirilgan |
+| V-A | Vazifani smeta qatoriga bog‘lash (kartada reja, qabul qilingan hajm, material sarfi; boshlanish sanasi) — `tasks.estimate_line_id`, `tasks.planned_start` (migratsiya 025), `GET /v1/estimate-lines` | bajarildi 2026-10-28 |
 | V-B | Ko‘p qatorli talabnoma | rejalashtirilgan |
 | V-E | Qavat × ish progress jadvali | rejalashtirilgan |
 | V-C | Brigada akkord hisobi (qoidalar D23) | rejalashtirilgan |
 
 Hajm: S — bir necha kun, M — 1–2 hafta, L — 2+ hafta (taxminiy).
+
+V-A tafsiloti: vazifa ixtiyoriy ravishda **bitta** joriy smeta qatoriga bog‘lanadi (boshqa obyekt yoki eski reviziya qatori — 400 `ESTIMATE_LINE_NOT_FOUND`); `planned_start` — rejalashtirilgan boshlanish sanasi. Vazifa ro‘yxati va kartasi qatordan reja hajmini, faktni (ish qatori — qabul qilingan hisobot hajmlari va tuzatishlar; material qatori — tasdiqlangan sarf) va foizni oladi; karta `prices.read` bilan material sarfining summasini (ombor jurnali) ko‘rsatadi. Vazifa o‘zi progress yozmaydi — hajm faqat kundalik hisobot orqali. Kanban kartasida qator nomi va foiz, qidiruv qator nomi bo‘yicha ham. Smeta reviziyasida vazifa yangi reviziyadagi o‘sha qatorga (tur, nom, birlik, zona, material bir xil) o‘tadi; mos qator bo‘lmasa eski qatorda qoladi va kartada “Eski reviziya qatori” belgisi chiqadi — foydalanuvchi qayta bog‘laydi. `GET /v1/estimate-lines?project_id&q` (`estimates.read`) — obyektning joriy qatorlari qidiruvi; vazifa oynasida qator tanlash faqat smetani ko‘ra oladigan rolga chiqadi.
 
 ---
 

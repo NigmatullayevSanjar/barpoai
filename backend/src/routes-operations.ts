@@ -301,6 +301,29 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   });
   add({
     method: 'GET',
+    path: '/v1/estimate-lines',
+    summary:
+      'Obyektning joriy smeta qatorlari (vazifaga bog‘lash tanlovi): nom, birlik, reja hajmi, smeta nomi; narxsiz',
+    permission: 'estimates.read',
+    query: searchQuery.extend({ project_id: uuid }),
+    handler: async ({ db, actor, query }) => {
+      await projectScope(db, actor, query.project_id);
+      return {
+        items: (
+          await db.query(
+            `SELECT l.id,l.estimate_id,e.name estimate_name,l.kind,l.description,l.unit_id,l.effective_quantity::text effective_quantity,l.category,z.name zone_name
+             FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
+             WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL
+               AND ($3::text IS NULL OR l.description ILIKE $3 ESCAPE '\\' OR e.name ILIKE $3 ESCAPE '\\' OR coalesce(l.category,'') ILIKE $3 ESCAPE '\\')
+             ORDER BY e.name,l.position,l.id LIMIT $4 OFFSET $5`,
+            [actor.tenant_id, query.project_id, query.q ? likePattern(query.q) : null, query.limit, query.offset],
+          )
+        ).rows,
+      };
+    },
+  });
+  add({
+    method: 'GET',
     path: '/v1/estimates/:id',
     summary:
       'Joriy smeta va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona bo‘yicha guruhlar (decimal)',
