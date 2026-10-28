@@ -23,8 +23,9 @@ const TZ = 'Asia/Tashkent';
 const todaySql = (col: string) =>
   `(${col} AT TIME ZONE '${TZ}')::date=(now() AT TIME ZONE '${TZ}')::date`;
 /** Ish qatori bo'yicha tasdiqlangan progress (tuzatishlar bilan). */
-export const workFactSql = `(coalesce((SELECT sum(pe.quantity) FROM progress_entries pe WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0)
-  +coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))`;
+// `workFactSql` endi estimates.ts da (vazifalar marshruti ham ishlatadi; dashboard ↔ work aylanma importi bo'lmasin).
+export { workFactSql } from './estimates.js';
+import { workFactSql } from './estimates.js';
 /** Rol doirasidagi stock hisoblari (ombor mudiri — biriktirilgan omborlar, brigadir — o'z hisobi). */
 const accountScopeSql = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
 /** Xarajat yozuvlari ($1 tenant, $2 obyektlar): tur va hisob sanasi. Hujjat — `document_date`, ombor sarfida hujjat sanasi yo'q,

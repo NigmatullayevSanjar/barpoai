@@ -6,6 +6,7 @@ import { projectScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { notify } from './notify.js';
 import { quantity } from './money.js';
+import { taskLineSql, taskLineJoinSql } from './estimates.js';
 
 /** Qabul qilingan progressni tuzatish: asl yozuv o'zgarmaydi, farq alohida saqlanadi (platforma tuzatishi ham shu). */
 export async function correctProgress(
@@ -61,8 +62,8 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, params }) => {
       const task = await one(
         db,
-        `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,c.display_name created_by_name,z.name zone_name,p.name project_name
-         FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id JOIN users c ON c.id=t.created_by LEFT JOIN zones z ON z.id=t.zone_id JOIN projects p ON p.id=t.project_id
+        `SELECT t.*,a.display_name assignee_name,r.display_name reviewer_name,c.display_name created_by_name,z.name zone_name,p.name project_name,${taskLineSql}
+         FROM tasks t JOIN users a ON a.id=t.assignee_id JOIN users r ON r.id=t.reviewer_id JOIN users c ON c.id=t.created_by LEFT JOIN zones z ON z.id=t.zone_id JOIN projects p ON p.id=t.project_id ${taskLineJoinSql}
          WHERE t.tenant_id=$1 AND t.id=$2 AND t.archived_at IS NULL`,
         [actor.tenant_id, params.id],
       );
@@ -86,7 +87,19 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
           [actor.tenant_id, params.id],
         )
       ).rows;
-      return { ...task, files, history };
+      // V-A: material qatorida sarf summasi (jurnal) — faqat narx huquqi bilan; ish qatorida summa yo'q (hajm).
+      const estimateFactValue =
+        task.estimate_kind === 'material' && (await allowed(db, actor, 'prices.read'))
+          ? (
+              await one(
+                db,
+                `SELECT coalesce(-sum(j.amount),0)::numeric(20,2)::text v FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id
+                 WHERE j.tenant_id=$1 AND c.estimate_line_id=$2 AND c.kind='consumption' AND j.account='inventory'`,
+                [actor.tenant_id, task.estimate_line_id],
+              )
+            ).v
+          : null;
+      return { ...task, estimate_fact_value: estimateFactValue, files, history };
     },
   });
   add({

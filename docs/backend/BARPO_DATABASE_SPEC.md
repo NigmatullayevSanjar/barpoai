@@ -973,6 +973,17 @@ CREATE INDEX audit_created ON audit_events(created_at DESC, id);
 
 ```
 
+## 025_task_estimate_line.sql
+
+```sql
+-- V-A (D23, 2026-10-28): vazifa ixtiyoriy smeta qatoriga bog'lanadi (kartada reja, qabul qilingan hajm, sarf)
+-- va rejadagi boshlanish sanasiga ega. Qator shu obyektniki bo'lishi shart (kompozit FK).
+ALTER TABLE tasks ADD COLUMN estimate_line_id uuid, ADD COLUMN planned_start date;
+ALTER TABLE tasks ADD CONSTRAINT tasks_estimate_line_fk FOREIGN KEY(tenant_id,project_id,estimate_line_id) REFERENCES estimate_lines(tenant_id,project_id,id);
+CREATE INDEX tasks_estimate_line ON tasks(tenant_id,estimate_line_id) WHERE estimate_line_id IS NOT NULL;
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

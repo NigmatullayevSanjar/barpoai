@@ -865,10 +865,14 @@ try {
     .getByLabel(/^Tekshiruvchi/)
     .selectOption(reviewerOption!);
   await dialog().getByLabel('Muhimlik').selectOption('high');
+  // V-A: smeta qatori va boshlanish sanasi
+  await pickOption(dialog(), /^Smeta qatori/, 'Beton', /Beton quyish/);
+  await dialog().getByLabel('Boshlanish sanasi').fill('2026-10-20');
   await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
   await dialog().waitFor({ state: 'detached' });
   await adminPage.getByText('Poydevor armaturasini bog‘lash').first().waitFor();
-  checks.push('Task created from the kanban page with assignee, reviewer and priority');
+  await adminPage.getByText(/Beton quyish/).first().waitFor();
+  checks.push('Task created from the kanban page with assignee, reviewer, priority, an estimate line and a start date; the card shows the line');
   await brigadierPage.goto(webURL + '/app/tasks?project=' + projectUrl.split('/').pop());
   await brigadierPage.getByText('Poydevor armaturasini bog‘lash').first().click();
   await brigadierPage.getByRole('button', { name: 'Boshlash' }).click();
@@ -881,6 +885,8 @@ try {
     .waitFor();
   await adminPage.reload();
   await adminPage.getByText('Poydevor armaturasini bog‘lash').first().click();
+  await adminPage.getByRole('dialog').getByText('Smeta qatori', { exact: true }).waitFor();
+  await adminPage.getByRole('dialog').getByText(/^Reja: /).waitFor();
   await adminPage.getByRole('dialog').getByLabel('Izoh').fill('Sifat talabga javob beradi');
   await adminPage.getByRole('button', { name: 'Qabul qilish', exact: true }).click();
   await adminPage.getByRole('dialog').getByText('Qabul qilingan').first().waitFor();
