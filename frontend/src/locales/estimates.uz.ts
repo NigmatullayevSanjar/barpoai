@@ -49,6 +49,7 @@ export const estimatesUz: Record<string, string> = {
   'est.col.effective': 'Hisobiy miqdor',
   'est.col.unit_price': 'Birlik narxi',
   'est.col.total': 'Jami',
+  'est.col.labor_rate': 'Brigada stavkasi',
   'est.col.fact': 'Fakt',
   'est.col.note': 'Izoh',
   'est.col.months': 'Oylar',

@@ -49,6 +49,7 @@ export const estimatesRu: Record<string, string> = {
   'est.col.effective': 'Расчётное кол-во',
   'est.col.unit_price': 'Цена за ед.',
   'est.col.total': 'Сумма',
+  'est.col.labor_rate': 'Ставка бригады',
   'est.col.fact': 'Факт',
   'est.col.note': 'Примечание',
   'est.col.months': 'Месяцы',

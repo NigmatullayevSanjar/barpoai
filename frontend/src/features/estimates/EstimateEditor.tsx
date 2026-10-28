@@ -186,6 +186,9 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                 {t('est.col.unit_price')} (UZS)
               </th>
               <th className="num" style={{ width: 150 }}>
+                {t('est.col.labor_rate')}
+              </th>
+              <th className="num" style={{ width: 150 }}>
                 {t('est.col.total')}
               </th>
               <th style={{ width: 160 }}>{t('est.col.note')}</th>
@@ -385,6 +388,18 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                       onChange={(ev) => update(l.key, { unit_price: ev.target.value })}
                     />
                     {e.unit_price && <span className="cell-error">{e.unit_price}</span>}
+                  </td>
+                  <td>
+                    {l.kind !== 'material' && (
+                      // V-C (D23): brigada stavkasi, so'm/birlik; bo'sh — obyektning standart foizi ishlaydi
+                      <NumericInput
+                        className="input num"
+                        inputMode="decimal"
+                        value={l.labor_rate}
+                        aria-label={t('est.col.labor_rate')}
+                        onChange={(ev) => update(l.key, { labor_rate: ev.target.value })}
+                      />
+                    )}
                   </td>
                   <td className="cell-calc">{formatMoney(totalOf(l), lang, false, 'UZS')}</td>
                   <td>

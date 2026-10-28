@@ -124,6 +124,8 @@ export const workUz: Record<string, string> = {
   'reports.correction_delta': 'Farq (masalan, -5 yoki 2.5)',
   'reports.corrections': 'Tuzatishlar',
   'reports.effective_progress': 'Amalda',
+  'reports.labor_amount': 'Ishlab topilgan',
+  'reports.rate_missing': 'Stavka belgilanmagan',
   'reports.plan': 'Reja',
   'reports.detail': 'Hisobot kartasi',
   'reports.reviewed_by': 'Tekshirdi',

@@ -118,6 +118,38 @@ export type Dashboard = {
   employees: { active: number; by_role: Record<string, number> } | null;
 };
 
+/** V-C (D23): brigadirning akkord hisobi — hamma raqam serverdan (decimal satr). */
+export type MyEarnings = {
+  totals: Record<
+    'earned' | 'earned_month' | 'in_payroll' | 'paid' | 'posted_unpaid' | 'advances' | 'balance',
+    string
+  >;
+  projects: {
+    project_id: string;
+    project_name: string;
+    earned: string;
+    earned_month: string;
+    in_payroll: string;
+    paid: string;
+    posted_unpaid: string;
+    advances: string;
+    balance: string;
+  }[];
+  entries: {
+    id: string;
+    report_date: string;
+    project_name: string;
+    description: string;
+    unit_id: string;
+    quantity: string;
+    labor_rate: string | null;
+    amount: string | null;
+    payroll_month: string | null;
+  }[];
+};
+export function useMyEarnings() {
+  return useQuery({ queryKey: ['my-earnings'], queryFn: () => api<MyEarnings>('/v1/me/earnings') });
+}
 export function useDashboard(projectId: string, months: string) {
   return useQuery({
     queryKey: ['dashboard', projectId, months],

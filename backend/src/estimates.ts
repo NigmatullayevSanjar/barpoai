@@ -111,8 +111,8 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
     const effective = plannedQuantity(line);
     const row = await one(
       db,
-      `INSERT INTO estimate_lines(tenant_id,project_id,estimate_id,zone_id,material_id,kind,description,unit_id,quantity,norm,work_quantity,loss_percent,effective_quantity,unit_price,total,category,note,position)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      `INSERT INTO estimate_lines(tenant_id,project_id,estimate_id,zone_id,material_id,kind,description,unit_id,quantity,norm,work_quantity,loss_percent,effective_quantity,unit_price,total,category,note,position,labor_rate)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [
         actor.tenant_id,
         input.project_id,
@@ -132,6 +132,7 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
         line.category || null,
         line.note || null,
         line.position ?? input.lines.indexOf(line),
+        line.kind === 'material' ? null : (line.labor_rate ?? null),
       ],
     );
     for (const month of line.months ?? [])

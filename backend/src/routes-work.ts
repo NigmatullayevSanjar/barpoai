@@ -342,7 +342,10 @@ export function workRoutes(add: (r: Endpoint) => void) {
       if (body.action === 'accepted') {
         if (report.estimate_line_id)
           await db.query(
-            'INSERT INTO progress_entries(tenant_id,report_id,estimate_line_id,quantity) VALUES($1,$2,$3,$4)',
+            // V-C (D23): stavka qabulda qotiriladi — qator stavkasi, bo'lmasa obyekt foizi × smeta narxi; ikkisi ham yo'q — null
+            `INSERT INTO progress_entries(tenant_id,report_id,estimate_line_id,quantity,labor_rate)
+             SELECT $1,$2,$3,$4,CASE WHEN l.kind='material' THEN NULL ELSE coalesce(l.labor_rate,round(l.unit_price*p.brigade_percent/100,2)) END
+             FROM estimate_lines l JOIN projects p ON p.tenant_id=l.tenant_id AND p.id=l.project_id WHERE l.tenant_id=$1 AND l.id=$3`,
             [actor.tenant_id, report.id, report.estimate_line_id, report.progress_quantity],
           );
         if (report.forecast_end)

@@ -109,6 +109,18 @@ export function PayrollPage() {
         num(r.bonus) ? <span className="money-in">{money(r.bonus)}</span> : <span className="mono">0</span>,
     },
     {
+      key: 'piece',
+      header: t('fin.payroll.piece'),
+      align: 'right',
+      sortValue: (r) => num(r.piece_rate),
+      render: (r) =>
+        num(r.piece_rate) ? (
+          <span className="money-in">{money(r.piece_rate)}</span>
+        ) : (
+          <span className="mono">0</span>
+        ),
+    },
+    {
       key: 'ded',
       header: t('fin.payroll.deduction'),
       align: 'right',
@@ -229,6 +241,26 @@ export function PayrollPage() {
         <div className="card">
           <p className="card-pad muted">{t('fin.payroll.empty')}</p>
         </div>
+      )}
+      {period?.status === 'open' && period.piece_pending && period.piece_pending.length > 0 && (
+        <section className="card">
+          <div className="card-header">
+            <h3>
+              {t('fin.payroll.piece_pending')}
+              <span className="card-sub">{t('fin.payroll.piece_pending_hint')}</span>
+            </h3>
+          </div>
+          <div className="card-pad stack" style={{ gap: 4 }}>
+            {period.piece_pending.map((p) => (
+              <div key={p.employee_id} className="row" style={{ justifyContent: 'space-between' }}>
+                <span>{p.employee_name}</span>
+                <b className="mono">
+                  {money(p.amount)} {displayCurrency()}
+                </b>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
       {period && (
         <DataTable
@@ -418,6 +450,12 @@ function PayEntryModal({ entry, onClose }: { entry: PayrollEntry; onClose: () =>
         </>
       }
     >
+      {entry.advance_available && Number(entry.advance_available) > 0 && (
+        <p className="muted" style={{ margin: 0 }}>
+          {t('fin.payroll.advance_applied')}: <b>{formatMoney(entry.advance_available, lang, true, 'UZS')}</b>{' '}
+          · {t('fin.payroll.paid_cash')}: <b>{formatMoney(entry.cash_due ?? '0', lang, true, 'UZS')}</b>
+        </p>
+      )}
       <Select
         label={t('fin.cash_account')}
         value={cashAccount}

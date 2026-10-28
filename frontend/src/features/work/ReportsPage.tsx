@@ -4,7 +4,7 @@ import { Archive, Plus } from 'lucide-react';
 import { api, ApiError, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate, formatDateTime, formatQuantity, todayIso } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, formatQuantity, todayIso } from '@/lib/format';
 import {
   Alert,
   Badge,
@@ -516,6 +516,9 @@ function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   <th className="num">{t('reports.col.qty')}</th>
                   <th className="num">{t('reports.plan')}</th>
                   {d.progress && <th className="num">{t('reports.effective_progress')}</th>}
+                  {d.progress && d.progress.labor_amount !== undefined && (
+                    <th className="num">{t('reports.labor_amount')}</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -535,6 +538,18 @@ function ReportDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                           ({t('reports.corrections')}: {formatQuantity(d.progress.corrected_delta)})
                         </small>
                       ) : null}
+                    </td>
+                  )}
+                  {d.progress && d.progress.labor_amount !== undefined && (
+                    <td className="num">
+                      {d.progress.labor_amount === null ? (
+                        <span className="muted">{t('reports.rate_missing')}</span>
+                      ) : (
+                        <>
+                          <b>{formatMoney(d.progress.labor_amount, lang, false)}</b>
+                          <small className="muted"> ({formatMoney(d.progress.labor_rate ?? '0', lang, false)})</small>
+                        </>
+                      )}
                     </td>
                   )}
                 </tr>

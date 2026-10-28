@@ -19,7 +19,12 @@ async function lockCounterparty(db: Db, actor: Row, id: string) {
   ]);
 }
 /** Kontragentning shu obyektdagi avans qoldig'i (berilgan − hisoblangan; storno yozuvlari bilan). */
-async function advanceBalance(db: Db, actor: Row, projectId: string, counterpartyId: string) {
+export async function advanceBalance(
+  db: Db,
+  actor: Row,
+  projectId: string,
+  counterpartyId: string,
+) {
   const row = await one(
     db,
     "SELECT coalesce(sum(amount),0)::text amount FROM journal_entries WHERE tenant_id=$1 AND project_id=$2 AND counterparty_id=$3 AND account='advance'",
@@ -119,16 +124,18 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
   if (input.kind === 'payment' || input.kind === 'advance_offset')
     invariant(input.allocated_invoice_id, 'PAYMENT_ALLOCATION_REQUIRED', 400);
   if (input.kind === 'advance_offset') {
-    // Ish haqi davri hujjati faqat ish haqi sahifasidan to'lanadi (to'lov summasi = net), avans bilan yopilmaydi.
-    invariant(
-      !(
-        await db.query(
-          'SELECT 1 FROM payroll_entries WHERE tenant_id=$1 AND labor_document_id=$2',
-          [actor.tenant_id, input.allocated_invoice_id],
-        )
-      ).rowCount,
-      'PAYROLL_DOCUMENT_NOT_OFFSETTABLE',
-    );
+    // Ish haqi davri hujjati hujjatlar jadvalidan avans bilan yopilmaydi; faqat ish haqi sahifasidagi to'lov
+    // (V-C, D23) avansni avtomatik hisoblaydi — `payroll_offset` ichki bayrog'i bilan.
+    if (!input.payroll_offset)
+      invariant(
+        !(
+          await db.query(
+            'SELECT 1 FROM payroll_entries WHERE tenant_id=$1 AND labor_document_id=$2',
+            [actor.tenant_id, input.allocated_invoice_id],
+          )
+        ).rowCount,
+        'PAYROLL_DOCUMENT_NOT_OFFSETTABLE',
+      );
     const balance = await advanceBalance(db, actor, input.project_id, input.counterparty_id);
     invariant(dec(balance).gte(input.amount), 'ADVANCE_INSUFFICIENT');
   }

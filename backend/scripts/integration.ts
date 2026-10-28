@@ -3074,6 +3074,136 @@ try {
   passed.push(
     'Floor × work progress matrix: floor zones (nested zones roll up), plan from floor-bound work lines, fact from accepted reports by report zone or line zone, per-floor and per-work totals, unaccepted reports and material lines excluded',
   );
+  // ---- V-C (D23): brigada akkord hisobi — stavka qabulda qotiriladi, obyekt foizi, tuzatish, davr, avans bilan to'lov
+  const pxNow = await call('GET', pxUrl, undefined, adminAgain);
+  const pieceEst = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: px.id,
+      name: 'Akkord smetasi',
+      lines: [
+        { kind: 'labor', description: 'Gipsokarton', unit_id: 'm2', quantity: '50', unit_price: '100000', labor_rate: '20000' },
+        { kind: 'labor', description: 'Boyoq', unit_id: 'm2', quantity: '30', unit_price: '50000' },
+        { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '10', unit_price: '1', labor_rate: '5' },
+      ],
+    },
+    adminAgain,
+  );
+  // material qatorida stavka saqlanmaydi
+  assert.equal(pieceEst.lines[2].labor_rate, null);
+  assert.equal(pieceEst.lines[0].labor_rate, '20000.00');
+  const pieceReport = async (lineId: string, qty: string, reportDate = '2026-10-05') => {
+    const r = await call(
+      'POST',
+      '/v1/reports',
+      { project_id: px.id, kind: 'daily', report_date: reportDate, content: 'Akkord ishi', estimate_line_id: lineId, progress_quantity: qty },
+      brigadierAgain2,
+    );
+    await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
+    return (await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)) as any;
+  };
+  // R1: qator stavkasi 20000 × 10 m2 = 200000; R2: stavka yo'q (foiz hali berilmagan) → summa yo'q
+  const r1 = await pieceReport(pieceEst.lines[0].id, '10');
+  assert.deepEqual([r1.progress.labor_rate, r1.progress.labor_amount], ['20000.00', '200000.00']);
+  const r2 = await pieceReport(pieceEst.lines[1].id, '5');
+  assert.deepEqual([r2.progress.labor_rate, r2.progress.labor_amount], [null, null]);
+  // obyekt foizi 20% → Boyoq: 50000 × 20% = 10000; R2 ning stavkasi o'zgarmaydi (qotirilgan)
+  await call('PATCH', pxUrl, { version: pxNow.version, name: pxNow.name, brigade_percent: '20' }, adminAgain);
+  const r3 = await pieceReport(pieceEst.lines[1].id, '4');
+  assert.deepEqual([r3.progress.labor_rate, r3.progress.labor_amount], ['10000.00', '40000.00']);
+  assert.equal((await call('GET', `/v1/reports/${r2.id}`, undefined, adminAgain)).progress.labor_rate, null);
+  // tuzatish qotirilgan stavka bilan: 10 − 2 = 8 m2 × 20000 = 160000
+  await call('POST', `/v1/progress-entries/${r1.progress.id}/corrections`, { quantity_delta: '-2', reason: 'Qayta o‘lchash' }, adminAgain);
+  assert.equal((await call('GET', `/v1/reports/${r1.id}`, undefined, adminAgain)).progress.labor_amount, '160000.00');
+  // reviziya: yangi stavka 30000 faqat yangi hisobotlarga; eski 160000 da qoladi
+  const pieceRevised = await call(
+    'PATCH',
+    `/v1/estimates/${pieceEst.id}`,
+    {
+      project_id: px.id,
+      name: 'Akkord smetasi',
+      version: 1,
+      lines: [
+        { kind: 'labor', description: 'Gipsokarton', unit_id: 'm2', category: '', quantity: '50', unit_price: '100000', labor_rate: '30000' },
+        { kind: 'labor', description: 'Boyoq', unit_id: 'm2', category: '', quantity: '30', unit_price: '50000' },
+      ],
+    },
+    adminAgain,
+  );
+  const r4 = await pieceReport(pieceRevised.lines[0].id, '1');
+  assert.equal(r4.progress.labor_amount, '30000.00');
+  assert.equal((await call('GET', `/v1/reports/${r1.id}`, undefined, adminAgain)).progress.labor_amount, '160000.00');
+  // D20: prorab hajmni ko'radi, summani emas; brigadir o'z hisobotida ko'radi
+  await call('POST', `/v1/employees/${foreman.id}/assignments`, { project_id: px.id }, adminAgain);
+  const forePx = (await call('POST', '/v1/auth/login', { login: 'foreman', password: pass + '2' })).access_token;
+  const r1Fore = await call('GET', `/v1/reports/${r1.id}`, undefined, forePx);
+  assert.equal(r1Fore.progress.quantity, '10.000000');
+  assert.equal(r1Fore.progress.labor_amount, undefined);
+  assert.equal((await call('GET', `/v1/reports/${r1.id}`, undefined, brigadierAgain2)).progress.labor_amount, '160000.00');
+  // Brigadir balansi: 160000 + 40000 + 30000 = 230000, hali davrga kirmagan
+  const earn1 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
+  const pxEarn = earn1.projects.find((p: any) => p.project_id === px.id);
+  assert.deepEqual(
+    [pxEarn.earned, pxEarn.earned_month, pxEarn.in_payroll, pxEarn.paid, pxEarn.advances, pxEarn.balance],
+    ['230000.00', '230000.00', '0.00', '0.00', '0.00', '230000.00'],
+  );
+  assert.equal(earn1.totals.earned, '230000.00');
+  assert.equal(earn1.entries.find((e: any) => e.id === r2.progress.id).amount, null);
+  await call('GET', `/v1/employees/${brigadier.id}/earnings`, undefined, brigadierAgain2, undefined, 403);
+  assert.equal((await call('GET', `/v1/employees/${brigadier.id}/earnings`, undefined, adminAgain)).totals.earned, '230000.00');
+  // Ish haqi davri: kutilayotgan akkord ko'rinadi, yopishda yozuv avtomatik qo'shiladi
+  const piecePeriod = await call('POST', '/v1/finance/payroll/periods', { project_id: px.id, month: '2026-10-01' }, adminAgain);
+  const payroll1 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    payroll1.periods.find((p: any) => p.id === piecePeriod.id).piece_pending.map((p: any) => [p.employee_id, p.amount]),
+    [[brigadier.id, '230000.00']],
+  );
+  await call('POST', `/v1/finance/payroll/periods/${piecePeriod.id}/post`, { version: piecePeriod.version }, adminAgain);
+  const payroll2 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
+  const pieceEntry = payroll2.entries.find((e: any) => e.period_id === piecePeriod.id && e.employee_id === brigadier.id);
+  assert.deepEqual([pieceEntry.base_salary, pieceEntry.piece_rate, pieceEntry.net, pieceEntry.status], ['0.00', '230000.00', '230000.00', 'posted']);
+  assert.equal(payroll2.periods.find((p: any) => p.id === piecePeriod.id).piece_total, '230000.00');
+  const earn2 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
+  const pxEarn2 = earn2.projects.find((p: any) => p.project_id === px.id);
+  assert.deepEqual([pxEarn2.in_payroll, pxEarn2.posted_unpaid, pxEarn2.balance], ['230000.00', '230000.00', '230000.00']);
+  // Avans 50000 → to'lovda avval avans hisoblanadi, 180000 kassadan
+  const pieceLabor = (
+    await admin.query('SELECT f.counterparty_id FROM finance_documents f WHERE f.id=$1', [pieceEntry.labor_document_id])
+  ).rows[0];
+  await call(
+    'POST',
+    '/v1/finance/documents',
+    { project_id: px.id, counterparty_id: pieceLabor.counterparty_id, kind: 'advance', amount: '50000', cash_account_id: treasury.id, description: 'Brigadirga avans', document_date: '2026-10-20' },
+    adminAgain,
+  );
+  const payroll3 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
+  const pieceEntry2 = payroll3.entries.find((e: any) => e.id === pieceEntry.id);
+  assert.deepEqual([pieceEntry2.advance_available, pieceEntry2.cash_due], ['50000.00', '180000.00']);
+  assert.equal((await call('GET', '/v1/me/earnings', undefined, brigadierAgain2)).projects.find((p: any) => p.project_id === px.id).balance, '180000.00');
+  const paid = await call(
+    'POST',
+    `/v1/finance/payroll/entries/${pieceEntry.id}/pay`,
+    { version: pieceEntry2.version, cash_account_id: treasury.id, document_date: '2026-10-31' },
+    adminAgain,
+  );
+  assert.deepEqual([paid.status, paid.advance_applied, paid.paid_cash], ['paid', '50000.00', '180000.00']);
+  assert(paid.advance_offset_document_id && paid.payment_document_id);
+  const earn3 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
+  const pxEarn3 = earn3.projects.find((p: any) => p.project_id === px.id);
+  assert.deepEqual([pxEarn3.paid, pxEarn3.advances, pxEarn3.balance], ['230000.00', '0.00', '0.00']);
+  // To'lovdan keyingi tuzatish (+1 m2 × 20000) keyingi davrga kiradi
+  await call('POST', `/v1/progress-entries/${r1.progress.id}/corrections`, { quantity_delta: '1', reason: 'Qo‘shimcha hajm' }, adminAgain);
+  const earn4 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
+  const pxEarn4 = earn4.projects.find((p: any) => p.project_id === px.id);
+  assert.deepEqual([pxEarn4.earned, pxEarn4.in_payroll, pxEarn4.balance], ['250000.00', '230000.00', '20000.00']);
+  const piecePeriod2 = await call('POST', '/v1/finance/payroll/periods', { project_id: px.id, month: '2026-11-01' }, adminAgain);
+  await call('POST', `/v1/finance/payroll/periods/${piecePeriod2.id}/post`, { version: piecePeriod2.version }, adminAgain);
+  const payroll4 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
+  assert.equal(payroll4.entries.find((e: any) => e.period_id === piecePeriod2.id && e.employee_id === brigadier.id).piece_rate, '20000.00');
+  passed.push(
+    'Brigade piece-rate (D23): line rate or project percent frozen at acceptance, corrections and revisions respect the frozen rate, foreman sees quantities only, brigadier balance per project, payroll post adds the piece-rate entry, payment settles the advance first, a post-payment correction rolls into the next period',
+  );
   // ---- G3: platforma ro'yxatidagi state filtri har bir kartadagi access_state bilan mos
   const pendingTenant = await call(
     'POST',

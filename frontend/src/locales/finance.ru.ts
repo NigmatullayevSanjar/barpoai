@@ -164,6 +164,12 @@ export const financeRu: Record<string, string> = {
   'fin.payroll.bonus': 'Бонус',
   'fin.payroll.deduction': 'Удержание',
   'fin.payroll.net': 'Итого (net)',
+  'fin.payroll.piece': 'Аккорд',
+  'fin.payroll.piece_pending': 'Ожидаемый аккорд',
+  'fin.payroll.piece_pending_hint':
+    'Заработок бригадиров по принятым отчётам до конца месяца периода, ещё не вошедший в период; при закрытии запись добавляется автоматически',
+  'fin.payroll.advance_applied': 'Зачёт аванса',
+  'fin.payroll.paid_cash': 'К выплате из кассы',
   'fin.payroll.add_entry': 'Добавить сотрудника',
   'fin.payroll.post': 'Закрыть период (начислить)',
   'fin.payroll.post_confirm':
