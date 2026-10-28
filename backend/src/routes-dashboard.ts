@@ -183,7 +183,7 @@ async function dashboard(db: Db, actor: Row, query: Row) {
        SELECT (SELECT count(*)::int FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id IN (SELECT id FROM acc) AND b.minimum_quantity>0 AND b.quantity-b.reserved<b.minimum_quantity) low,
               (SELECT count(DISTINCT b.material_id)::int FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id IN (SELECT id FROM acc) AND b.quantity>0) materials,
               (SELECT coalesce(sum(b.value),0)::text FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id IN (SELECT id FROM acc) AND b.quantity>0) inventory_value,
-              (SELECT count(*)::int FROM material_requests r WHERE r.tenant_id=$1 AND r.project_id=ANY($2::uuid[]) AND r.status='pending') pending_requests,
+              (SELECT count(DISTINCT r.group_id)::int FROM material_requests r WHERE r.tenant_id=$1 AND r.project_id=ANY($2::uuid[]) AND r.status='pending') pending_requests,
               (SELECT count(*)::int FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]) AND c.kind='transfer' AND c.status IN ('pending','partial','disputed')) pending_transfers,
               (SELECT count(*)::int FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]) AND c.kind='receipt' AND c.status='posted' AND ${todaySql('c.created_at')}) today_receipts,
               (SELECT count(*)::int FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]) AND c.kind='consumption' AND c.status IN ('posted','partial') AND ${todaySql('c.created_at')}) today_consumptions`,

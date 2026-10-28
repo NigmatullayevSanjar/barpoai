@@ -620,35 +620,54 @@ try {
   );
   await brigadierPage.getByRole('tab', { name: /So‘rovlar/ }).click();
   await brigadierPage.getByRole('button', { name: 'Material so‘rash' }).click();
-  await pickOption(brigadierPage.getByRole('dialog'), 'Material', 'Sement', /Sement M500/);
-  await brigadierPage.getByRole('dialog').getByLabel('Miqdor', { exact: true }).fill('100');
-  await brigadierPage
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Tasdiqlash', exact: true })
-    .click();
+  // V-B (D23): bitta talabnomada ikki qator; ombor mudiri qatorma-qator bajaradi yoki rad etadi
+  const requestDialog = brigadierPage.getByRole('dialog');
+  const requestLine = (n: number) => requestDialog.getByRole('group', { name: `Qator ${n}` });
+  await pickOption(requestLine(1), 'Material', 'Sement', /Sement M500/);
+  await requestLine(1).getByLabel('Miqdor', { exact: true }).fill('100');
+  await requestDialog.getByRole('button', { name: 'Qator qo‘shish' }).click();
+  await pickOption(requestLine(2), 'Material', 'Tosh 001', /Tosh 001/);
+  await requestLine(2).getByLabel('Miqdor', { exact: true }).fill('5');
+  await requestDialog.getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
   await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  await brigadierPage.getByText(/Tosh 001 — 5 kg/).waitFor();
   // Talabnomani faqat ombor mudiri bajaradi (2026-10-16)
   await warehousePage.goto(stockUrl);
   await warehousePage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  // 1-qator (Sement) jo'natish bilan bajariladi — talabnoma hali kutilmoqda (2-qator ochiq)
   await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().click();
   await warehousePage
     .getByRole('dialog')
     .getByRole('button', { name: 'Tasdiqlash', exact: true })
     .click();
-  await warehousePage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
-  await warehousePage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
+  // Ikkinchi "bajarish" tugmasi yo'qolguncha kutiladi (ro'yxat yangilanadi); talabnoma holati — kutilmoqda
+  await warehousePage
+    .getByRole('button', { name: 'Jo‘natish bilan bajarish' })
+    .nth(1)
+    .waitFor({ state: 'detached' });
+  await warehousePage.getByRole('cell', { name: 'Kutilmoqda', exact: true }).waitFor();
+  assert.equal(await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 1);
+  // 2-qator (Tosh) rad etiladi — bir qatori bajarilgan talabnoma "Bajarildi"
+  await warehousePage.getByRole('button', { name: 'Rad etish' }).first().click();
+  await warehousePage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Tasdiqlash', exact: true })
+    .click();
+  await warehousePage.getByRole('button', { name: 'Rad etish' }).first().waitFor({ state: 'detached' });
+  await warehousePage.getByRole('cell', { name: 'Bajarildi', exact: true }).waitFor();
+  assert.equal(await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 0);
   await adminPage.goto(stockUrl);
   await adminPage.getByRole('tab', { name: /So‘rovlar/ }).click();
-  await adminPage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
+  await adminPage.getByRole('cell', { name: 'Bajarildi', exact: true }).waitFor();
   assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 0);
   // Talabnomani faqat brigadir va ombor mudiri yaratadi (server: ombor 'create'); admin va prorabda tugma yo'q.
   assert.equal(await adminPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
   await foremanPage.goto(stockUrl);
   await foremanPage.getByRole('tab', { name: /So‘rovlar/ }).click();
-  await foremanPage.getByRole('cell', { name: 'Bajarildi' }).first().waitFor();
+  await foremanPage.getByRole('cell', { name: 'Bajarildi', exact: true }).waitFor();
   assert.equal(await foremanPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
   checks.push(
-    'Material request from brigadier is fulfilled by the warehouse manager via a transfer created from the request; the admin and the foreman only read requests (no request button)',
+    'Two-line material request from the brigadier: the warehouse manager fulfils one line via a transfer and rejects the other line by line; the admin and the foreman only read requests (no request button)',
   );
   // 5e. Moliya: kontragent, kassa, invoys (kirimga bog'langan), to'lov, to'lov so'rovi, ish haqi (stage 07)
   const dialog = () => adminPage.getByRole('dialog');

@@ -9,6 +9,7 @@ import {
   Plus,
   RotateCcw,
   ClipboardCheck,
+  X,
 } from 'lucide-react';
 import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -45,6 +46,7 @@ import {
   type CommandKind,
   type LedgerRow,
   type MaterialRequest,
+  type MaterialRequestGroup,
   type StockAccount,
   type StockCommand,
 } from './model';
@@ -730,74 +732,69 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
     request: MaterialRequest;
     action: 'fulfill' | 'reject' | 'cancel';
   } | null>(null);
-  const columns: Column<MaterialRequest>[] = [
+  const statusBadge = (status: MaterialRequest['status']) => (
+    <Badge tone={status === 'pending' ? 'warning' : status === 'fulfilled' ? 'success' : 'neutral'}>
+      {t(`stock.request_status.${status}`)}
+    </Badge>
+  );
+  // V-B (D23): talabnoma — bir nechta qator; bajarish, rad etish va bekor qilish qatorma-qator.
+  const columns: Column<MaterialRequestGroup>[] = [
     {
       key: 'date',
       header: t('common.date'),
-      sortValue: (r) => r.created_at,
-      render: (r) => formatDateTime(r.created_at, lang),
+      sortValue: (g) => g.created_at,
+      render: (g) => formatDateTime(g.created_at, lang),
     },
     {
-      key: 'material',
-      header: t('stock.material'),
-      render: (r) => (
+      key: 'request',
+      header: t('stock.request_no'),
+      render: (g) => (
         <>
-          <div className="cell-main">{r.material_name}</div>
-          {r.zone_name && <div className="cell-sub">{r.zone_name}</div>}
+          <div className="cell-main">№ {g.group_id.slice(0, 8).toUpperCase()}</div>
+          <div className="cell-sub">{[g.requested_by_name, g.zone_name].filter(Boolean).join(' · ')}</div>
         </>
       ),
     },
     {
-      key: 'qty',
-      header: t('stock.request_qty'),
-      align: 'right',
-      render: (r) => formatQuantity(r.quantity, r.unit_id),
-    },
-    { key: 'by', header: t('stock.request_by'), render: (r) => r.requested_by_name },
-    { key: 'needed', header: t('stock.request_needed_by'), render: (r) => (r.needed_by ? r.needed_by : '—') },
-    {
-      key: 'status',
-      header: t('common.status'),
-      render: (r) => (
-        <Badge tone={r.status === 'pending' ? 'warning' : r.status === 'fulfilled' ? 'success' : 'neutral'}>
-          {t(`stock.request_status.${r.status}`)}
-        </Badge>
+      key: 'lines',
+      header: t('stock.request_lines'),
+      render: (g) => (
+        <div className="stack" style={{ gap: 4 }}>
+          {g.lines.map((r) => (
+            <div key={r.id} className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+              <span>
+                {r.material_name} — {formatQuantity(r.quantity, r.unit_id)}
+                {r.review_note ? <span className="muted text-xs"> → {r.review_note}</span> : null}
+              </span>
+              <span className="row" style={{ gap: 4 }}>
+                {g.lines.length > 1 && statusBadge(r.status)}
+                {r.status === 'pending' && has('stock.send') && (
+                  <Button size="sm" onClick={() => setAct({ request: r, action: 'fulfill' })}>
+                    {t('stock.fulfill')}
+                  </Button>
+                )}
+                {r.status === 'pending' && has('stock.send') && (
+                  <Button size="sm" variant="ghost" onClick={() => setAct({ request: r, action: 'reject' })}>
+                    {t('stock.reject')}
+                  </Button>
+                )}
+                {r.status === 'pending' && r.requested_by === me?.id && (
+                  <Button size="sm" variant="ghost" onClick={() => setAct({ request: r, action: 'cancel' })}>
+                    {t('common.cancel')}
+                  </Button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
       ),
     },
+    { key: 'needed', header: t('stock.request_needed_by'), render: (g) => (g.needed_by ? g.needed_by : '—') },
+    { key: 'status', header: t('common.status'), render: (g) => statusBadge(g.status) },
     {
       key: 'note',
       header: t('stock.request_note'),
-      render: (r) => (
-        <span className="muted text-xs">
-          {r.note}
-          {r.review_note ? ` → ${r.review_note}` : ''}
-        </span>
-      ),
-    },
-    {
-      key: 'act',
-      header: '',
-      className: 'actions',
-      render: (r) =>
-        r.status === 'pending' ? (
-          <span className="row" style={{ justifyContent: 'flex-end', gap: 4 }}>
-            {has('stock.send') && (
-              <Button size="sm" onClick={() => setAct({ request: r, action: 'fulfill' })}>
-                {t('stock.fulfill')}
-              </Button>
-            )}
-            {has('stock.send') && (
-              <Button size="sm" variant="ghost" onClick={() => setAct({ request: r, action: 'reject' })}>
-                {t('stock.reject')}
-              </Button>
-            )}
-            {r.requested_by === me?.id && (
-              <Button size="sm" variant="ghost" onClick={() => setAct({ request: r, action: 'cancel' })}>
-                {t('common.cancel')}
-              </Button>
-            )}
-          </span>
-        ) : null,
+      render: (g) => <span className="muted text-xs">{g.note}</span>,
     },
   ];
   const summary = query.data?.summary;
@@ -829,7 +826,7 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
       <DataTable
         columns={columns}
         rows={query.data?.items}
-        rowKey={(r) => r.id}
+        rowKey={(g) => g.group_id}
         loading={query.isLoading}
         error={
           query.error
@@ -852,22 +849,26 @@ function RequestsTab({ projectId, accounts }: { projectId: string; accounts: Sto
     </div>
   );
 }
+type RequestLineForm = { material: string; label: string; unit: string; qty: string };
+const emptyRequestLine = (): RequestLineForm => ({ material: '', label: '', unit: '', qty: '' });
 function RequestModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const { t } = useT();
   const zones = useZones(projectId);
-  const [material, setMaterial] = useState('');
-  const [qty, setQty] = useState('');
+  // V-B (D23): bir nechta material qatori; zona, sana va izoh talabnoma bo'yicha umumiy.
+  const [lines, setLines] = useState<RequestLineForm[]>([emptyRequestLine()]);
   const [zone, setZone] = useState('');
   const [needed, setNeeded] = useState('');
   const [note, setNote] = useState('');
+  const setLine = (i: number, patch: Partial<RequestLineForm>) =>
+    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const ready = lines.every((l) => l.material && l.qty);
   const save = useStockMutation(
     () =>
       api('/v1/stock/requests', {
         method: 'POST',
         body: {
           project_id: projectId,
-          material_id: material,
-          quantity: normalizeNumber(qty),
+          lines: lines.map((l) => ({ material_id: l.material, quantity: normalizeNumber(l.qty) })),
           ...(zone ? { zone_id: zone } : {}),
           ...(needed ? { needed_by: needed } : {}),
           ...(note.trim() ? { note: note.trim() } : {}),
@@ -885,45 +886,69 @@ function RequestModal({ projectId, onClose }: { projectId: string; onClose: () =
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button
-            onClick={() => save.mutate(undefined)}
-            loading={save.isPending}
-            disabled={!material || !qty}
-          >
+          <Button onClick={() => save.mutate(undefined)} loading={save.isPending} disabled={!ready}>
             {t('common.confirm')}
           </Button>
         </>
       }
     >
       <div className="stack">
-        <SearchSelect<Material>
-          path="/v1/materials"
-          label={t('stock.material')}
-          value={material}
-          onChange={(id) => setMaterial(id)}
-          getId={(m) => m.id}
-          getLabel={(m) => m.name}
-          getSub={(m) => m.unit_id}
-        />
+        {lines.map((line, i) => (
+          <div
+            key={i}
+            role="group"
+            aria-label={`${t('stock.request_line')} ${i + 1}`}
+            className="row"
+            style={{ gap: 8, alignItems: 'flex-end' }}
+          >
+            <SearchSelect<Material>
+              wrapClassName="grow"
+              path="/v1/materials"
+              label={t('stock.material')}
+              value={line.material}
+              valueLabel={line.label || undefined}
+              onChange={(id, m) => setLine(i, { material: id, label: m?.name ?? '', unit: m?.unit_id ?? '' })}
+              getId={(m) => m.id}
+              getLabel={(m) => m.name}
+              getSub={(m) => m.unit_id}
+            />
+            <Input
+              wrapClassName="grow"
+              label={t('stock.request_qty')}
+              suffix={line.unit || undefined}
+              inputMode="decimal"
+              value={line.qty}
+              onChange={(e) => setLine(i, { qty: e.target.value })}
+            />
+            {lines.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<X />}
+                aria-label={t('stock.request_remove_line')}
+                onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
+              />
+            )}
+          </div>
+        ))}
+        <div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Plus />}
+            onClick={() => setLines((ls) => [...ls, emptyRequestLine()])}
+          >
+            {t('stock.request_add_line')}
+          </Button>
+        </div>
         <div className="form-grid">
-          <Input
-            label={t('stock.request_qty')}
-            inputMode="decimal"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-          />
           <Input
             type="date"
             label={t('stock.request_needed_by')}
             value={needed}
             onChange={(e) => setNeeded(e.target.value)}
           />
-          <Select
-            wrapClassName="span-2"
-            label={t('stock.zone')}
-            value={zone}
-            onChange={(e) => setZone(e.target.value)}
-          >
+          <Select label={t('stock.zone')} value={zone} onChange={(e) => setZone(e.target.value)}>
             <option value="">—</option>
             {(zones.data?.items ?? []).map((z) => (
               <option key={z.id} value={z.id}>

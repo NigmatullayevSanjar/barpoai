@@ -4826,7 +4826,7 @@ paths:
         "503": *a82
   /v1/stock/requests:
     post:
-      summary: Material so‘rovi; qoldiqni o‘zgartirmaydi, ombor mudiri jo‘natish bilan bajaradi
+      summary: Ko‘p qatorli material so‘rovi; qoldiqni o‘zgartirmaydi, ombor mudiri qatorma-qator jo‘natish bilan bajaradi
       operationId: post_v1_stock_requests
       security:
         - bearerAuth: []
@@ -4875,17 +4875,28 @@ paths:
                   type: string
                   format: uuid
                   pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
-                material_id:
-                  type: string
-                  format: uuid
-                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                lines:
+                  minItems: 1
+                  maxItems: 50
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      material_id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      quantity:
+                        type: string
+                        pattern: ^(0|[1-9]\d{0,17})(\.\d{1,6})?$
+                    required:
+                      - material_id
+                      - quantity
+                    additionalProperties: false
                 zone_id:
                   type: string
                   format: uuid
                   pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
-                quantity:
-                  type: string
-                  pattern: ^(0|[1-9]\d{0,17})(\.\d{1,6})?$
                 needed_by:
                   type: string
                   format: date
@@ -4895,11 +4906,10 @@ paths:
                   maxLength: 1000
               required:
                 - project_id
-                - material_id
-                - quantity
+                - lines
               additionalProperties: false
     get:
-      summary: Material so‘rovlari ro‘yxati
+      summary: "Material so‘rovlari ro‘yxati: talabnomalar (guruh) va ularning qatorlari"
       operationId: get_v1_stock_requests
       security:
         - bearerAuth: []
