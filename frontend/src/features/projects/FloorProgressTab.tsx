@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatQuantity } from '@/lib/format';
+import { formatQuantity, unitLabel } from '@/lib/format';
 import { Alert, Badge, Spinner } from '@/components/ui';
 
 /** V-E (D23): qavat × ish progress matritsasi — hamma raqam serverdan (decimal satr), frontend faqat ko'rsatadi. */
@@ -15,6 +15,7 @@ type FloorProgress = {
     percent: string | null;
   }[];
   works: {
+    category: string;
     description: string;
     unit_id: string;
     plan: string | null;
@@ -23,6 +24,7 @@ type FloorProgress = {
   }[];
   cells: {
     zone_id: string;
+    category: string;
     description: string;
     unit_id: string;
     plan: string | null;
@@ -30,7 +32,9 @@ type FloorProgress = {
     percent: string | null;
   }[];
 };
-const workKey = (w: { description: string; unit_id: string }) => `${w.description}\u0000${w.unit_id}`;
+// D28: ish = kategoriya (ish kodi) + nom + birlik — bir xil nomli resurslar har ish ostida alohida ustun.
+const workKey = (w: { category: string; description: string; unit_id: string }) =>
+  `${w.category}\u0000${w.description}\u0000${w.unit_id}`;
 
 function ProgressCell({
   plan,
@@ -86,8 +90,9 @@ export function FloorProgressTab({ projectId }: { projectId: string }) {
               <th>{t('projects.progress.floor')}</th>
               {works.map((w) => (
                 <th key={workKey(w)}>
+                  {w.category && <div className="muted text-xs">{w.category}</div>}
                   {w.description}
-                  <div className="muted text-xs">{w.unit_id}</div>
+                  <div className="muted text-xs">{unitLabel(w.unit_id)}</div>
                 </th>
               ))}
               <th>{t('projects.progress.total')}</th>

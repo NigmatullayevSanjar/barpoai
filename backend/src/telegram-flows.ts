@@ -4,6 +4,7 @@ import { allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { notify, projectRecipients } from './notify.js';
 import { quantity } from './money.js';
+import { sameWorkSql } from './estimates.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -363,7 +364,7 @@ export async function continueProgressFlow(
       if (!line) return t(lang, 'invalid_choice');
       const facts = await one(
         db,
-        `SELECT l.effective_quantity::text plan,(SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) fact FROM estimate_lines l WHERE l.tenant_id=$1 AND l.id=$2`,
+        `SELECT l.effective_quantity::text plan,(SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) fact FROM estimate_lines l WHERE l.tenant_id=$1 AND l.id=$2`,
         [user.tenant_id, line.id],
       );
       await saveState(db, user.id, { ...s, step: 'quantity', line_id: line.id, lines: [line] });

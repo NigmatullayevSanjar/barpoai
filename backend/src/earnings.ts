@@ -8,6 +8,29 @@ import { dec, money } from './money.js';
  * (qabul qilingan hajm + tuzatishlar) × qabulda qotirilgan stavka. Stavka null — summa hisoblanmaydi.
  */
 export const earningSql = `round((pe.quantity+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c WHERE c.tenant_id=pe.tenant_id AND c.progress_entry_id=pe.id),0))*pe.labor_rate,2)`;
+/**
+ * D32 (2026-11-05): qator guruhi — bitta smeta reviziyasida bir xil kategoriya va zonadagi qatorlar (Form 5: ish qatori
+ * va uning resurslari). Agregat ko'rsatkichlar (`g` — estimate_lines): ish qatori bormi (mehnat, normasiz), mehnat
+ * resurslari (normali) bormi, ularning jami va guruh ish hajmi.
+ */
+export const rateGroupSql = `bool_or(g.kind='labor' AND g.norm IS NULL) has_work,bool_or(g.kind='labor' AND g.norm IS NOT NULL) has_labor,
+  sum(g.total) FILTER(WHERE g.kind='labor' AND g.norm IS NOT NULL) labor_cost,sum(g.effective_quantity) FILTER(WHERE g.kind='labor' AND g.norm IS NULL) work_quantity`;
+/**
+ * Avtomatik akkord stavkasi (`l` — qator, `gr` — uning guruhi `rateGroupSql`, `p` — obyekt), so'm/birlik; null — belgilanmagan.
+ * Akkord faqat ish qatorida (D32): ish qatori bor guruhdagi resurs qatori (normali) stavkasiz. Narxsiz ish qatori —
+ * guruh mehnat resurslari jami / ish hajmi × obyekt foizi; mehnat narxi yo'q — null (qo'lda yoziladi). Qolganlari —
+ * V-C: smeta birlik narxi × obyekt foizi. Narx reviziyada o'zgarsa, stavka ham o'zgaradi (qabul qilinganlar qotirilgan).
+ */
+export const autoRateSql = `CASE WHEN l.kind='material' OR (l.norm IS NOT NULL AND gr.has_work) THEN NULL
+  WHEN l.kind='labor' AND l.norm IS NULL AND gr.has_labor AND l.unit_price=0
+    THEN CASE WHEN gr.labor_cost>0 AND gr.work_quantity>0 THEN round(gr.labor_cost/gr.work_quantity*p.brigade_percent/100,2) END
+  ELSE round(l.unit_price*p.brigade_percent/100,2) END`;
+/** Qatorning amaldagi stavkasi: qo'lda yozilgan `labor_rate`, bo'lmasa avtomatik; material qatorida null. */
+export const lineRateSql = `CASE WHEN l.kind='material' THEN NULL ELSE coalesce(l.labor_rate,${autoRateSql}) END`;
+/** Bitta qator guruhi (`l` ning o'z reviziyasi — arxivlangan qatorlar bir vaqtda arxivlanadi). */
+export const lineGroupJoinSql = `LEFT JOIN LATERAL (SELECT ${rateGroupSql} FROM estimate_lines g
+  WHERE g.tenant_id=l.tenant_id AND g.estimate_id=l.estimate_id AND g.category=l.category AND g.zone_id IS NOT DISTINCT FROM l.zone_id
+    AND g.archived_at IS NOT DISTINCT FROM l.archived_at) gr ON true`;
 /** Davrga kirgan summa (`progress_payroll`, append-only): progress yozuvi bo'yicha yig'indi. */
 export const payrollAmountSql = `coalesce((SELECT sum(x.amount) FROM progress_payroll x WHERE x.tenant_id=pe.tenant_id AND x.progress_entry_id=pe.id),0)`;
 /** Davrga hali kirmagan qism: joriy summa − davrga yozilgan summa (to'lovdan keyingi tuzatishlar ham shu yerda). */

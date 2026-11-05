@@ -31,13 +31,20 @@ export function formatMoney(
   if (!withCurrency) return formatted;
   return shown.currency === 'USD' ? `${formatted} $` : `${formatted} ${lang === 'ru' ? 'сум' : 'so‘m'}`;
 }
+let unitLang: 'uz' | 'ru' = 'uz';
+/** I18nProvider tanlangan tilni shu yerga ham beradi: birlik nomi formatQuantity ichida tarjima qilinadi. */
+export const setUnitLang = (lang: 'uz' | 'ru') => {
+  unitLang = lang;
+};
+/** Birlik kodi → qisqa nom (`pcs` → «dona» / «шт»); lug'atda yo'q birlik (kg, m2) o'zicha. */
+export const unitLabel = (unit: string) => (unitLang === 'ru' ? ru : uz)[`unit.${unit}`] ?? unit;
 export function formatQuantity(value: string | number | null | undefined, unit?: string | null) {
   if (value === null || value === undefined || value === '') return '—';
   const n = Number(value);
   const s = Number.isFinite(n)
     ? new Intl.NumberFormat(NUMBER_LOCALE, { maximumFractionDigits: 6 }).format(n)
     : String(value);
-  return unit ? `${s} ${unit}` : s;
+  return unit ? `${s} ${unitLabel(unit)}` : s;
 }
 export function formatDate(value: string | Date | null | undefined, lang: 'uz' | 'ru' = 'uz') {
   if (!value) return '—';

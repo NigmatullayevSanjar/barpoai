@@ -6,7 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatMoney, formatQuantity, monthStart } from '@/lib/format';
+import { formatMoney, formatQuantity, monthStart, unitLabel } from '@/lib/format';
 import { Alert, Button, Input, Modal, PageHeader, Select } from '@/components/ui';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { MonthInput } from '@/components/ui/MonthInput';
@@ -21,6 +21,7 @@ import {
   normalizeNumber,
   toApiLine,
   totalOf,
+  trimZeros,
   useUnits,
   useZones,
   validateLine,
@@ -255,7 +256,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           onChange={(_id, item) => setMaterial(l.key, item)}
                           getId={(m) => m.id}
                           getLabel={(m) => m.name}
-                          getSub={(m) => m.unit_id}
+                          getSub={(m) => unitLabel(m.unit_id)}
                           aria-label={t('est.col.material')}
                           action={
                             // Admin materiallarni faqat ko'radi (2026-10-16): yangi material tugmasi yo'q.
@@ -391,11 +392,13 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                   </td>
                   <td>
                     {l.kind !== 'material' && (
-                      // V-C (D23): brigada stavkasi, so'm/birlik; bo'sh — obyektning standart foizi ishlaydi
+                      // V-C (D23): brigada stavkasi, so'm/birlik; bo'sh — avtomatik stavka (D32, placeholder'da) ishlaydi
                       <NumericInput
                         className="input num"
                         inputMode="decimal"
                         value={l.labor_rate}
+                        placeholder={l.auto_labor_rate ? trimZeros(l.auto_labor_rate) : undefined}
+                        title={l.auto_labor_rate ? t('est.labor_rate_auto_hint') : undefined}
                         aria-label={t('est.col.labor_rate')}
                         onChange={(ev) => update(l.key, { labor_rate: ev.target.value })}
                       />
@@ -609,12 +612,16 @@ function MonthsModal({
   );
 }
 
+type SimilarMaterial = Material & { aliases: string[]; exact: boolean };
 export function NewMaterialModal({
   onClose,
   onCreated,
+  projectId,
 }: {
   onClose: () => void;
   onCreated: (m: Material) => void;
+  /** D32: ombor kirimida — nom bazada yo'q bo'lsa, avval obyekt smetasidagi o'xshash materiallar taklif qilinadi */
+  projectId?: string;
 }) {
   const { t } = useT();
   const toast = useToast();
@@ -622,19 +629,36 @@ export function NewMaterialModal({
   const units = useUnits();
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('pcs');
+  const [similar, setSimilar] = useState<SimilarMaterial[] | null>(null);
+  const done = async (m: Material, message: string) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['materials'] }),
+      queryClient.invalidateQueries({ queryKey: ['search-select', '/v1/materials'] }),
+    ]);
+    toast.success(t(message));
+    onCreated(m);
+  };
+  const failed = (e: ApiError) =>
+    toast.error(e.status === 403 ? t('est.material_no_permission') : errorMessage(t, e.code, e.status));
   const create = useMutation({
     mutationFn: () =>
       api<Material>('/v1/materials', { method: 'POST', body: { name: name.trim(), unit_id: unit } }),
-    onSuccess: async (m) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['materials'] }),
-        queryClient.invalidateQueries({ queryKey: ['search-select', '/v1/materials'] }),
-      ]);
-      toast.success(t('est.material_created'));
-      onCreated(m);
-    },
-    onError: (e: ApiError) =>
-      toast.error(e.status === 403 ? t('est.material_no_permission') : errorMessage(t, e.code, e.status)),
+    onSuccess: (m) => done(m, 'est.material_created'),
+    onError: failed,
+  });
+  const check = useMutation({
+    mutationFn: () =>
+      api<{ items: SimilarMaterial[] }>(
+        `/v1/materials/similar?project_id=${projectId}&name=${encodeURIComponent(name.trim())}`,
+      ),
+    onSuccess: (r) => (r.items.length ? setSimilar(r.items) : create.mutate()),
+    onError: failed,
+  });
+  const link = useMutation({
+    mutationFn: (id: string) =>
+      api<Material>(`/v1/materials/${id}/aliases`, { method: 'POST', body: { name: name.trim() } }),
+    onSuccess: (m) => done(m, 'stock.alias_saved'),
+    onError: failed,
   });
   return (
     <Modal
@@ -647,17 +671,24 @@ export function NewMaterialModal({
             {t('common.cancel')}
           </Button>
           <Button
-            onClick={() => create.mutate()}
-            loading={create.isPending}
-            disabled={name.trim().length < 1}
+            onClick={() => (projectId && !similar ? check.mutate() : create.mutate())}
+            loading={create.isPending || check.isPending}
+            disabled={name.trim().length < 1 || link.isPending}
           >
-            {t('common.create')}
+            {similar ? t('stock.similar_new') : t('common.create')}
           </Button>
         </>
       }
     >
       <div className="stack">
-        <Input label={t('est.material_name')} value={name} onChange={(e) => setName(e.target.value)} />
+        <Input
+          label={t('est.material_name')}
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            setSimilar(null);
+          }}
+        />
         <Select label={t('est.material_unit')} value={unit} onChange={(e) => setUnit(e.target.value)}>
           {(units.data?.units ?? []).map((u) => (
             <option key={u.id} value={u.id}>
@@ -665,6 +696,38 @@ export function NewMaterialModal({
             </option>
           ))}
         </Select>
+        {similar && (
+          <Alert tone="info">
+            <div className="stack">
+              <span>{t('stock.similar_title', { name: name.trim() })}</span>
+              {similar.map((m) => (
+                <div key={m.id} className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  <div className="grow">
+                    <div className="cell-main">{m.name}</div>
+                    <div className="cell-sub">
+                      {[
+                        unitLabel(m.unit_id),
+                        m.exact ? t('stock.similar_exact') : null,
+                        m.aliases.length ? t('stock.similar_aliases', { names: m.aliases.join(', ') }) : null,
+                        m.unit_id !== unit ? t('stock.similar_unit', { unit: unitLabel(m.unit_id) }) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => link.mutate(m.id)}
+                    loading={link.isPending && link.variables === m.id}
+                    disabled={create.isPending}
+                  >
+                    {t('stock.similar_pick')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Alert>
+        )}
       </div>
     </Modal>
   );

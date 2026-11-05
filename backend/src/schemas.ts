@@ -49,7 +49,8 @@ export const estimateLine = z.strictObject({
 export const estimateInput = z.strictObject({
   project_id: uuid,
   name: text,
-  lines: z.array(estimateLine).min(1).max(2000),
+  // D30: smeta 20 000 qatorgacha (estimates.ts ESTIMATE_MAX_LINES bilan bir xil)
+  lines: z.array(estimateLine).min(1).max(20000),
 });
 export const stockInput = z.strictObject({
   project_id: uuid,

@@ -7,7 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, formatQuantity, unitLabel } from '@/lib/format';
 import {
   Alert,
   Badge,
@@ -275,14 +275,21 @@ function LinesTable({
       else next.add(c);
       return next;
     });
-  const colSpan = pricesVisible ? 12 : 10;
-  // Qatorlar kategoriya bo'yicha ketma-ket keladi (server tartibi); har kategoriya boshida sarlavha, oxirida jami.
+  // Ustunlar: 7 asosiy + narx, stavka, jami (narx ko'rinsa) + fakt, oylar, izoh. Jami summasi «Jami» ustuni ostida.
+  const colSpan = pricesVisible ? 13 : 10;
+  // Har kategoriya bitta guruh (birinchi uchragan tartibda): bir ish bir necha qavatda takrorlansa ham guruh bitta,
+  // ostidagi jami (serverdagi kategoriya jami) shu guruh qatorlariga teng.
   const groups: { category: string; lines: EstimateLine[] }[] = [];
+  const byCategory = new Map<string, { category: string; lines: EstimateLine[] }>();
   for (const l of lines) {
     const c = l.category ?? '';
-    const last = groups[groups.length - 1];
-    if (last && last.category === c) last.lines.push(l);
-    else groups.push({ category: c, lines: [l] });
+    let group = byCategory.get(c);
+    if (!group) {
+      group = { category: c, lines: [] };
+      byCategory.set(c, group);
+      groups.push(group);
+    }
+    group.lines.push(l);
   }
   let n = 0;
   return (
@@ -340,7 +347,7 @@ function LinesTable({
                   {l.material_name && <div className="cell-sub">{l.material_name}</div>}
                 </td>
                 <td>{l.zone_name ?? '—'}</td>
-                <td>{l.unit_id}</td>
+                <td>{unitLabel(l.unit_id)}</td>
                 <td className="num">
                   {l.norm !== null
                     ? `${formatQuantity(l.norm)} × ${formatQuantity(l.work_quantity)}`
@@ -352,7 +359,17 @@ function LinesTable({
                 <td className="num">{formatQuantity(l.effective_quantity)}</td>
                 {pricesVisible && <td className="num">{formatMoney(l.unit_price, lang, false)}</td>}
                 {pricesVisible && (
-                  <td className="num">{l.labor_rate ? formatMoney(l.labor_rate, lang, false) : <span className="muted">—</span>}</td>
+                  <td className="num">
+                    {l.labor_rate ? (
+                      formatMoney(l.labor_rate, lang, false)
+                    ) : l.auto_labor_rate ? (
+                      <span className="muted" title={t('est.labor_rate_auto_hint')}>
+                        {formatMoney(l.auto_labor_rate, lang, false)} <small>{t('est.labor_rate_auto')}</small>
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                 )}
                 {pricesVisible && (
                   <td className="num">
@@ -390,7 +407,7 @@ function LinesTable({
         {pricesVisible && total !== undefined && (
           <tfoot>
             <tr className="est-grand">
-              <td colSpan={8} style={{ textAlign: 'right' }}>
+              <td colSpan={9} style={{ textAlign: 'right' }}>
                 {t('est.total')}
               </td>
               <td className="num">{formatMoney(total, lang, false)}</td>
@@ -439,11 +456,11 @@ function FragmentRow({
       {children}
       {subtotal !== undefined && (
         <tr className="est-subtotal">
-          <td colSpan={8} style={{ textAlign: 'right' }}>
+          <td colSpan={9} style={{ textAlign: 'right' }}>
             {subtotalLabel}
           </td>
           <td className="num">{formatMoney(subtotal, lang, false)}</td>
-          <td colSpan={colSpan - 9} />
+          <td colSpan={colSpan - 10} />
         </tr>
       )}
     </>

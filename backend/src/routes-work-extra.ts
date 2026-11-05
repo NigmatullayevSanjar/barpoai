@@ -7,7 +7,7 @@ import { invariant } from './errors.js';
 import { earningSql } from './earnings.js';
 import { notify } from './notify.js';
 import { quantity } from './money.js';
-import { taskLineSql, taskLineJoinSql } from './estimates.js';
+import { taskLineSql, taskLineJoinSql, sameWorkSql } from './estimates.js';
 
 /** Qabul qilingan progressni tuzatish: asl yozuv o'zgarmaydi, farq alohida saqlanadi (platforma tuzatishi ham shu). */
 export async function correctProgress(
@@ -94,8 +94,9 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
           ? (
               await one(
                 db,
-                `SELECT coalesce(-sum(j.amount),0)::numeric(20,2)::text v FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id
-                 WHERE j.tenant_id=$1 AND c.estimate_line_id=$2 AND c.kind='consumption' AND j.account='inventory'`,
+                `SELECT coalesce(-sum(j.amount),0)::numeric(20,2)::text v FROM estimate_lines l JOIN stock_commands c ON c.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')}
+                   JOIN journal_entries j ON j.tenant_id=c.tenant_id AND j.stock_command_id=c.id
+                 WHERE l.tenant_id=$1 AND l.id=$2 AND c.kind='consumption' AND j.account='inventory'`,
                 [actor.tenant_id, task.estimate_line_id],
               )
             ).v
@@ -234,7 +235,7 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
         items: (
           await db.query(
             `SELECT l.id,l.description,l.unit_id,l.effective_quantity::text,l.category,z.name zone_name,e.name estimate_name,
-                    (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) fact_quantity
+                    (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) fact_quantity
              FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
              WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.kind<>'material' AND l.archived_at IS NULL AND e.archived_at IS NULL ORDER BY e.name,l.position,l.id`,
             [actor.tenant_id, params.id],

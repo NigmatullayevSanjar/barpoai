@@ -2,6 +2,7 @@ import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { type Endpoint } from './http.js';
 import { one, audit, type Db, type Row } from './db.js';
+import { sameWorkSql } from './estimates.js';
 import {
   uuid,
   idParams,
@@ -58,10 +59,10 @@ export async function planActual(db: Db, actor: Row, projectId: string) {
     await db.query(
       `SELECT l.id,l.kind,l.category,l.description,l.unit_id,l.effective_quantity::text plan_qty,l.total::text plan_value,z.name zone_name,e.name estimate_name,
               CASE WHEN l.kind='material'
-                THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
-                ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_qty,
+                THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) END fact_qty,
               CASE WHEN l.kind='material'
-                THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
+                THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory')
                 ELSE NULL END fact_value
        FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
        WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL ORDER BY e.name,l.position,l.id`,
@@ -82,11 +83,11 @@ export async function planActual(db: Db, actor: Row, projectId: string) {
     await db.query(
       `SELECT coalesce(z.name,'—') zone_name,l.kind,count(*)::int lines,sum(l.effective_quantity)::text plan_qty,sum(l.total)::text plan_value,
               sum(CASE WHEN l.kind='material'
-                THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
-                ELSE (SELECT coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0) FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END)::text fact_qty,
+                THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                ELSE (SELECT coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0) FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) END)::text fact_qty,
               avg(CASE WHEN l.effective_quantity>0 THEN least(100,100*(CASE WHEN l.kind='material'
-                THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
-                ELSE (SELECT coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0) FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END)/l.effective_quantity) END)::numeric(5,1)::text percent
+                THEN (SELECT coalesce(sum(c.accepted_quantity),0) FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                ELSE (SELECT coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0) FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) END)/l.effective_quantity) END)::numeric(5,1)::text percent
        FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
        WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL
        GROUP BY z.name,l.kind ORDER BY z.name NULLS LAST,l.kind`,
@@ -98,7 +99,7 @@ export async function planActual(db: Db, actor: Row, projectId: string) {
   const byCategory = (
     await db.query(
       `SELECT coalesce(l.category,'') category,l.kind,count(*)::int lines,sum(l.total)::text plan_value,
-              CASE WHEN l.kind='material' THEN sum((SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory'))::text END fact_value
+              CASE WHEN l.kind='material' THEN sum((SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory'))::text END fact_value
        FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id
        WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL
        GROUP BY l.category,l.kind ORDER BY l.category NULLS LAST,l.kind`,

@@ -50,6 +50,9 @@ export const estimatesUz: Record<string, string> = {
   'est.col.unit_price': 'Birlik narxi',
   'est.col.total': 'Jami',
   'est.col.labor_rate': 'Brigada stavkasi',
+  'est.labor_rate_auto': 'avto',
+  'est.labor_rate_auto_hint':
+    'Avtomatik stavka: Form 5 ish qatorida mehnat resurslari narxi ÷ ish hajmi × obyekt brigada foizi, boshqa qatorlarda smeta narxi × foiz. Qo‘lda yozilgan stavka ustun; maydon bo‘sh bo‘lsa avtomatik qiymat ishlaydi.',
   'est.col.fact': 'Fakt',
   'est.col.note': 'Izoh',
   'est.col.months': 'Oylar',
@@ -103,12 +106,12 @@ export const estimatesUz: Record<string, string> = {
   'est.import_step1': '1. Fayl',
   'est.import_step2': '2. Ustunlarni moslash',
   'est.import_step3': '3. Tekshiruv va tasdiqlash',
-  'est.import_file': 'XLSX fayl (2 MB gacha, formulalarsiz)',
+  'est.import_file': 'XLSX fayl (10 MB gacha, formulalarsiz)',
   'est.import_choose': 'Faylni tanlang',
   'est.import_rows': '{n} ta qator topildi',
   'est.import_header_row': 'Sarlavha {row}-qatorda topildi',
   'est.import_map_hint':
-    'Har bir maydon uchun Excel ustunini tanlang. Material va zona nomlari mavjud yozuvlarga mos kelishi kerak.',
+    'Har bir maydon uchun Excel ustunini tanlang. Bazada yo‘q material va zonalar avtomatik yaratiladi; bir material t va kg da kelsa avtomatik o‘tkaziladi, boshqa birliklarda u hamma qatorda bir xil bo‘lishi kerak.',
   'est.import_field.kind': 'Turi (material/labor/equipment/service)',
   'est.import_field.description': 'Nomi',
   'est.import_field.unit_id': 'Birlik (kg, t, m, m2, m3, pcs, hour)',
@@ -128,10 +131,40 @@ export const estimatesUz: Record<string, string> = {
   'est.import_commit': 'Smetani yaratish',
   'est.import_ok': 'Tekshiruv o‘tdi: {n} ta qator, jami {total}',
   'est.import_unresolved':
-    'Quyidagi nomlar topilmadi. Avval materiallar/zonalar bo‘limida yarating yoki Exceldagi nomni to‘g‘rilang.',
+    'Quyidagi qatorlarda birlik xato: platformada bunday birlik yo‘q yoki materialning birligi boshqa va uni aniq o‘tkazib bo‘lmaydi (faqat t ↔ kg o‘tkaziladi; o‘tkazganda miqdorda 6 tadan, narxda 2 tadan ortiq kasr chiqmasligi kerak). Exceldagi birlikni to‘g‘rilang.',
+  'est.import_rows_invalid':
+    'Quyidagi qatorlarda qiymat bo‘sh yoki noto‘g‘ri (son formulasiz, ko‘pi bilan 6 kasr; narx 2 kasr). Exceldagi qatorni to‘g‘rilang.',
+  'est.import_empty_cell': 'bo‘sh',
   'est.import_row': '{row}-qator',
   'est.import_created': 'Excelda bor, lekin bazada yo‘q bo‘lgan {materials} ta material va {zones} ta zona avtomatik yaratildi.',
+  'est.import_converted':
+    '{n} ta qatorda birlik material birligiga o‘tkazildi (t ↔ kg): miqdor va narx qayta hisoblandi, qator jami o‘zgarmadi. Excel qatorlari: {rows}',
   'est.import_done': 'Smeta import qilindi',
+  'est.f5_step2': '2. Varaqlar',
+  'est.f5_detected':
+    '«{file}» Form 5 (ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ) deb tanildi. Smeta qilinadigan varaqlarni belgilang — har varaq alohida smeta bo‘ladi, nomini o‘zgartirish mumkin.',
+  'est.f5_select_all': 'Hammasini tanlash',
+  'est.f5_select_none': 'Tanlovni bekor qilish',
+  'est.f5_sheet_counts': '{works} ta ish, {resources} ta resurs, {materials} ta material; narxli qatorlar: {priced}',
+  'est.f5_not_form5': 'Form 5 emas',
+  'est.f5_too_large': 'Varaq juda katta (20 000 qator va 200 ustungacha)',
+  'est.f5_sheet_label': 'Varaq: {sheet}',
+  'est.f5_excel_title': 'Excel jami (import qilinmaydi, solishtirish uchun)',
+  'est.f5_excel_compare': 'Excel «ВСЕГО ЗАТРАТ»: {excel} · platforma: {platform} · farq: {diff}',
+  'est.f5_add': 'Smetaga qo‘shish',
+  'est.f5_remove': 'Olib tashlash',
+  'est.f5_add_hint':
+    'Ulushli qator (masalan, 21 %) platforma jamidan hisoblanib, smetaga «xizmat» qatori bo‘lib qo‘shiladi. QQS qo‘shilmaydi.',
+  'est.f5_floors': 'Qavatlar (bo‘limlardan): {list}',
+  'est.f5_warn_unknown_units': 'Platformada yo‘q birliklar «dona» qilib olindi, asl birlik izohda: {list}',
+  'est.f5_warn_unpriced': '{n} ta resurs yoki material qatorida narx yo‘q — 0 deb olindi',
+  'est.f5_warn_mismatch':
+    '{n} ta qatorda Excel miqdori (6-ustun) norma × ish hajmiga teng emas; platforma norma × ish hajmini oldi. Qator (Excel → platforma): {rows}',
+  'est.f5_warn_price_varies': 'Bir xil resursning narxi turlicha: {list}',
+  'est.f5_warn_missing_unit': 'Birligi yo‘q qatorlar materialning birligini oldi: {rows}',
+  'est.f5_warn_skipped': 'Hajmi yo‘q («--») ish qatorlari resurslari bilan o‘tkazildi: {rows}',
+  'est.f5_commit': '{n} ta smetani yaratish',
+  'est.f5_done': '{n} ta smeta import qilindi',
   'est.import_expired': 'Tekshiruv muddati o‘tdi, qayta tekshiring.',
   'est.unit_price_hidden': 'Narxlar sizning rolingiz uchun yashirin',
   'error.IMPORT_NAMES_UNRESOLVED': 'Exceldagi ayrim material yoki zona nomlari topilmadi.',
@@ -140,13 +173,21 @@ export const estimatesUz: Record<string, string> = {
   'error.NORM_WORK_QUANTITY_PAIR_REQUIRED': 'Norma va ish hajmi birga kiritiladi.',
   'error.MATERIAL_LINE_REFERENCE_REQUIRED':
     'Material qatorida material tanlanishi, boshqa qatorlarda tanlanmasligi kerak.',
-  'error.INVALID_XLSX': 'Fayl XLSX formatida emas yoki 2 MB dan katta.',
-  'error.UNSAFE_WORKBOOK': 'Faylda makros yoki tashqi havolalar bor; bunday fayl qabul qilinmaydi.',
+  'error.INVALID_XLSX':
+    'Fayl XLSX formatida emas yoki ruxsat etilgan hajmdan katta (smeta — 10 MB, xonadonlar ro‘yxati — 2 MB gacha).',
+  'error.ESTIMATE_FILE_TOO_LARGE':
+    'Fayl 10 MB dan katta. Keraksiz varaqlarni o‘chirib yoki smetani alohida faylga saqlab qayta yuklang.',
+  'error.UNSAFE_WORKBOOK':
+    'Faylda makros yoki boshqa Excel fayllarga havolalar bor; bunday fayl qabul qilinmaydi. Excel’da «Данные → Изменить связи → Разорвать связь» (Data → Edit Links → Break Link) qiling va faylni «Книга Excel (*.xlsx)» sifatida qayta saqlang.',
   'error.FORMULAS_NOT_ALLOWED':
     'Excel katakchalarida formulalar bo‘lmasligi kerak; qiymatlarni raqam sifatida saqlang.',
   'error.MAPPING_HEADER_NOT_FOUND': 'Tanlangan ustun sarlavhasi faylda topilmadi.',
-  'error.WORKBOOK_LIMIT': 'Fayl 2000 qator yoki 50 ustundan oshmasligi kerak.',
+  'error.WORKBOOK_LIMIT':
+    'Varaq juda katta: smetada 20 000 qator va 200 ustungacha, xonadonlar ro‘yxatida 2 000 qator va 50 ustungacha.',
   'error.PREVIEW_EXPIRED': 'Tekshiruv muddati o‘tdi, qayta tekshiring.',
   'error.PREVIEW_CHANGED': 'Fayl o‘zgargan, qayta tekshiring.',
+  'error.SHEET_NOT_FOUND': 'Tanlangan varaq faylda topilmadi. Faylni qayta tanlang.',
+  'error.FORM5_NOT_RECOGNIZED': 'Varaq Form 5 (ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ) deb tanilmadi.',
+  'error.EXCEL_ROW_NOT_ADDABLE': 'Bu Excel jami qatorini smetaga qo‘shib bo‘lmaydi.',
   'error.PROJECT_IMMUTABLE': 'Smetaning obyektini o‘zgartirib bo‘lmaydi.',
 };

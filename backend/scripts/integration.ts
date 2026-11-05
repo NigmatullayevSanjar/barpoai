@@ -18,6 +18,7 @@ import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
 import { issueDueInvoices, periodEnd } from '../src/billing.js';
 import { hashPassword, digest } from '../src/security.js';
+import { form5Workbook } from '../tests/form5-fixture.js';
 import { dec } from '../src/money.js';
 import { refreshRates } from '../src/rates.js';
 import {
@@ -3074,6 +3075,59 @@ try {
   passed.push(
     'Floor × work progress matrix: floor zones (nested zones roll up), plan from floor-bound work lines, fact from accepted reports by report zone or line zone, per-floor and per-work totals, unaccepted reports and material lines excluded',
   );
+  // ---- D26–D28 (2026-11-03): reviziyada vazifa va fakt o'sha ishga (ish identifikatori) o'tadi; matritsada ish kodi
+  const formLine = (category: string, description: string, quantity: string) => ({
+    kind: 'labor', description, unit_id: 'hour', quantity, unit_price: '1', category, zone_id: floorA1.id,
+  });
+  const workEst = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: px.id,
+      name: 'Form 5 ishlari',
+      lines: [formLine('E-01 Kladka', 'Mehnat', '10'), formLine('E-02 Armatura', 'Mehnat', '20'), formLine('E-02 Armatura', 'Mehnat', '30')],
+    },
+    adminAgain,
+  );
+  // prorab bu obyektga keyinroq biriktiriladi — tekshiruvchi admin (biriktirish talab qilinmaydi)
+  const workReviewer = (await call('GET', '/v1/auth/me', undefined, adminAgain)).id;
+  const workTask = await call(
+    'POST',
+    '/v1/tasks',
+    { project_id: px.id, title: 'Armatura (ikkinchi)', assignee_id: brigadier.id, reviewer_id: workReviewer, priority: 'normal', estimate_line_id: workEst.lines[2].id },
+    adminAgain,
+  );
+  await floorReport({ estimate_line_id: workEst.lines[2].id, progress_quantity: '12' });
+  // yuqoriga yangi ish qo'shildi (hamma pozitsiya suriladi), ikkinchi armatura hajmi o'zgardi
+  const workRev = await call(
+    'PATCH',
+    `/v1/estimates/${workEst.id}`,
+    {
+      project_id: px.id,
+      name: 'Form 5 ishlari',
+      version: 1,
+      lines: [formLine('E-00 Tozalash', 'Tozalash', '5'), formLine('E-01 Kladka', 'Mehnat', '10'), formLine('E-02 Armatura', 'Mehnat', '20'), formLine('E-02 Armatura', 'Mehnat', '35')],
+    },
+    adminAgain,
+  );
+  const newArm = workRev.lines[3];
+  const taskAfterRev = await call('GET', `/v1/tasks/${workTask.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    [taskAfterRev.estimate_line_id, taskAfterRev.estimate_plan_quantity, taskAfterRev.estimate_fact_quantity],
+    [newArm.id, '35.000000', '12.000000'],
+  );
+  const workDetail = await call('GET', `/v1/estimates/${workEst.id}`, undefined, adminAgain);
+  assert.deepEqual(workDetail.lines.map((l: any) => Number(l.fact_quantity)), [0, 0, 0, 12]);
+  const pxPlanActual = await call('GET', `/v1/finance/plan-actual?project_id=${px.id}`, undefined, adminAgain);
+  assert.equal(Number(pxPlanActual.lines.find((l: any) => l.id === newArm.id).fact_qty), 12);
+  const workMatrix = await call('GET', `${pxUrl}/floor-progress`, undefined, brigadierAgain2);
+  const workCell = (category: string) =>
+    workMatrix.cells.find((c: any) => c.zone_id === floorA1.id && c.category === category && c.description === 'Mehnat');
+  assert.deepEqual([workCell('E-02 Armatura').plan, Number(workCell('E-02 Armatura').fact)], ['55.000000', 12]);
+  assert.deepEqual([workCell('E-01 Kladka').plan, Number(workCell('E-01 Kladka').fact)], ['10.000000', 0]);
+  passed.push(
+    'Estimate revision keeps work identity (D26–D28): same kind/name/unit/zone/category matched in order even when lines shift, the task and accepted progress follow the line (task card, estimate, plan-actual), the floor matrix splits same-named resources by work code',
+  );
   // ---- V-C (D23): brigada akkord hisobi — stavka qabulda qotiriladi, obyekt foizi, tuzatish, davr, avans bilan to'lov
   const pxNow = await call('GET', pxUrl, undefined, adminAgain);
   const pieceEst = await call(
@@ -3144,9 +3198,11 @@ try {
   // Brigadir balansi: 160000 + 40000 + 30000 = 230000, hali davrga kirmagan
   const earn1 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
   const pxEarn = earn1.projects.find((p: any) => p.project_id === px.id);
+  // Hisobotlar 2026-10 sanasida; "shu oy" summasi faqat test oktyabrda ishlasa 230000 (current_date bo'yicha)
+  const pieceMonth = new Date().toISOString().slice(0, 7) === '2026-10' ? '230000.00' : '0.00';
   assert.deepEqual(
     [pxEarn.earned, pxEarn.earned_month, pxEarn.in_payroll, pxEarn.paid, pxEarn.advances, pxEarn.balance],
-    ['230000.00', '230000.00', '0.00', '0.00', '0.00', '230000.00'],
+    ['230000.00', pieceMonth, '0.00', '0.00', '0.00', '230000.00'],
   );
   assert.equal(earn1.totals.earned, '230000.00');
   assert.equal(earn1.entries.find((e: any) => e.id === r2.progress.id).amount, null);
@@ -3670,7 +3726,9 @@ try {
     'Project finance card: plan, fact, remaining, paid (payments and advances net of reversals, transfers excluded), debt, advances and customer income come from the server, only with prices.read',
   );
   // Budjetdan oshgan obyekt "Budjetlar" sahifasi bilan bir xil: budjet oylari fakti > budjet
-  const thisMonth = `${dash6.period.to.slice(0, 7)}-01`;
+  // Budjet xarajatlar oyiga (expenseP — 2026-10-05); dashboardning 6 oylik davri shu oyni o'z ichiga oladi
+  const thisMonth = '2026-10-01';
+  assert(dash6.period.from <= thisMonth && thisMonth <= dash6.period.to, `davr ${dash6.period.from}..${dash6.period.to}`);
   await call('POST', '/v1/budgets', { project_id: projectP.id, month: thisMonth, amount: '1000000000.00' }, adminAgain);
   const dashOver = await call('GET', `/v1/dashboard?project_id=${projectP.id}`, undefined, adminAgain);
   const summaryP = await call('GET', `/v1/finance/summary?project_id=${projectP.id}`, undefined, adminAgain);
@@ -4203,6 +4261,375 @@ try {
   );
   passed.push(
     'Estimate import reads openpyxl workbooks (absolute rels, table, merged title and total rows), finds the header row, maps m³/m²/kompl. units and reports unreadable files as INVALID_XLSX',
+  );
+  // D25: smeta fayli 10 MB gacha — 2 MB dan katta to'g'ri fayl o'qiladi, 10 MB dan bir bayt kattasi rad etiladi
+  const bigBook = new ExcelJS.Workbook();
+  const bigSheet = bigBook.addWorksheet('Smeta');
+  bigSheet.addRow(['Nomi', 'Izoh']);
+  for (let i = 0; i < 1900; i++) bigSheet.addRow([`Qator ${i}`, randomBytes(1800).toString('base64')]);
+  const bigFile = Buffer.from(await bigBook.xlsx.writeBuffer());
+  assert.ok(bigFile.length > 2 * 1024 * 1024, `test fayli ${bigFile.length} bayt`);
+  assert.equal(
+    (await call('POST', '/v1/estimate-imports/inspect', { file_base64: bigFile.toString('base64') }, adminAgain)).rows,
+    1900,
+  );
+  const tooBig = Buffer.alloc(10 * 1024 * 1024 + 1);
+  tooBig.write('PK');
+  assert.equal(
+    (await call('POST', '/v1/estimate-imports/inspect', { file_base64: tooBig.toString('base64') }, adminAgain, undefined, 400)).error.code,
+    'INVALID_XLSX',
+  );
+  passed.push('Estimate import accepts a valid workbook over 2 MB and rejects one byte over 10 MB (D25)');
+  // D30: smeta varag'i 20 000 qatorgacha — eski 2 000 chegarasidan katta smeta preview'dan o'tadi, 20 001 dan oshgani rad
+  const longBook = new ExcelJS.Workbook();
+  const longSheet = longBook.addWorksheet('Smeta');
+  longSheet.addRow(['Nomi', 'Turi', 'Birlik', 'Miqdor', 'Narx']);
+  for (let i = 1; i <= 2500; i++) longSheet.addRow([`Ish ${i}`, 'labor', 'm2', 2, 1000]);
+  const longPreview = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Uzun smeta',
+      file_base64: Buffer.from(await longBook.xlsx.writeBuffer()).toString('base64'),
+      mapping: { description: 'Nomi', kind: 'Turi', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual([longPreview.preview.lines.length, longPreview.total], [2500, '5000000.00']);
+  for (let i = 2501; i <= 20001; i++) longSheet.addRow([`Ish ${i}`, 'labor', 'm2', 2, 1000]);
+  assert.equal(
+    (await call('POST', '/v1/estimate-imports/inspect', { file_base64: Buffer.from(await longBook.xlsx.writeBuffer()).toString('base64') }, adminAgain, undefined, 400)).error.code,
+    'WORKBOOK_LIMIT',
+  );
+  passed.push('Estimate import reads a sheet over the old 2 000-row limit and rejects one over 20 000 rows (D30)');
+  // 2026-11-03: platforma eksporti qayta import qilinadi (JAMI qatori o'tkaziladi); birlik va qiymat xatolari Excel qatori bilan
+  const exportedEst = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectQ.id,
+      name: 'Eksport sinovi',
+      lines: [
+        { kind: 'labor', description: 'Suvoq', unit_id: 'm2', quantity: '12.5', unit_price: '20000', category: 'Pardozlash' },
+        { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '40', unit_price: '1500' },
+      ],
+    },
+    adminAgain,
+  );
+  const exportedFile = await call('GET', `/v1/estimates/${exportedEst.id}/export`, undefined, adminAgain);
+  const reimported = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Eksportdan qayta',
+      file_base64: exportedFile.base64,
+      mapping: { kind: 'Turi', category: 'Kategoriya', description: 'Nomi', material_name: 'Material', zone_name: 'Zona', unit_id: 'Birlik', quantity: 'Miqdor', norm: 'Norma', work_quantity: 'Ish hajmi', loss_percent: 'Yo‘qotish %', unit_price: 'Birlik narxi', note: 'Izoh' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual([reimported.preview.lines.length, reimported.total], [2, '310000.00']);
+  const rowsBook = async (rows: unknown[][]) => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Smeta');
+    for (const r of rows) sheet.addRow(r);
+    return Buffer.from(await book.xlsx.writeBuffer()).toString('base64');
+  };
+  const unitRows = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Birlik xatosi',
+      file_base64: await rowsBook([
+        ['Nomi', 'Turi', 'Birlik', 'Miqdor', 'Narx', 'Material'],
+        ['Mehnat', 'labor', 'ЧЕЛ.-Ч', 2, 100, null],
+        ['Bolt', 'material', 'kg', 1, 100, 'QA bolt (birlik)'],
+        ['Bolt', 'material', 'm3', 1, 100, 'QA bolt (birlik)'],
+        ['Bolt', 'material', 't', 1, 100.5, 'QA bolt (birlik)'],
+      ]),
+      mapping: { description: 'Nomi', kind: 'Turi', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx', material_name: 'Material' },
+    },
+    adminAgain,
+    undefined,
+    400,
+  );
+  assert.deepEqual(
+    [unitRows.error.code, unitRows.error.details],
+    [
+      'IMPORT_NAMES_UNRESOLVED',
+      [
+        { row: 2, field: 'unit_id', message: 'ЧЕЛ.-Ч' },
+        { row: 4, field: 'unit_id', message: 'm3 ≠ kg' },
+        { row: 5, field: 'unit_id', message: 't ≠ kg' },
+      ],
+    ],
+  );
+  // D31: bir material t va kg da — material birligiga o'tkaziladi, jami o'zgarmaydi
+  const massRows = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Birlik o‘tkazish',
+      file_base64: await rowsBook([
+        ['Nomi', 'Birlik', 'Miqdor', 'Norma', 'Ish hajmi', 'Narx', 'Material'],
+        ['Armatura', 't', 2, null, null, 9000000, 'QA armatura (t↔kg)'],
+        ['Armatura', 'кг', 12.5, null, null, 9000, 'QA armatura (t↔kg)'],
+        ['Armatura', 'kg', 5, 0.5, 10, 9000, 'QA armatura (t↔kg)'],
+      ]),
+      mapping: { description: 'Nomi', unit_id: 'Birlik', quantity: 'Miqdor', norm: 'Norma', work_quantity: 'Ish hajmi', unit_price: 'Narx', material_name: 'Material' },
+      defaults: { kind: 'material' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual(
+    [
+      massRows.total,
+      massRows.converted,
+      massRows.preview.lines.map((l: any) => [l.unit_id, l.quantity, l.norm ?? null, l.unit_price, l.total]),
+    ],
+    [
+      '18157500.00',
+      [
+        { row: 3, from: 'kg', to: 't' },
+        { row: 4, from: 'kg', to: 't' },
+      ],
+      [
+        ['t', '2', null, '9000000', '18000000.00'],
+        ['t', '0.0125', null, '9000000', '112500.00'],
+        ['t', '0.005', '0.0005', '9000000', '45000.00'],
+      ],
+    ],
+  );
+  const valueRows = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'Qiymat xatosi',
+      file_base64: await rowsBook([
+        ['Nomi', 'Turi', 'Birlik', 'Miqdor', 'Narx'],
+        ['Suvoq', 'labor', 'm2', 'abc', 100],
+        ['Bo‘yoq', 'labor', 'm2', 3, null],
+      ]),
+      mapping: { description: 'Nomi', kind: 'Turi', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx' },
+    },
+    adminAgain,
+    undefined,
+    400,
+  );
+  assert.deepEqual(
+    [valueRows.error.code, valueRows.error.details],
+    ['IMPORT_ROWS_INVALID', [{ row: 2, field: 'quantity', message: 'abc' }, { row: 3, field: 'unit_price', message: '' }]],
+  );
+  passed.push(
+    'Estimate export re-imports with the same total (the JAMI row is skipped); unit errors (unknown unit, other unit of the same material) and value errors come back with the Excel row number',
+  );
+  passed.push(
+    'Estimate import converts a material given in t and kg to the material unit with the same line totals; an inexact conversion stays a unit error with the Excel row (D31)',
+  );
+  // D29: Form 5 — varaqlar ro'yxati, preview (21 % qo'shilgan), hammasi bitta amalda saqlanadi; xatolar varaq va qator bilan
+  const form5File = Buffer.from(await form5Workbook().xlsx.writeBuffer()).toString('base64');
+  const f5inspect = await call('POST', '/v1/estimate-imports/inspect', { file_base64: form5File }, adminAgain);
+  assert.deepEqual(
+    [f5inspect.format, f5inspect.sheets.map((s: any) => [s.sheet, s.form5, s.works, s.resources, s.materials, s.priced])],
+    [
+      'form5',
+      [
+        ['Накладная', false, 0, 0, 0, 0],
+        ['Локалка 1', true, 2, 7, 2, 8],
+        ['Нормы', true, 1, 2, 0, 0],
+      ],
+    ],
+  );
+  const f5body = (addRows?: number[], file = form5File) => ({
+    project_id: projectQ.id,
+    file_base64: file,
+    sheets: [
+      { sheet: 'Локалка 1', name: 'Form 5 lokalka', ...(addRows ? { add_rows: addRows } : {}) },
+      { sheet: 'Нормы', name: 'Form 5 normalar' },
+    ],
+  });
+  assert.equal(
+    (await call('POST', '/v1/estimate-imports/form5/preview', f5body([24]), adminAgain, undefined, 400)).error.code,
+    'EXCEL_ROW_NOT_ADDABLE',
+  );
+  const brokenFile = Buffer.from(await form5Workbook({ brokenFormula: true }).xlsx.writeBuffer()).toString('base64');
+  const f5broken = await call('POST', '/v1/estimate-imports/form5/preview', f5body(undefined, brokenFile), adminAgain, undefined, 400);
+  assert.deepEqual(
+    [f5broken.error.code, f5broken.error.details],
+    ['IMPORT_ROWS_INVALID', [{ sheet: 'Локалка 1', row: 10, field: 'norm', message: 'formula' }]],
+  );
+  const f5 = await call('POST', '/v1/estimate-imports/form5/preview', f5body([23]), adminAgain);
+  const [f5lok, f5norm] = f5.sheets;
+  assert.deepEqual(
+    [
+      f5lok.lines,
+      f5lok.total,
+      f5lok.direct_total,
+      f5lok.excel_total,
+      f5lok.excel_difference,
+      f5lok.zones,
+      f5lok.created,
+      f5lok.converted,
+      f5lok.excel_rows.map((x: any) => [x.row, x.addable, x.added]),
+      [f5norm.lines, f5norm.total, f5norm.warnings.unpriced],
+    ],
+    [
+      12,
+      '22188955.80',
+      '18337980.00',
+      '18340000.00',
+      '-2020.00',
+      ['1-qavat', '2-qavat'],
+      { materials: 4, zones: 2 },
+      [{ row: 20, from: 'kg', to: 't' }],
+      [
+        [22, false, false],
+        [23, true, true],
+        [24, false, false],
+      ],
+      [3, '0.00', 2],
+    ],
+  );
+  // biri xato bo'lsa hech biri saqlanmaydi
+  const f5count = async () =>
+    (await admin!.query("SELECT count(*)::int n FROM estimates WHERE project_id=$1 AND name LIKE 'Form 5 %'", [projectQ.id])).rows[0].n;
+  await call(
+    'POST',
+    '/v1/estimate-imports/form5/commit',
+    { items: [{ id: f5lok.id, digest: f5lok.digest }, { id: f5norm.id, digest: '0'.repeat(64) }] },
+    adminAgain,
+    undefined,
+    409,
+  );
+  assert.equal(await f5count(), 0);
+  const f5items = { items: f5.sheets.map((x: any) => ({ id: x.id, digest: x.digest })) };
+  const f5saved = await call('POST', '/v1/estimate-imports/form5/commit', f5items, adminAgain);
+  assert.equal(await f5count(), 2);
+  assert.deepEqual((await call('POST', '/v1/estimate-imports/form5/commit', f5items, adminAgain)).estimates, f5saved.estimates);
+  const f5est = await call('GET', `/v1/estimates/${f5saved.estimates[0].id}`, undefined, adminAgain);
+  assert.deepEqual(
+    [f5est.lines.length, f5est.totals.total, f5est.lines.at(-1).kind, f5est.lines.at(-1).description],
+    [12, '22188955.80', 'service', 'ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)'],
+  );
+  assert.deepEqual(
+    (await admin.query("SELECT name,kind FROM zones WHERE project_id=$1 AND name LIKE '%-qavat' ORDER BY name", [projectQ.id])).rows,
+    [
+      { name: '1-qavat', kind: 'floor' },
+      { name: '2-qavat', kind: 'floor' },
+    ],
+  );
+  const f5matrix = await call('GET', `/v1/projects/${projectQ.id}/floor-progress`, undefined, adminAgain);
+  assert.deepEqual(f5matrix.floors.map((f: any) => f.name).sort(), ['1-qavat', '2-qavat']);
+  passed.push(
+    'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, Excel total and the 21 % row from the platform total; VAT not addable), row errors carry the sheet, and all sheets commit together or not at all (D29)',
+  );
+  // ---- D32 (2026-11-05): Form 5 ish qatoriga akkord mehnat resurslaridan × obyekt foizi; resurs qatorlari stavkasiz;
+  // qo'lda stavka ustun; narx reviziyada o'zgarsa yangi hisobotga yangi stavka, qabul qilingani qotirilgan
+  const qNow = await call('GET', `/v1/projects/${projectQ.id}`, undefined, adminAgain);
+  await call('PATCH', `/v1/projects/${projectQ.id}`, { version: qNow.version, name: qNow.name, brigade_percent: '20' }, adminAgain);
+  const f5rated = await call('GET', `/v1/estimates/${f5saved.estimates[0].id}`, undefined, adminAgain);
+  const f5row = (desc: string, zone: string, i = 0) =>
+    f5rated.lines.filter((l: any) => l.description === desc && l.zone_name === zone)[i];
+  const kladka = f5row('КЛАДКА ПЕРЕГОРОДОК', '1-qavat');
+  const kladkaLabor = f5row('ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', '1-qavat');
+  const karkas = f5row('УСТАНОВКА КАРКАСА', '2-qavat');
+  // kladka: 124,8 soat × 30 000 = 3 744 000 / 200 m2 × 20 % = 3 744; karkas: 10,65 × 3 200 = 34 080 / 3 seksiya × 20 % = 2 272
+  assert.deepEqual(
+    [
+      [kladka.unit_id, kladka.labor_rate, kladka.auto_labor_rate],
+      [kladkaLabor.auto_labor_rate, f5row('КРАНЫ НА АВТОМОБИЛЬНОМ ХОДУ', '1-qavat').auto_labor_rate],
+      [karkas.unit_id, karkas.auto_labor_rate],
+      f5row('Блоки газобетонные', '1-qavat').auto_labor_rate,
+    ],
+    [['m2', null, '3744.00'], [null, null], ['section', '2272.00'], null],
+  );
+  assert.equal((await call('GET', `/v1/estimates/${f5rated.id}`, undefined, forePx)).lines[0].auto_labor_rate, undefined);
+  const f5report = async (lineId: string, qty: string) => {
+    const r = await call(
+      'POST',
+      '/v1/reports',
+      { project_id: projectQ.id, kind: 'daily', report_date: '2026-10-06', content: 'Form 5 akkord', estimate_line_id: lineId, progress_quantity: qty },
+      brigadierAgain2,
+    );
+    await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
+    return { ...(await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)).progress, report: r.id };
+  };
+  const kladkaDone = await f5report(kladka.id, '10');
+  assert.deepEqual([kladkaDone.labor_rate, kladkaDone.labor_amount], ['3744.00', '37440.00']);
+  const laborDone = await f5report(kladkaLabor.id, '5');
+  assert.deepEqual([laborDone.labor_rate, laborDone.labor_amount], [null, null]);
+  // reviziya: ishchi soati 40 000 → kladka 4 992 (avtomatik, yangi narxdan); karkasga qo'lda 2 500
+  const lineKeys = ['kind', 'description', 'zone_id', 'material_id', 'unit_id', 'quantity', 'labor_rate', 'norm', 'work_quantity', 'loss_percent', 'category', 'note', 'unit_price'];
+  const f5revised = await call(
+    'PATCH',
+    `/v1/estimates/${f5rated.id}`,
+    {
+      project_id: projectQ.id,
+      name: f5rated.name,
+      version: f5rated.revision,
+      lines: f5rated.lines.map((l: any) => ({
+        ...Object.fromEntries(lineKeys.filter((k) => l[k] !== null && l[k] !== undefined).map((k) => [k, String(l[k])])),
+        position: l.position,
+        ...(l.id === kladkaLabor.id ? { unit_price: '40000' } : {}),
+        ...(l.id === karkas.id ? { labor_rate: '2500' } : {}),
+      })),
+    },
+    adminAgain,
+  );
+  const f5after = await call('GET', `/v1/estimates/${f5revised.id}`, undefined, adminAgain);
+  const kladka2 = f5after.lines.find((l: any) => l.description === 'КЛАДКА ПЕРЕГОРОДОК');
+  const karkas2 = f5after.lines.find((l: any) => l.description === 'УСТАНОВКА КАРКАСА');
+  assert.deepEqual(
+    [kladka2.auto_labor_rate, karkas2.labor_rate, karkas2.auto_labor_rate],
+    ['4992.00', '2500.00', '2272.00'],
+  );
+  assert.deepEqual(
+    [(await f5report(kladka2.id, '1')).labor_amount, (await f5report(karkas2.id, '1')).labor_amount],
+    ['4992.00', '2500.00'],
+  );
+  assert.equal(
+    (await call('GET', `/v1/reports/${kladkaDone.report}`, undefined, adminAgain)).progress.labor_amount,
+    '37440.00',
+  );
+  // nakladnoy nomi farq qilsa: o'xshash smeta materiali taklif qilinadi, omborchi tasdiqlagan nom muqobil nom bo'ladi
+  const blocks = f5row('Блоки газобетонные', '1-qavat').material_id;
+  const similar = async (name: string, token = whP) =>
+    (await call('GET', `/v1/materials/similar?project_id=${projectQ.id}&name=${encodeURIComponent(name)}`, undefined, token)).items;
+  assert.deepEqual(
+    (await similar('Блоки газобетонные D500')).map((m: any) => [m.id, m.exact]),
+    [[blocks, false]],
+  );
+  assert.deepEqual(await similar('Труба стальная 57х3,5'), []);
+  assert.equal(
+    (await call('POST', `/v1/materials/${blocks}/aliases`, { name: 'Блоки газобетонные D500' }, adminAgain, undefined, 403)).error.code,
+    'FORBIDDEN',
+  );
+  assert.equal(
+    (await call('POST', `/v1/materials/${blocks}/aliases`, { name: 'Блоки газобетонные D500' }, whP)).id,
+    blocks,
+  );
+  assert.deepEqual(
+    (await similar('блоки газобетонные d500')).map((m: any) => [m.id, m.exact, m.aliases]),
+    [[blocks, true, ['Блоки газобетонные D500']]],
+  );
+  const byAlias = await call('GET', `/v1/materials?q=${encodeURIComponent('D500')}`, undefined, whP);
+  assert.deepEqual(
+    byAlias.items.map((m: any) => [m.id, m.alias]),
+    [[blocks, 'Блоки газобетонные D500']],
+  );
+  const mortar = f5row('СМЕСЬ РАСТВОРНАЯ СУХАЯ', '1-qavat').material_id;
+  assert.equal(
+    (await call('POST', `/v1/materials/${mortar}/aliases`, { name: 'БЛОКИ газобетонные d500' }, whP, undefined, 409)).error.code,
+    'ALREADY_EXISTS',
+  );
+  const catalogUnits = (await call('GET', '/v1/catalog', undefined, whP)).units.map((u: any) => u.id);
+  assert.ok(['l', 'section', 'boiler', 'cycle', 'end'].every((u) => catalogUnits.includes(u)), catalogUnits.join(','));
+  passed.push(
+    'Form 5 piece rate (D32): the work line rate comes from its labor resources × the project percent and follows a price revision, resource lines get no automatic rate, a typed rate wins, accepted rates stay frozen; a differing invoice name is offered the similar estimate material (not other sizes) and saved as its alias by the warehouse role only, then found by search; Л, СЕКЦИЯ, КОТЕЛ, ЦИКЛ, КОНЕЦ are platform units',
   );
   // ---- Tarif tahriri: narx va limit o'zgaradi, chiqarilgan invoyslar summasi o'zgarmaydi, o'chirish taqiq
   const invoicesBefore = (

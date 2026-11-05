@@ -60,6 +60,8 @@ export interface Endpoint {
   response?: Record<string, unknown>;
   /** Marshrutga xos cheklov (masalan, login uchun qattiqroq). */
   rateLimit?: { max: number; timeWindow: string };
+  /** Marshrutga xos so'rov tanasi chegarasi (bayt); bo'lmasa umumiy 8 MB. */
+  bodyLimit?: number;
   /** 'set' — javobdagi access_token cookie sifatida ham qo'yiladi; 'clear' — cookie o'chiriladi. */
   session?: 'set' | 'clear';
   handler: (ctx: Context) => Promise<any>;
@@ -96,6 +98,7 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
       method: route.method,
       url: route.path,
       config: route.rateLimit ? { rateLimit: route.rateLimit } : undefined,
+      ...(route.bodyLimit ? { bodyLimit: route.bodyLimit } : {}),
       handler: async (request, reply) =>
         transaction(pool, null, async (db) => {
           const body = route.body ? route.body.parse(request.body) : {};

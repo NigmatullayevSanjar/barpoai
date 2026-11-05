@@ -5,7 +5,8 @@ import type { Zone } from '@/features/projects/types';
 export type LineKind = 'material' | 'labor' | 'equipment' | 'service';
 export const lineKinds: LineKind[] = ['material', 'labor', 'equipment', 'service'];
 export type Unit = { id: string; name: string; dimension: string };
-export type Material = { id: string; name: string; unit_id: string; catalog_id: string | null };
+/** `alias` — qidiruv muqobil nom bo'yicha topganda (D32) */
+export type Material = { id: string; name: string; unit_id: string; catalog_id: string | null; alias?: string | null };
 export type EstimateSummary = {
   id: string;
   project_id: string;
@@ -49,6 +50,8 @@ export type EstimateLine = {
   unit_price?: string;
   /** V-C: brigada stavkasi (so'm/birlik), faqat ish qatorlari; narx huquqisiz kelmaydi */
   labor_rate?: string | null;
+  /** D32: avtomatik stavka (Form 5 ish qatori mehnat resurslaridan yoki narx × obyekt foizi); narx huquqisiz kelmaydi */
+  auto_labor_rate?: string | null;
   total?: string;
   months: { month: string; quantity: string }[];
   fact_quantity: string;
@@ -82,6 +85,8 @@ export type LineDraft = {
   loss_percent: string;
   unit_price: string;
   labor_rate: string;
+  /** D32: serverdagi avtomatik stavka — faqat ko'rsatish uchun, yuborilmaydi */
+  auto_labor_rate: string;
   note: string;
   months: { month: string; quantity: string }[];
 };
@@ -102,6 +107,7 @@ export const newLine = (partial: Partial<LineDraft> = {}): LineDraft => ({
   loss_percent: '',
   unit_price: '',
   labor_rate: '',
+  auto_labor_rate: '',
   note: '',
   months: [],
   ...partial,
@@ -123,6 +129,7 @@ export const fromLine = (l: EstimateLine): LineDraft => ({
   loss_percent: Number(l.loss_percent) ? trimZeros(l.loss_percent) : '',
   unit_price: l.unit_price !== undefined ? trimZeros(l.unit_price) : '',
   labor_rate: l.labor_rate ? trimZeros(l.labor_rate) : '',
+  auto_labor_rate: l.auto_labor_rate ?? '',
   note: l.note ?? '',
   months: l.months.map((m) => ({ month: m.month.slice(0, 10), quantity: trimZeros(m.quantity) })),
 });

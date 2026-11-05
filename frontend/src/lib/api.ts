@@ -2,7 +2,7 @@
  * BARPO AI API mijozi.
  * - Sessiya httpOnly cookie orqali (credentials: include); Bearer token saqlanmaydi.
  * - Har bir o'zgartiruvchi so'rovga Idempotency-Key qo'shiladi; retry uchun kalitni berish mumkin.
- * - Xatolar ApiError ko'rinishida: code (server kodi), status, fields (validatsiya).
+ * - Xatolar ApiError ko'rinishida: code (server kodi), status, fields (validatsiya), details (masalan, import qator xatolari).
  */
 export const apiBase: string = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
@@ -12,6 +12,7 @@ export class ApiError extends Error {
     public status: number,
     public fields: { path: (string | number)[]; message: string }[] = [],
     public requestId?: string,
+    public details?: unknown,
   ) {
     super(code);
   }
@@ -66,6 +67,7 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
       res.status,
       data?.error?.fields ?? [],
       data?.request_id,
+      data?.error?.details,
     );
   }
   return data as T;
