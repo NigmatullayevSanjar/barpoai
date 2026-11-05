@@ -115,7 +115,7 @@ export const opsUz: Record<string, string> = {
   'billing.credit_balance': 'Kredit qoldig‘i',
   'billing.next_invoice': 'Keyingi invoys',
   'billing.period_hint':
-    'Obuna davri 30 kun; invoys davr boshlanishidan 3 kun oldin avtomatik chiqariladi. Ortiqcha to‘lov kredit sifatida keyingi invoysga qo‘llanadi. Muddati o‘tganda kirish platforma egasi qaroriga qadar ochiq qoladi.',
+    'Obuna davri 30 kun; invoys davr boshlanishidan 3 kun oldin avtomatik chiqariladi. Ortiqcha to‘lov kredit sifatida keyingi invoysga qo‘llanadi. Obuna muddati tugaguncha to‘lanmasa, kompaniya hisobi avtomatik bloklanadi; to‘lov qayd etilgach kirish o‘zi ochiladi.',
   'tenants.source': 'Manba',
   'tenants.source.auto': 'Avtomatik',
   'tenants.source.manual': 'Qo‘lda',

@@ -22,7 +22,7 @@ import { token, digest, hashPassword } from './security.js';
 import { invariant } from './errors.js';
 import { dec } from './money.js';
 import { accessState } from './auth.js';
-import { issueInvoice, applyCredit, recomputeCoverage, periodEnd } from './billing.js';
+import { issueInvoice, applyCredit, recomputeCoverage, periodEnd, coveredSql } from './billing.js';
 import { telegramConfigured, botHealth } from './telegram.js';
 import { platformPermit, platformStaff } from './platform-permissions.js';
 // Rollar (egasi qarori D21, 2026-10-22; D15 o'rniga): ko'rish — barcha platforma xodimlari; har amal o'z ruxsati bilan
@@ -80,7 +80,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/tenants',
     summary:
-      'Korxonalar, egaga tegishli alias va trial/to‘lov holati (avtomatik blok yo‘q); q — nom, kalit, alias; state — access_state filtri',
+      'Korxonalar, egaga tegishli alias va trial/to‘lov holati (muddati tugab to‘lanmagani worker bilan bloklanadi, D33); q — nom, kalit, alias; state — access_state filtri',
     platform: readers,
     query: searchQuery.extend({
       state: z.enum(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived']).optional(),
@@ -245,9 +245,13 @@ export function platformRoutes(add: (r: Endpoint) => void) {
       const t = await one(db, 'SELECT * FROM tenants WHERE id=$1 FOR UPDATE', [params.id]);
       invariant(t.version === body.version, 'VERSION_CONFLICT');
       invariant(t.status !== 'pending', 'SIGNUP_REQUIRED');
+      // D33: qo'lda qaror avtomatik blokni almashtiradi — to'lov qo'lda qo'yilgan blokni ochmaydi; muddati
+      // tugagan kompaniyani qo'lda ochish shu uzilish bo'yicha qaror, worker uni qayta bloklamaydi.
       const row = await one(
         db,
-        'UPDATE tenants SET status=$2,block_reason=$3,version=version+1 WHERE id=$1 RETURNING *',
+        `UPDATE tenants SET status=$2,block_reason=$3,auto_blocked=false,
+           auto_blocked_for=CASE WHEN $2='active' AND ${coveredSql}<=now() THEN ${coveredSql} ELSE auto_blocked_for END,
+           version=version+1 WHERE id=$1 RETURNING *`,
         [params.id, body.status, body.reason],
       );
       if (body.status !== 'active') {

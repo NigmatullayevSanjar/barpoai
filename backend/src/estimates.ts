@@ -286,6 +286,8 @@ export async function openWorkbook(base64: string, maxBytes: number) {
     400,
   );
   // Inspect ZIP metadata before decompression; reject excessive expansion and macros.
+  // D33: tashqi havolalar (externalLinks) rad etilmaydi — fayl saqlanmaydi, server havolani ochmaydi,
+  // faqat Excel saqlagan qiymatlar o'qiladi.
   const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(buffer);
   let expanded = 0;
@@ -293,9 +295,7 @@ export async function openWorkbook(base64: string, maxBytes: number) {
     const size = (entry as any)._data?.uncompressedSize ?? 0;
     expanded += size;
     invariant(
-      size <= 5 * maxBytes &&
-        expanded <= 10 * maxBytes &&
-        !/vbaProject|externalLinks/i.test(entry.name),
+      size <= 5 * maxBytes && expanded <= 10 * maxBytes && !/vbaProject/i.test(entry.name),
       'UNSAFE_WORKBOOK',
       400,
     );

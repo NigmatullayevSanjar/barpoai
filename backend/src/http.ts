@@ -338,7 +338,7 @@ export function openapi(definitions: Endpoint[]) {
       title: 'BARPO AI API',
       version: '0.2.0',
       description:
-        'UZS decimal qiymatlar string. Tenant sessiyadan olinadi. Sessiya Bearer token yoki httpOnly cookie orqali. Trial tugashi avtomatik bloklamaydi; platforma egasi qo‘lda hal qiladi.',
+        'UZS decimal qiymatlar string. Tenant sessiyadan olinadi. Sessiya Bearer token yoki httpOnly cookie orqali. Trial yoki to‘langan davr tugab, to‘lov qilinmasa kompaniya avtomatik bloklanadi; to‘lov qoplasa blok ochiladi (D33).',
     },
     servers: [{ url: 'http://localhost:3001' }],
     paths,

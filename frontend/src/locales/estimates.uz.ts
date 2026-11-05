@@ -178,7 +178,7 @@ export const estimatesUz: Record<string, string> = {
   'error.ESTIMATE_FILE_TOO_LARGE':
     'Fayl 10 MB dan katta. Keraksiz varaqlarni o‘chirib yoki smetani alohida faylga saqlab qayta yuklang.',
   'error.UNSAFE_WORKBOOK':
-    'Faylda makros yoki boshqa Excel fayllarga havolalar bor; bunday fayl qabul qilinmaydi. Excel’da «Данные → Изменить связи → Разорвать связь» (Data → Edit Links → Break Link) qiling va faylni «Книга Excel (*.xlsx)» sifatida qayta saqlang.',
+    'Faylda makros bor yoki ichki hajmi juda katta; bunday fayl qabul qilinmaydi. Faylni makrossiz «Книга Excel (*.xlsx)» sifatida qayta saqlang. Boshqa fayllarga havolalar xalaqit bermaydi.',
   'error.FORMULAS_NOT_ALLOWED':
     'Excel katakchalarida formulalar bo‘lmasligi kerak; qiymatlarni raqam sifatida saqlang.',
   'error.MAPPING_HEADER_NOT_FOUND': 'Tanlangan ustun sarlavhasi faylda topilmadi.',

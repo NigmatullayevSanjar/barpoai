@@ -1064,6 +1064,19 @@ CREATE POLICY tenant_isolation ON material_aliases USING (tenant_id = nullif(cur
 
 ```
 
+## 030_tenant_auto_block.sql
+
+```sql
+-- D33: obuna muddati (trial yoki to'langan davr) tugab, to'lov qoplamagan bo'lsa worker kompaniyani bloklaydi.
+-- auto_blocked — joriy blokni worker qo'ygan: to'lov muddatni qoplasa blok o'zi ochiladi (qo'lda blokka tegilmaydi).
+-- auto_blocked_for — shu qoplangan sana tugashi bo'yicha qaror bor (worker bloklagan yoki platforma egasi qo'lda
+-- ochgan): shu uzilish uchun qayta avtomatik bloklanmaydi.
+ALTER TABLE tenants
+  ADD COLUMN auto_blocked boolean NOT NULL DEFAULT false,
+  ADD COLUMN auto_blocked_for timestamptz;
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

@@ -260,7 +260,8 @@ export function AppShell() {
                   })}
                 </div>
               ))}
-          {!isPlatform && issue && (
+          {/* Blokda obuna sahifasi ochiq qoladi; rol menyusida u allaqachon bo'lsa (admin), ikkinchi band chiqmaydi. */}
+          {!isPlatform && issue && !tenantGroups.some((g) => g.items.some((it) => it.page === 'billing')) && (
             <NavLink to="/app/billing" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <Icon name="CreditCard" />
               {t('page.billing')}

@@ -3,7 +3,7 @@ import { tenantAccess } from './auth.js';
 import { invariant } from './errors.js';
 import { sendMessage, telegramConfigured, pollOnce } from './telegram.js';
 import { notify } from './notify.js';
-import { issueDueInvoices } from './billing.js';
+import { blockUnpaid, issueDueInvoices } from './billing.js';
 import { refreshRates } from './rates.js';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
@@ -118,6 +118,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       await workOnce(pool);
       if (Date.now() - lastReminder > 10 * 60 * 1000) {
         await remindDeadlines(pool);
+        // Avval blok: bloklangan kompaniyaga «muddat o'tdi» xabari yozilmaydi (Telegram ochilgandan keyin eskirib ketardi).
+        await blockUnpaid(pool);
         await issueDueInvoices(pool);
         lastReminder = Date.now();
       }

@@ -326,3 +326,53 @@ test('similar materials for a new name: exact name or alias first, then shared w
     ['a'],
   );
 });
+import JSZip from 'jszip';
+import { inspectWorkbook } from '../src/estimates.js';
+test('workbook with links to other files is read like the unlinked copy; macros stay rejected (D34)', async () => {
+  const plain = Buffer.from(await form5Workbook().xlsx.writeBuffer());
+  // Excel tuzilishi: externalLink qismi (TargetMode="External"), workbook.xml dagi havola va unga ishora qiluvchi nom
+  const zip = await JSZip.loadAsync(plain);
+  zip.file(
+    'xl/externalLinks/externalLink1.xml',
+    '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"><sheetNames><sheetName val="Лист1"/></sheetNames><sheetDataSet><sheetData sheetId="0"/></sheetDataSet></externalBook></externalLink>',
+  );
+  zip.file(
+    'xl/externalLinks/_rels/externalLink1.xml.rels',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///C:/Smeta/boshqa.xlsx" TargetMode="External"/></Relationships>',
+  );
+  const rels = await zip.file('xl/_rels/workbook.xml.rels')!.async('string');
+  zip.file(
+    'xl/_rels/workbook.xml.rels',
+    rels.replace(
+      '</Relationships>',
+      '<Relationship Id="rIdExt1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink" Target="externalLinks/externalLink1.xml"/></Relationships>',
+    ),
+  );
+  const workbookXml = await zip.file('xl/workbook.xml')!.async('string');
+  assert.match(workbookXml, /<\/sheets>/);
+  assert.doesNotMatch(workbookXml, /<definedNames/);
+  zip.file(
+    'xl/workbook.xml',
+    workbookXml.replace(
+      '</sheets>',
+      '</sheets><externalReferences><externalReference r:id="rIdExt1"/></externalReferences><definedNames><definedName name="Narx">[1]Лист1!$A$1</definedName></definedNames>',
+    ),
+  );
+  const types = await zip.file('[Content_Types].xml')!.async('string');
+  zip.file(
+    '[Content_Types].xml',
+    types.replace(
+      '</Types>',
+      '<Override PartName="/xl/externalLinks/externalLink1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml"/></Types>',
+    ),
+  );
+  const linked = await zip.generateAsync({ type: 'nodebuffer' });
+  const expected = await inspectWorkbook(plain.toString('base64'));
+  assert.equal(expected.format, 'form5');
+  assert.deepEqual(await inspectWorkbook(linked.toString('base64')), expected);
+  zip.file('xl/vbaProject.bin', 'macro');
+  await assert.rejects(
+    inspectWorkbook((await zip.generateAsync({ type: 'nodebuffer' })).toString('base64')),
+    /UNSAFE_WORKBOOK/,
+  );
+});

@@ -10,18 +10,35 @@ export const INVOICE_LEAD_DAYS = 3;
 const DAY = 86400000;
 export const periodEnd = (start: Date | string) =>
   new Date(new Date(start).getTime() + PERIOD_DAYS * DAY);
+/** Kompaniya qoplangan sana: trial yoki to'langan davr oxiri (accessState covered_until bilan bir xil). */
+export const coveredSql = 'greatest(trial_ends_at,coalesce(paid_until,trial_ends_at))';
+export const AUTO_BLOCK_REASON = 'Obuna muddati tugadi, to‘lov qilinmagan';
 
-/** Faqat to'liq qoplangan va trialdan uzluksiz davrlar zanjiri paid_until ni uzaytiradi; refund qisqartiradi. */
+/**
+ * Faqat to'liq qoplangan davrlar zanjiri paid_until ni uzaytiradi; refund qisqartiradi. Zanjir trialdan uzluksiz,
+ * uzilishdan keyin (D33: blok davri) esa boshlanishi o'tgan davr ham ulanadi — kelajakdagi uzilgan davr ulanmaydi.
+ * To'lov qoplasa worker qo'ygan blok ochiladi; qo'lda qo'yilgan blokka tegilmaydi.
+ */
 export async function recomputeCoverage(db: Db, tenantId: string) {
   await db.query(
     `WITH RECURSIVE covered AS (
       SELECT i.period_start,i.period_end FROM billing_invoices i LEFT JOIN billing_entries e ON e.invoice_id=i.id WHERE i.tenant_id=$1 GROUP BY i.id HAVING coalesce(sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END),0)>=i.amount
     ), chain AS (
       SELECT trial_ends_at AS until FROM tenants WHERE id=$1
-      UNION SELECT c.period_end FROM covered c JOIN chain x ON c.period_start<=x.until AND c.period_end>x.until
+      UNION SELECT c.period_end FROM covered c JOIN chain x ON c.period_start<=greatest(x.until,now()) AND c.period_end>x.until
     ) UPDATE tenants SET paid_until=(SELECT max(until) FROM chain) WHERE id=$1`,
     [tenantId],
   );
+  const reopened = await db.query(
+    `UPDATE tenants SET status='active',block_reason=NULL,auto_blocked=false,auto_blocked_for=NULL,version=version+1
+     WHERE id=$1 AND status='blocked' AND auto_blocked AND ${coveredSql}>now()`,
+    [tenantId],
+  );
+  if (reopened.rowCount)
+    await db.query(
+      "INSERT INTO audit_events(tenant_id,actor_id,action,resource_id,details) VALUES(NULL,NULL,'tenant.active',$1,$2)",
+      [tenantId, { reason: 'To‘lov muddatni qopladi', automatic: true }],
+    );
 }
 export async function creditBalance(db: Db, tenantId: string) {
   const row = await one(
@@ -123,7 +140,7 @@ export async function issueInvoice(
       user_id: admin,
       kind: 'billing.invoice',
       title: '🧾 Yangi obuna invoysi',
-      body: `Tarif: ${plan.code} v${plan.version}\nDavr: ${period}\nSumma: ${money(plan.monthly_price)} UZS\nTo‘lov muddati: ${new Date(row.due_at).toISOString().slice(0, 10)}`,
+      body: `Tarif: ${plan.code} v${plan.version}\nDavr: ${period}\nSumma: ${money(plan.monthly_price)} UZS\nTo‘lov muddati: ${new Date(row.due_at).toISOString().slice(0, 10)}\nObuna muddati tugaguncha to‘lanmasa, kompaniya hisobi avtomatik bloklanadi.`,
       payload: { invoice_id: row.id },
       dedup_key: `billing.invoice:${row.id}:${admin}`,
     });
@@ -133,7 +150,7 @@ export async function issueInvoice(
 /**
  * Avtomatik invoyslash: faol kompaniyalar uchun navbatdagi 30 kunlik davr boshlanishiga
  * INVOICE_LEAD_DAYS kun qolganda (yoki o'tib ketgan bo'lsa) bitta invoys chiqariladi.
- * Muddati o'tgan qoplanmagan invoys uchun adminga bir martalik ogohlantirish; blok yo'q.
+ * Muddati o'tgan qoplanmagan invoys uchun faol kompaniya adminiga bir martalik ogohlantirish (blok — blockUnpaid).
  */
 export async function issueDueInvoices(pool: pg.Pool, now = new Date()) {
   const due = (
@@ -178,10 +195,37 @@ export async function issueDueInvoices(pool: pg.Pool, now = new Date()) {
           user_id: admin,
           kind: 'billing.overdue',
           title: '⚠️ Obuna to‘lovi muddati o‘tdi',
-          body: `To‘lanmagan summa: ${money(i.outstanding)} UZS\nMuddat: ${new Date(i.due_at).toISOString().slice(0, 10)}\nKirish platforma egasi qaroriga qadar ochiq qoladi.`,
+          body: `To‘lanmagan summa: ${money(i.outstanding)} UZS\nMuddat: ${new Date(i.due_at).toISOString().slice(0, 10)}\nObuna muddati tugaguncha to‘lanmasa, kompaniya hisobi avtomatik bloklanadi.`,
           payload: { invoice_id: i.id },
           dedup_key: `billing.overdue:${i.id}:${admin}`,
         });
     });
   return issued;
+}
+/**
+ * D33: qoplangan sanasi (trial yoki to'langan davr oxiri) o'tgan faol kompaniya avtomatik bloklanadi;
+ * kompaniya admini obuna sahifasiga kira oladi. Bir uzilish uchun bir marta (auto_blocked_for): platforma egasi
+ * qo'lda ochsa, keyingi qoplangan sana tugaguncha qayta bloklanmaydi. To'lov blokni recomputeCoverage'da ochadi.
+ */
+export async function blockUnpaid(pool: pg.Pool, now = new Date()) {
+  const due = `status='active' AND trial_ends_at IS NOT NULL AND ${coveredSql}<=$1 AND auto_blocked_for IS DISTINCT FROM ${coveredSql}`;
+  const tenants = (await pool.query(`SELECT id FROM tenants WHERE ${due}`, [now])).rows;
+  let blocked = 0;
+  for (const t of tenants)
+    await transaction(pool, t.id, async (db) => {
+      const row = (
+        await db.query(
+          `UPDATE tenants SET status='blocked',block_reason=$3,auto_blocked=true,auto_blocked_for=${coveredSql},version=version+1
+           WHERE id=$2 AND ${due} RETURNING auto_blocked_for`,
+          [now, t.id, AUTO_BLOCK_REASON],
+        )
+      ).rows[0];
+      if (!row) return;
+      await db.query(
+        "INSERT INTO audit_events(tenant_id,actor_id,action,resource_id,details) VALUES(NULL,NULL,'tenant.blocked',$1,$2)",
+        [t.id, { reason: AUTO_BLOCK_REASON, automatic: true, covered_until: row.auto_blocked_for }],
+      );
+      blocked++;
+    });
+  return blocked;
 }
