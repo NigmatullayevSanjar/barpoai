@@ -42,6 +42,15 @@ export const stockRu: Record<string, string> = {
   'stock.account.custody': 'У бригадира',
   'stock.all_accounts': 'Все счета',
   'stock.material': 'Материал',
+  // D32: название в накладной отличается от материала сметы
+  'stock.similar_title':
+    'Материала «{name}» нет в базе. В смете объекта есть похожий — это он? Если выбрать, приход запишется на материал сметы, а название из накладной сохранится как его другое название.',
+  'stock.similar_pick': 'Это он',
+  'stock.similar_new': 'Нет, новый материал',
+  'stock.similar_exact': 'название совпадает',
+  'stock.similar_aliases': 'другие названия: {names}',
+  'stock.similar_unit': 'единица {unit} — вводите количество в ней',
+  'stock.alias_saved': 'Название из накладной привязано к материалу сметы',
   'stock.quantity': 'На учёте',
   'stock.reserved': 'Резерв',
   'stock.available': 'Доступно',

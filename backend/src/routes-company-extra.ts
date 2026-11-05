@@ -106,6 +106,7 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
   // V-E (D23): qavat × ish progress matritsasi. Qavat — kind='floor' zona, ichidagi zonalar o'sha qavatga yig'iladi
   // (boshqa qavatga kirmaydi). Reja — qavatga biriktirilgan ish qatorlari; fakt — qabul qilingan hisobot progressi
   // (+tuzatishlar), qavati hisobot zonasidan, zonasiz hisobotda qator zonasidan. Narx yo'q — hajmlar hamma rolga.
+  // D28: ish = kategoriya (ish kodi) + nom + birlik — bir xil nomli resurslar har ish ostida alohida satr.
   add({
     method: 'GET',
     path: '/v1/projects/:id/floor-progress',
@@ -132,12 +133,12 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
       ).rows;
       const works = (
         await db.query(
-          `WITH cur AS (SELECT l.description,l.unit_id,sum(l.effective_quantity) plan,min(e.name) est,min(l.position) pos FROM ${workFrom} ${workWhere} GROUP BY 1,2),
-                f AS (SELECT l.description,l.unit_id,sum(pe.quantity+coalesce(c.delta,0)) fact FROM ${progressFrom} ${progressWhere} GROUP BY 1,2)
-           SELECT coalesce(cur.description,f.description) description,coalesce(cur.unit_id,f.unit_id) unit_id,cur.plan::text plan,
+          `WITH cur AS (SELECT coalesce(l.category,'') category,l.description,l.unit_id,sum(l.effective_quantity) plan,min(e.name) est,min(l.position) pos FROM ${workFrom} ${workWhere} GROUP BY 1,2,3),
+                f AS (SELECT coalesce(l.category,'') category,l.description,l.unit_id,sum(pe.quantity+coalesce(c.delta,0)) fact FROM ${progressFrom} ${progressWhere} GROUP BY 1,2,3)
+           SELECT coalesce(cur.category,f.category) category,coalesce(cur.description,f.description) description,coalesce(cur.unit_id,f.unit_id) unit_id,cur.plan::text plan,
                   coalesce(f.fact,0)::text fact,CASE WHEN cur.plan>0 THEN round(100*coalesce(f.fact,0)/cur.plan,1)::text END percent
-           FROM cur FULL JOIN f ON f.description=cur.description AND f.unit_id=cur.unit_id
-           ORDER BY cur.est NULLS LAST,cur.pos NULLS LAST,1`,
+           FROM cur FULL JOIN f ON f.category=cur.category AND f.description=cur.description AND f.unit_id=cur.unit_id
+           ORDER BY cur.est NULLS LAST,cur.pos NULLS LAST,1,2`,
           args,
         )
       ).rows;
@@ -147,12 +148,12 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
              SELECT id floor_id,id zone_id FROM zones WHERE tenant_id=$1 AND project_id=$2 AND kind='floor'
              UNION
              SELECT t.floor_id,z.id FROM tree t JOIN zones z ON z.tenant_id=$1 AND z.parent_id=t.zone_id AND z.kind<>'floor'),
-           p AS (SELECT t.floor_id,l.description,l.unit_id,sum(l.effective_quantity) plan FROM ${workFrom} JOIN tree t ON t.zone_id=l.zone_id ${workWhere} GROUP BY 1,2,3),
-           f AS (SELECT t.floor_id,l.description,l.unit_id,sum(pe.quantity+coalesce(c.delta,0)) fact
-                 FROM ${progressFrom} JOIN tree t ON t.zone_id=coalesce(r.zone_id,l.zone_id) ${progressWhere} GROUP BY 1,2,3)
-           SELECT coalesce(p.floor_id,f.floor_id) zone_id,coalesce(p.description,f.description) description,coalesce(p.unit_id,f.unit_id) unit_id,
+           p AS (SELECT t.floor_id,coalesce(l.category,'') category,l.description,l.unit_id,sum(l.effective_quantity) plan FROM ${workFrom} JOIN tree t ON t.zone_id=l.zone_id ${workWhere} GROUP BY 1,2,3,4),
+           f AS (SELECT t.floor_id,coalesce(l.category,'') category,l.description,l.unit_id,sum(pe.quantity+coalesce(c.delta,0)) fact
+                 FROM ${progressFrom} JOIN tree t ON t.zone_id=coalesce(r.zone_id,l.zone_id) ${progressWhere} GROUP BY 1,2,3,4)
+           SELECT coalesce(p.floor_id,f.floor_id) zone_id,coalesce(p.category,f.category) category,coalesce(p.description,f.description) description,coalesce(p.unit_id,f.unit_id) unit_id,
                   p.plan::text plan,coalesce(f.fact,0)::text fact,CASE WHEN p.plan>0 THEN round(100*coalesce(f.fact,0)/p.plan,1)::text END percent
-           FROM p FULL JOIN f ON f.floor_id=p.floor_id AND f.description=p.description AND f.unit_id=p.unit_id`,
+           FROM p FULL JOIN f ON f.floor_id=p.floor_id AND f.category=p.category AND f.description=p.description AND f.unit_id=p.unit_id`,
           args,
         )
       ).rows;

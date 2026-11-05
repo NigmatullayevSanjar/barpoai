@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Endpoint } from './http.js';
-import { one, audit } from './db.js';
+import { one, audit, type Db, type Row } from './db.js';
 import {
   uuid,
   text,
@@ -29,11 +29,30 @@ import {
   allowed,
 } from './permissions.js';
 import { invariant } from './errors.js';
-import { digest } from './security.js';
-import { writeEstimate, validateEstimate, parseWorkbook, resolveImportNames } from './estimates.js';
-import { createStock, transitionStock, reverseStock, reconcileStock } from './inventory.js';
+import {
+  writeEstimate,
+  parseWorkbook,
+  resolveImportNames,
+  storeImportPreview,
+  commitImportPreview,
+  sameWorkSql,
+  ESTIMATE_FILE_BYTES,
+  base64Length,
+} from './estimates.js';
+import { createStock, transitionStock, reverseStock, reconcileStock, similarMaterials } from './inventory.js';
 import { postFinance, reverseFinance, accountingMonthSql, journalWithDocSql } from './finance.js';
-import { dec, money, plannedQuantity } from './money.js';
+import { money } from './money.js';
+import { autoRateSql, rateGroupSql } from './earnings.js';
+/** Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; smeta muharriridagi "Yangi material" ham. */
+async function canCreateMaterial(db: Db, actor: Row) {
+  invariant(
+    actor.role !== 'tenant_admin' &&
+      ((await allowed(db, actor, 'stock.receive')) ||
+        (await allowed(db, actor, 'estimates.import'))),
+    'FORBIDDEN',
+    403,
+  );
+}
 export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
@@ -76,14 +95,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     body: z.strictObject({ name: text, unit_id: text, catalog_id: uuid.optional() }),
     idempotent: true,
     handler: async ({ db, actor, body }) => {
-      // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; smeta muharriridagi "Yangi material" ham.
-      invariant(
-        actor.role !== 'tenant_admin' &&
-          ((await allowed(db, actor, 'stock.receive')) ||
-            (await allowed(db, actor, 'estimates.import'))),
-        'FORBIDDEN',
-        403,
-      );
+      await canCreateMaterial(db, actor);
       await one(db, 'SELECT 1 FROM units WHERE id=$1', [body.unit_id]);
       return one(
         db,
@@ -95,18 +107,80 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/materials',
-    summary: 'Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli); q — nom bo‘yicha qidiruv',
+    summary:
+      'Kompaniya materiallari (narxsiz; obyekt ko‘rish huquqi yetarli); q — nom yoki muqobil nom bo‘yicha qidiruv (alias — topilgan muqobil nom)',
     permission: 'projects.read',
     query: searchQuery,
     handler: async ({ db, actor, query }) => ({
       items: (
         await db.query(
-          `SELECT * FROM materials WHERE tenant_id=$1 AND archived_at IS NULL AND ($4::text IS NULL OR name ILIKE $4 ESCAPE '\\')
-           ORDER BY name,id LIMIT $2 OFFSET $3`,
+          `SELECT m.*,(SELECT a.name FROM material_aliases a WHERE a.tenant_id=m.tenant_id AND a.material_id=m.id AND a.name ILIKE $4 ESCAPE '\\'
+                         AND m.name NOT ILIKE $4 ESCAPE '\\' ORDER BY a.name LIMIT 1) alias
+           FROM materials m WHERE m.tenant_id=$1 AND m.archived_at IS NULL
+             AND ($4::text IS NULL OR m.name ILIKE $4 ESCAPE '\\'
+                  OR EXISTS(SELECT 1 FROM material_aliases a WHERE a.tenant_id=m.tenant_id AND a.material_id=m.id AND a.name ILIKE $4 ESCAPE '\\'))
+           ORDER BY m.name,m.id LIMIT $2 OFFSET $3`,
           [actor.tenant_id, query.limit, query.offset, query.q ? likePattern(query.q) : null],
         )
       ).rows,
     }),
+  });
+  add({
+    method: 'GET',
+    path: '/v1/materials/similar',
+    summary:
+      'Yangi material nomi uchun o‘xshashlar (D32): obyekt smetasidagi materiallar va nomi/muqobil nomi aynan mos materiallar; eng ko‘pi 5',
+    permission: 'projects.read',
+    query: z.strictObject({ project_id: uuid, name: text }),
+    handler: async ({ db, actor, query }) => {
+      await projectScope(db, actor, query.project_id);
+      const rows = (
+        await db.query(
+          `SELECT m.id,m.name,m.unit_id,
+             coalesce((SELECT array_agg(a.name ORDER BY a.name) FROM material_aliases a WHERE a.tenant_id=m.tenant_id AND a.material_id=m.id),'{}') aliases
+           FROM materials m WHERE m.tenant_id=$1 AND m.archived_at IS NULL AND (
+             lower(m.name)=lower($3)
+             OR EXISTS(SELECT 1 FROM material_aliases a WHERE a.tenant_id=m.tenant_id AND a.material_id=m.id AND lower(a.name)=lower($3))
+             OR EXISTS(SELECT 1 FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id
+                       WHERE l.tenant_id=m.tenant_id AND l.material_id=m.id AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL))`,
+          [actor.tenant_id, query.project_id, query.name],
+        )
+      ).rows;
+      return { items: similarMaterials(query.name, rows) };
+    },
+  });
+  add({
+    method: 'POST',
+    path: '/v1/materials/:id/aliases',
+    summary:
+      'Nakladnoy nomini mavjud materialga muqobil nom qilib bog‘lash (D32; yangi material huquqi bilan); nom materialning o‘zi bo‘lsa — o‘zgarishsiz',
+    params: idParams,
+    body: z.strictObject({ name: text }),
+    idempotent: true,
+    handler: async ({ db, actor, params, body }) => {
+      await canCreateMaterial(db, actor);
+      const material = await one(
+        db,
+        'SELECT * FROM materials WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL',
+        [actor.tenant_id, params.id],
+      );
+      if (material.name.toLowerCase() === body.name.toLowerCase()) return material;
+      const taken = (
+        await db.query('SELECT material_id FROM material_aliases WHERE tenant_id=$1 AND lower(name)=lower($2)', [
+          actor.tenant_id,
+          body.name,
+        ])
+      ).rows[0];
+      invariant(!taken || taken.material_id === material.id, 'ALREADY_EXISTS', 409);
+      if (!taken)
+        await db.query('INSERT INTO material_aliases(tenant_id,material_id,name,created_by) VALUES($1,$2,$3,$4)', [
+          actor.tenant_id,
+          material.id,
+          body.name,
+          actor.id,
+        ]);
+      return material;
+    },
   });
   add({
     method: 'POST',
@@ -343,7 +417,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           `WITH l AS (
              SELECT l.kind,coalesce(l.category,'') category,coalesce(z.name,'') zone,l.total,
                CASE WHEN l.kind='material'
-                 THEN (SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
+                 THEN (SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory')
                  ELSE 0 END fact_value
              FROM estimate_lines l LEFT JOIN zones z ON z.id=l.zone_id
              WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL)
@@ -379,17 +453,24 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           by_category: pick('category'),
           by_zone: pick('zone'),
         },
+        // D32: `auto_labor_rate` — avtomatik akkord stavkasi; guruh ko'rsatkichlari bir marta hisoblanadi (4 000+ qator)
         lines: (
           await db.query(
             `SELECT l.*,m.name material_name,z.name zone_name,
                coalesce((SELECT jsonb_agg(jsonb_build_object('month',mo.month,'quantity',mo.quantity::text) ORDER BY mo.month) FROM estimate_months mo WHERE mo.tenant_id=l.tenant_id AND mo.line_id=l.id),'[]') months,
                CASE WHEN l.kind='material'
-                 THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND c.status IN ('posted','partial'))
-                 ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND pe.estimate_line_id=l.id),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND p.estimate_line_id=l.id) END fact_quantity,
+                 THEN (SELECT coalesce(sum(c.accepted_quantity),0)::text FROM stock_commands c WHERE c.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND c.status IN ('posted','partial'))
+                 ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) END fact_quantity,
                CASE WHEN l.kind='material'
-                 THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND c.estimate_line_id=l.id AND c.kind='consumption' AND j.account='inventory')
-                 ELSE NULL END fact_value
+                 THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory')
+                 ELSE NULL END fact_value,
+               (${autoRateSql})::text auto_labor_rate
              FROM estimate_lines l LEFT JOIN materials m ON m.id=l.material_id LEFT JOIN zones z ON z.id=l.zone_id
+               JOIN projects p ON p.tenant_id=l.tenant_id AND p.id=l.project_id
+               LEFT JOIN (SELECT g.category,coalesce(g.zone_id::text,'') zone_key,${rateGroupSql} FROM estimate_lines g
+                          WHERE g.tenant_id=$1 AND g.estimate_id=$2 AND g.archived_at IS NULL AND g.category IS NOT NULL
+                          GROUP BY g.category,coalesce(g.zone_id::text,'')) gr
+                 ON gr.category=l.category AND gr.zone_key=coalesce(l.zone_id::text,'')
              WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL ORDER BY l.position,l.id`,
             [actor.tenant_id, params.id],
           )
@@ -448,7 +529,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     body: z.strictObject({
       project_id: uuid,
       name: text,
-      file_base64: z.string().max(2800000),
+      file_base64: z.string().max(base64Length(ESTIMATE_FILE_BYTES)),
       mapping: z.partialRecord(
         z.enum([
           'kind',
@@ -475,6 +556,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
         })
         .optional(),
     }),
+    bodyLimit: 16 * 1024 * 1024,
     idempotent: true,
     sensitive: true,
     handler: async ({ db, actor, body }) => {
@@ -490,25 +572,20 @@ export function operationRoutes(add: (r: Endpoint) => void) {
         name: body.name,
         lines: resolved.lines,
       };
-      await validateEstimate(db, actor, input);
-      const row = await one(
+      // Qator qiymatlari xatosi Excel qator raqami bilan (lines.N.maydon → N-qatorning `_row`), texnik matnsiz.
+      const { row, lines, total } = await storeImportPreview(
         db,
-        "INSERT INTO import_previews(tenant_id,project_id,created_by,payload,digest,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '1 hour') RETURNING id,digest,expires_at",
-        [
-          actor.tenant_id,
-          body.project_id,
-          actor.id,
-          JSON.stringify(input),
-          digest(JSON.stringify(input)),
-        ],
+        actor,
+        input,
+        (n) => parsed[n]?._row ?? n + 2,
       );
-      // Jami serverda (O3): qator jami = hisobiy miqdor × narx — saqlashdagi formula; frontend qo'shmaydi.
-      const lines = input.lines.map((l) => ({
-        ...l,
-        total: money(dec(plannedQuantity(l as any)).mul(l.unit_price)),
-      }));
-      const total = money(lines.reduce((s, l) => s.add(l.total), dec('0')));
-      return { ...row, preview: { ...input, lines }, total, created: resolved.created };
+      return {
+        ...row,
+        preview: { ...input, lines },
+        total,
+        created: resolved.created,
+        converted: resolved.converted,
+      };
     },
   });
   add({
@@ -520,24 +597,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     body: z.strictObject({ digest: z.string().length(64) }),
     idempotent: true,
     sensitive: true,
-    handler: async ({ db, actor, params, body }) => {
-      const preview = await one(
-        db,
-        "SELECT * FROM import_previews WHERE tenant_id=$1 AND id=$2 AND kind='estimate' FOR UPDATE",
-        [actor.tenant_id, params.id],
-      );
-      await projectScope(db, actor, preview.project_id);
-      invariant(preview.created_by === actor.id || actor.role === 'tenant_admin', 'FORBIDDEN', 403);
-      invariant(body.digest === preview.digest, 'PREVIEW_CHANGED');
-      if (preview.committed_estimate_id) return { id: preview.committed_estimate_id };
-      invariant(new Date(preview.expires_at).getTime() > Date.now(), 'PREVIEW_EXPIRED', 410);
-      const estimate = await writeEstimate(db, actor, preview.payload);
-      await db.query('UPDATE import_previews SET committed_estimate_id=$2 WHERE id=$1', [
-        params.id,
-        estimate.id,
-      ]);
-      return estimate;
-    },
+    handler: async ({ db, actor, params, body }) =>
+      commitImportPreview(db, actor, params.id, body.digest),
   });
   add({
     method: 'POST',

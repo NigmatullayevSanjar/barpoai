@@ -18,6 +18,7 @@ import { dashboardRu } from '@/locales/dashboard.ru';
 import { platformUz } from '@/locales/platform.uz';
 import { platformRu } from '@/locales/platform.ru';
 import { CurrencyCtx } from './currency-store';
+import { setUnitLang } from './format';
 
 export type Lang = 'uz' | 'ru';
 export type Dict = Record<string, string>;
@@ -57,14 +58,17 @@ const Ctx = createContext<I18n | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
+    let saved: Lang = 'uz';
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved === 'ru' ? 'ru' : 'uz';
+      saved = localStorage.getItem(STORAGE_KEY) === 'ru' ? 'ru' : 'uz';
     } catch {
-      return 'uz';
+      /* private mode */
     }
+    setUnitLang(saved);
+    return saved;
   });
   const setLang = useCallback((next: Lang) => {
+    setUnitLang(next);
     setLangState(next);
     try {
       localStorage.setItem(STORAGE_KEY, next);

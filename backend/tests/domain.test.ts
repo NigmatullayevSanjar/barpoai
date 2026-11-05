@@ -5,7 +5,7 @@ import { hashPassword, verifyPassword, verifyTelegram } from '../src/security.js
 import { amount, stockInput } from '../src/schemas.js';
 import { roles } from '../src/permissions.js';
 import ExcelJS from 'exceljs';
-import { parseWorkbook } from '../src/estimates.js';
+import { parseWorkbook, alignKeys, convertMass } from '../src/estimates.js';
 test('UZS arithmetic never sums binary floats', () => {
   assert.equal(money(dec('0.10').add('0.20')), '0.30');
   assert.equal(money(dec('99999999999999.99').add('0.01')), '100000000000000.00');
@@ -123,5 +123,206 @@ test('billing period is a 30-day chain anchored on the given start', async () =>
   assert.equal(
     periodEnd(periodEnd('2026-10-18T00:00:00.000Z')).toISOString(),
     '2026-12-17T00:00:00.000Z',
+  );
+});
+test('estimate revision keeps line identity in order (D26/D30)', () => {
+  const pairs = (a: string[], b: string[]) => [...alignKeys(a, b)].sort((x, y) => x[0] - y[0]);
+  // yuqoriga qator qo'shildi: bir xil kalitli qatorlar o'z tartibida qoladi
+  assert.deepEqual(pairs(['k', 'x', 'x'], ['t', 'k', 'x', 'x']), [
+    [1, 0],
+    [2, 1],
+    [3, 2],
+  ]);
+  // takrorlanuvchi qatorlardan birinchisi o'chirildi: qolgani o'z juftiga
+  assert.deepEqual(pairs(['x', 'y', 'x'], ['y', 'x']), [
+    [0, 1],
+    [1, 2],
+  ]);
+  // joy almashgan qatorlar ham kalit bo'yicha topiladi
+  assert.deepEqual(pairs(['p', 'q'], ['q', 'p']), [
+    [0, 1],
+    [1, 0],
+  ]);
+  // katta o'rta qism (3000 × 3000 > 4 mln katak): kvadrat xotirasiz, har kalit o'z qatoriga
+  const big = Array.from({ length: 3000 }, (_, i) => `k${i}`);
+  const reversed = [...big].reverse();
+  const map = alignKeys(big, reversed);
+  assert.equal(map.size, 3000);
+  assert.ok([...map].every(([j, i]) => reversed[j] === big[i]));
+});
+test('import converts t ↔ kg only when the line total stays exact (D31)', () => {
+  assert.deepEqual(convertMass({ unit_id: 'kg', quantity: '12.5', unit_price: '9000' }, 't'), {
+    unit_id: 't',
+    quantity: '0.0125',
+    unit_price: '9000000',
+  });
+  assert.deepEqual(convertMass({ unit_id: 't', quantity: '2', unit_price: '9000000' }, 'kg'), {
+    unit_id: 'kg',
+    quantity: '2000',
+    unit_price: '9000',
+  });
+  // norma ham o'tkaziladi, ish hajmi o'z birligida qoladi
+  assert.deepEqual(
+    convertMass(
+      { unit_id: 'kg', quantity: '5', norm: '0.5', work_quantity: '10', unit_price: '9000' },
+      't',
+    ),
+    { unit_id: 't', quantity: '0.005', norm: '0.0005', work_quantity: '10', unit_price: '9000000' },
+  );
+  // narx 2 kasrdan, miqdor 6 kasrdan oshadi; hisobiy miqdor yaxlitlanib jami o'zgaradi; boshqa juftlik
+  assert.equal(convertMass({ unit_id: 't', quantity: '1', unit_price: '100.5' }, 'kg'), null);
+  assert.equal(convertMass({ unit_id: 'kg', quantity: '0.0005', unit_price: '9000' }, 't'), null);
+  assert.equal(
+    convertMass(
+      { unit_id: 'kg', quantity: '1', norm: '0.125', work_quantity: '3.333', unit_price: '9000' },
+      't',
+    ),
+    null,
+  );
+  assert.equal(convertMass({ unit_id: 'm3', quantity: '1', unit_price: '100' }, 'kg'), null);
+});
+import { parseForm5, form5Unit, form5Floor } from '../src/form5.js';
+import { form5Workbook } from './form5-fixture.js';
+test('Form 5 sheet: works, resources by norm, sections as floors, warnings and Excel totals (D29)', async () => {
+  assert.deepEqual(form5Unit('100 М2'), { unit: 'm2', factor: '100', known: true });
+  assert.deepEqual(form5Unit('1 КМ ЛИНИЙ'), { unit: 'm', factor: '1000', known: true });
+  assert.deepEqual(form5Unit('ЧЕЛ-Ч'), { unit: 'hour', factor: '1', known: true });
+  // D32: egasining smetalaridagi birliklar qo'shildi; platformada yo'q birlik — dona, ogohlantirish bilan
+  assert.deepEqual(form5Unit('Л'), { unit: 'l', factor: '1', known: true });
+  assert.deepEqual(form5Unit('1 СЕКЦИЯ АРМАТУРНОГО КАРКАСА'), {
+    unit: 'section',
+    factor: '1',
+    known: true,
+  });
+  assert.deepEqual(form5Unit('КОТЕЛ'), { unit: 'boiler', factor: '1', known: true });
+  assert.deepEqual(form5Unit('ЦИКЛ'), { unit: 'cycle', factor: '1', known: true });
+  assert.deepEqual(form5Unit('1 КОНЕЦ'), { unit: 'end', factor: '1', known: true });
+  assert.deepEqual(form5Unit('ПАРА'), { unit: 'pcs', factor: '1', known: false });
+  assert.deepEqual(form5Unit('1 ЛИСТ'), { unit: 'pcs', factor: '1', known: false });
+  assert.equal(form5Floor('Раздел 7. Кладка (А-Г/1-9)  -1-этаже на отм. -3,600'), '-1-qavat');
+  assert.equal(form5Floor('Раздел 14. Монтаж Цоколная этаж'), 'Sokol qavat');
+  assert.equal(form5Floor('Раздел 2. Кровля'), null);
+  // ExcelJS yozgan faylni qayta o'qiymiz (formula natijasi saqlangan holda)
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load((await form5Workbook().xlsx.writeBuffer()) as any);
+  assert.equal(parseForm5(book.getWorksheet('Накладная')!), null);
+  const local = parseForm5(book.getWorksheet('Локалка 1')!)!;
+  assert.deepEqual(local.errors, []);
+  assert.deepEqual(local.counts, { works: 2, resources: 7, materials: 2, priced: 8 });
+  assert.deepEqual(local.lines[0], {
+    _row: 9,
+    kind: 'labor',
+    category: 'Е0804-003-01 КЛАДКА ПЕРЕГОРОДОК',
+    description: 'КЛАДКА ПЕРЕГОРОДОК',
+    zone_name: '1-qavat',
+    unit_id: 'm2',
+    quantity: '200.000000',
+    unit_price: '0.00',
+    note: '100 М2',
+  });
+  assert.deepEqual(
+    local.lines.map((l) => [l._row, l.kind, l.unit_id, l.norm ?? null, l.zone_name ?? null]),
+    [
+      [9, 'labor', 'm2', null, '1-qavat'],
+      [10, 'labor', 'hour', '62.400000', '1-qavat'],
+      [11, 'equipment', 'hour', '0.500000', '1-qavat'],
+      [12, 'material', 'kg', '212.500000', '1-qavat'],
+      [13, 'material', 't', '0.030000', '1-qavat'],
+      [14, 'material', 'm3', '0.040000', '1-qavat'],
+      [15, 'material', 'm3', null, '1-qavat'],
+      [16, 'material', undefined, null, '1-qavat'],
+      [18, 'labor', 'section', null, '2-qavat'],
+      [19, 'labor', 'hour', '3.550000', '2-qavat'],
+      [20, 'material', 'kg', '1.200000', '2-qavat'],
+    ],
+  );
+  const total = local.lines.reduce(
+    (s, l) => s.add(money(dec(plannedQuantity(l as any)).mul(l.unit_price))),
+    dec('0'),
+  );
+  assert.equal(money(total), '18337980.00');
+  assert.deepEqual(local.warnings, {
+    unknown_units: [],
+    unpriced: 1,
+    quantity_mismatch: [{ row: 13, excel: '0.09', platform: '0.060000' }],
+    quantity_mismatch_count: 1,
+    price_varies: [
+      {
+        code: '1',
+        name: 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ',
+        min_price: '3200.00',
+        max_price: '30000.00',
+      },
+    ],
+    missing_unit: [16],
+    skipped_works: [21],
+  });
+  assert.deepEqual(local.excel, {
+    total: '18340000.00',
+    rows: [
+      {
+        row: 22,
+        label: 'ВСЕГО ЗАТРАТ:',
+        rate: null,
+        percent: null,
+        amount: '18340000.00',
+        addable: false,
+      },
+      {
+        row: 23,
+        label: 'ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА',
+        rate: '0.21',
+        percent: '21',
+        amount: '3851400.00',
+        addable: true,
+      },
+      { row: 24, label: 'НДС', rate: '0.12', percent: '12', amount: '2663868.00', addable: false },
+    ],
+  });
+  const norms = parseForm5(book.getWorksheet('Нормы')!)!;
+  assert.deepEqual(
+    [
+      norms.lines.length,
+      norms.lines[0]!.quantity,
+      norms.lines[1]!.unit_price,
+      norms.warnings.unpriced,
+    ],
+    [3, '1000.000000', '0.00', 2],
+  );
+  // natijasiz formula — qator xatosi
+  const broken = new ExcelJS.Workbook();
+  await broken.xlsx.load((await form5Workbook({ brokenFormula: true }).xlsx.writeBuffer()) as any);
+  assert.deepEqual(parseForm5(broken.getWorksheet('Локалка 1')!)!.errors, [
+    { row: 10, field: 'norm', message: 'formula' },
+  ]);
+});
+import { similarMaterials } from '../src/inventory.js';
+test('similar materials for a new name: exact name or alias first, then shared words; unrelated sizes are not offered (D32)', () => {
+  const rows = [
+    {
+      id: 'a',
+      name: 'Сетка сварная из арматурной стали (100*100) ( 1 м2 2,8 кг)',
+      unit_id: 'kg',
+      aliases: [],
+    },
+    { id: 'b', name: 'Труба стальная 76х3,5', unit_id: 'm', aliases: [] },
+    { id: 'c', name: 'Цемент М400', unit_id: 't', aliases: ['Портландцемент ПЦ-400'] },
+  ];
+  assert.deepEqual(
+    similarMaterials('Сетка сварная из арматурной стали (100*100)', rows).map((m) => [
+      m.id,
+      m.exact,
+    ]),
+    [['a', false]],
+  );
+  assert.deepEqual(
+    similarMaterials('портландцемент пц-400', rows).map((m) => [m.id, m.exact]),
+    [['c', true]],
+  );
+  assert.deepEqual(similarMaterials('Труба стальная 57х3,5', rows), []);
+  assert.deepEqual(similarMaterials('Цемент М500', rows), []);
+  assert.deepEqual(
+    similarMaterials('Сетка', rows).map((m) => m.id),
+    ['a'],
   );
 });

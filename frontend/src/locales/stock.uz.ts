@@ -42,6 +42,15 @@ export const stockUz: Record<string, string> = {
   'stock.account.custody': 'Brigadir qo‘lida',
   'stock.all_accounts': 'Barcha hisoblar',
   'stock.material': 'Material',
+  // D32: nakladnoy nomi smetadagi materialdan farq qilsa
+  'stock.similar_title':
+    '«{name}» nomli material bazada yo‘q. Obyekt smetasida o‘xshashi bor — shu materialmi? Tanlasangiz, kirim smetadagi materialga yoziladi, nakladnoy nomi esa uning muqobil nomi bo‘lib saqlanadi.',
+  'stock.similar_pick': 'Shu material',
+  'stock.similar_new': 'Yo‘q, yangi material',
+  'stock.similar_exact': 'nomi aynan mos',
+  'stock.similar_aliases': 'muqobil nomlari: {names}',
+  'stock.similar_unit': 'birligi {unit} — miqdorni shu birlikda kiriting',
+  'stock.alias_saved': 'Nakladnoy nomi smetadagi materialga bog‘landi',
   'stock.quantity': 'Hisobdagi',
   'stock.reserved': 'Rezerv',
   'stock.available': 'Mavjud',

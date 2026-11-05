@@ -4,7 +4,7 @@ import { Archive, Plus } from 'lucide-react';
 import { api, ApiError, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate, formatDateTime, formatMoney, formatQuantity, todayIso } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, formatQuantity, todayIso, unitLabel } from '@/lib/format';
 import {
   Alert,
   Badge,
@@ -347,7 +347,7 @@ function ReportModal({
             </Select>
             {form.estimate_line_id && (
               <Input
-                label={`${t('reports.progress_qty')}${line ? ` (${line.unit_id})` : ''}`}
+                label={`${t('reports.progress_qty')}${line ? ` (${unitLabel(line.unit_id)})` : ''}`}
                 inputMode="decimal"
                 value={form.progress_quantity}
                 onChange={(e) => set('progress_quantity', e.target.value)}

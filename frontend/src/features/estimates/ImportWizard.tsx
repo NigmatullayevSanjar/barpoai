@@ -8,6 +8,7 @@ import { formatMoney } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { lineKinds, useUnits } from './model';
+import { Form5Import, type Form5Sheet } from './Form5Import';
 
 const fields = [
   'description',
@@ -26,13 +27,16 @@ const fields = [
 type Field = (typeof fields)[number];
 const required: Field[] = ['description', 'quantity', 'unit_price'];
 type Inspect = { sheet: string; header_row: number; headers: string[]; rows: number; sample: string[][] };
+/** D29: Form 5 varag'i bor fayl — ustun moslash o'rniga varaqlar ro'yxati */
+type InspectResult = ({ format: 'table' } & Inspect) | { format: 'form5'; sheets: Form5Sheet[] };
 /**
  * Sarlavhalarni avtomatik taxmin qilish (uz/ru/en): [maydon, mos keladigan, mos kelmaydigan] — tartib muhim,
  * bitta sarlavha faqat bitta maydonga tegadi (birinchi kelgan oladi). "Jami/Итого" ustunlari hech qachon moslanmaydi.
  */
 const guessOrder: [Field, RegExp, RegExp?][] = [
   ['unit_price', /narx|цена|price/i],
-  ['unit_id', /o.lchov|birlik(?!.*narx)|ед|unit/i],
+  // «Ед. изм.», «Единица» — so'z boshida; «ведомость» ichidagi «ед» emas
+  ['unit_id', /o.lchov|birlik(?!.*narx)|(^|[^а-яё])ед|unit/i],
   ['quantity', /miqdor|кол|qty|quantity/i],
   ['description', /nom|наимен|descr/i, /material|материал|zon|зон|blok|блок/i],
   ['category', /bo.lim|kateg|раздел|катег|category/i],
@@ -61,6 +65,7 @@ type Preview = {
   expires_at: string;
   /** Import paytida avtomatik yaratilgan material va zonalar soni */
   created?: { materials: number; zones: number };
+  converted?: { row: number; from: string; to: string }[];
   preview: { name: string; lines: { total: string; unit_price: string; quantity: string }[] };
   /** Jami serverda (decimal); frontend qo'shmaydi */
   total: string;
@@ -77,6 +82,7 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
   const [name, setName] = useState('');
   const [file, setFile] = useState<{ name: string; base64: string } | null>(null);
   const [inspect, setInspect] = useState<Inspect | null>(null);
+  const [form5, setForm5] = useState<Form5Sheet[] | null>(null);
   const [mapping, setMapping] = useState<Partial<Record<Field, string>>>({});
   const [defaultKind, setDefaultKind] = useState('');
   const [defaultUnit, setDefaultUnit] = useState('');
@@ -93,8 +99,10 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
     });
   const inspectMutation = useMutation({
     mutationFn: async (f: File) => {
+      // Server chegarasi bilan bir xil (10 MB): katta fayl yuborilmaydi, aniq xabar ko'rsatiladi.
+      if (f.size > 10 * 1024 * 1024) throw new ApiError('ESTIMATE_FILE_TOO_LARGE', 400);
       const base64 = await readFile(f);
-      const result = await api<Inspect>('/v1/estimate-imports/inspect', {
+      const result = await api<InspectResult>('/v1/estimate-imports/inspect', {
         method: 'POST',
         body: { file_base64: base64 },
       });
@@ -102,6 +110,11 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
     },
     onSuccess: ({ base64, result, fileName }) => {
       setFile({ name: fileName, base64 });
+      setError('');
+      if (result.format === 'form5') {
+        setForm5(result.sheets);
+        return;
+      }
       setInspect(result);
       if (!name) setName(fileName.replace(/\.xlsx$/i, ''));
       const guess = guessMapping(result.headers);
@@ -109,7 +122,6 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
       // «Turi» ustuni topilmasa hamma qator uchun tur oldindan tanlanadi (o'zgartirish mumkin).
       setDefaultKind(guess.kind ? '' : 'labor');
       setStep(2);
-      setError('');
     },
     onError: (e: ApiError) => setError(errorMessage(t, e.code, e.status)),
   });
@@ -139,9 +151,9 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
       setStep(3);
     },
     onError: (e: ApiError) => {
-      if (e.code === 'IMPORT_NAMES_UNRESOLVED') {
-        setUnresolved(((e as ApiError & { details?: unknown }).details as typeof unresolved) ?? []);
-        setError(t('est.import_unresolved'));
+      if (e.code === 'IMPORT_NAMES_UNRESOLVED' || e.code === 'IMPORT_ROWS_INVALID') {
+        setUnresolved((e.details as typeof unresolved) ?? []);
+        setError(t(e.code === 'IMPORT_ROWS_INVALID' ? 'est.import_rows_invalid' : 'est.import_unresolved'));
       } else {
         const field = e.fields?.[0];
         setError(
@@ -171,6 +183,19 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
     required.every((f) => mapping[f]) &&
     (mapping.kind || defaultKind) &&
     (mapping.unit_id || defaultUnit || mapping.material_name);
+  if (form5 && file)
+    return (
+      <Form5Import
+        projectId={projectId}
+        file={file}
+        sheets={form5}
+        onBack={() => {
+          setForm5(null);
+          setStep(1);
+        }}
+        onClose={onClose}
+      />
+    );
   return (
     <Modal
       open
@@ -212,7 +237,8 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
           <ul className="text-sm" style={{ margin: 0, paddingLeft: 18, maxHeight: 160, overflow: 'auto' }}>
             {unresolved.slice(0, 50).map((u, i) => (
               <li key={i}>
-                {t('est.import_row', { row: u.row })}: {t(`est.import_field.${u.field}`)} — <b>{u.message}</b>
+                {t('est.import_row', { row: u.row })}: {t(`est.import_field.${u.field}`)} —{' '}
+                <b>{u.message || t('est.import_empty_cell')}</b>
               </li>
             ))}
           </ul>
@@ -319,6 +345,18 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
             {preview.created && (preview.created.materials > 0 || preview.created.zones > 0) && (
               <Alert tone="info">
                 {t('est.import_created', { materials: preview.created.materials, zones: preview.created.zones })}
+              </Alert>
+            )}
+            {!!preview.converted?.length && (
+              <Alert tone="info">
+                {t('est.import_converted', {
+                  n: preview.converted.length,
+                  rows:
+                    preview.converted
+                      .slice(0, 30)
+                      .map((c) => c.row)
+                      .join(', ') + (preview.converted.length > 30 ? ', …' : ''),
+                })}
               </Alert>
             )}
             <p className="muted text-sm">{t('est.editor_hint')}</p>

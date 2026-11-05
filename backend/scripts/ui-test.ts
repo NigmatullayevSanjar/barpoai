@@ -12,6 +12,7 @@ import { chromium, type Browser, type Locator } from 'playwright';
 import ExcelJS from 'exceljs';
 import { tmpdir } from 'node:os';
 import { navFor, navHref, type Role } from '../../frontend/src/lib/permissions.ts';
+import { form5Workbook } from '../tests/form5-fixture.js';
 
 /**
  * Haqiqiy brauzer sinovi: vaqtinchalik PostgreSQL + API + Vite.
@@ -531,6 +532,29 @@ try {
   await warehousePage.getByRole('dialog').waitFor({ state: 'detached' });
   checks.push(
     'Material pickers (estimate editor, stock receipt) find a material beyond the first 100 by server search',
+  );
+  // D32: nakladnoy nomi farq qilsa — «+» yangi material o'rniga smetadagi o'xshash material taklif qilinadi
+  await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
+  const receiptDialog = warehousePage.getByRole('dialog').filter({ has: warehousePage.getByRole('heading', { name: 'Kirim' }) });
+  await receiptDialog.getByRole('button', { name: '+', exact: true }).click();
+  const materialDialog = warehousePage
+    .getByRole('dialog')
+    .filter({ has: warehousePage.getByRole('heading', { name: 'Yangi material' }) });
+  await materialDialog.getByLabel('Material nomi').fill('Sement M500 (nakladnoy)');
+  await materialDialog.getByRole('button', { name: 'Yaratish', exact: true }).click();
+  await materialDialog.getByText(/Obyekt smetasida o‘xshashi bor/).waitFor();
+  await materialDialog.getByRole('button', { name: 'Shu material', exact: true }).click();
+  await warehousePage.getByRole('status').filter({ hasText: 'Nakladnoy nomi smetadagi materialga bog‘landi' }).first().waitFor();
+  await materialDialog.waitFor({ state: 'detached' });
+  assert.equal(await receiptDialog.getByLabel('Material', { exact: true }).inputValue(), 'Sement M500');
+  assert.deepEqual(
+    (await owner.query('SELECT a.name,m.name material FROM material_aliases a JOIN materials m ON m.id=a.material_id')).rows,
+    [{ name: 'Sement M500 (nakladnoy)', material: 'Sement M500' }],
+  );
+  await receiptDialog.getByRole('button', { name: 'Bekor qilish' }).click();
+  await warehousePage.getByRole('dialog').waitFor({ state: 'detached' });
+  checks.push(
+    'Stock receipt «+»: a new name that is not in the base offers the similar estimate material; choosing it selects that material and saves the invoice name as its alias (D32)',
   );
   await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
   await pickOption(warehousePage.getByRole('dialog'), 'Material', 'Sement', /Sement M500/);
@@ -1554,6 +1578,30 @@ try {
   }
   await mockCtx.close();
   checks.push('Malformed (non-UUID) detail ids render the not-found view without a retry button');
+
+  // 7c. D29: Form 5 fayli — varaqlar ro'yxati, tekshiruv, 21 % qatorini qo'shish, smeta saqlanadi
+  const form5Path = resolve(tmpdir(), 'barpo-ui-form5-' + process.pid + '.xlsx');
+  await form5Workbook().xlsx.writeFile(form5Path);
+  await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Excel import' }).first().click();
+  const f5dialog = adminPage.getByRole('dialog');
+  await f5dialog.locator('input[type=file]').setInputFiles(form5Path);
+  await f5dialog.getByText(/Form 5 \(ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ\) deb tanildi/).waitFor();
+  assert.equal(await f5dialog.getByRole('checkbox', { name: 'Накладная', exact: true }).isDisabled(), true);
+  await f5dialog.getByRole('checkbox', { name: 'Нормы', exact: true }).uncheck();
+  await f5dialog.getByRole('button', { name: 'Tekshirish' }).click();
+  await f5dialog.getByText(/Tekshiruv o‘tdi: 11 ta qator/).waitFor();
+  await f5dialog.getByText(/Excel «ВСЕГО ЗАТРАТ»: 18\s340\s000/).waitFor();
+  await f5dialog.getByText(/norma × ish hajmiga teng emas/).waitFor();
+  assert.equal(await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).count(), 1);
+  await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).click();
+  await f5dialog.getByText(/Tekshiruv o‘tdi: 12 ta qator/).waitFor();
+  await f5dialog.getByRole('button', { name: '1 ta smetani yaratish' }).click();
+  await adminPage.getByRole('status').filter({ hasText: '1 ta smeta import qilindi' }).waitFor();
+  await adminPage.getByText('ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)').waitFor();
+  checks.push(
+    'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview shows the Excel total and warnings, the 21 % row is added from the platform total, and the estimate is saved',
+  );
 
   // 8. Chiqish cookie'ni tozalaydi
   await managerPage.getByRole('button', { name: /Sinov menejeri/ }).click();

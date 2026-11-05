@@ -508,6 +508,8 @@ try {
     tenant_id: A.id,
     // Figma F6: platforma oylik buxgalter hisoboti
     month: '2026-10-01',
+    // D32: yangi material nomiga o'xshashlar
+    name: 'Sement',
   };
   const fillUrl = (route: Endpoint) => {
     const prefix = Object.keys(ids)

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatQuantity } from '@/lib/format';
+import { formatQuantity, unitLabel } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select, Textarea } from '@/components/ui';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useToast } from '@/components/ui/Toast';
@@ -193,7 +193,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
             }}
             getId={(m) => m.id}
             getLabel={(m) => m.name}
-            getSub={(m) => m.unit_id}
+            getSub={(m) => [unitLabel(m.unit_id), m.alias].filter(Boolean).join(' · ')}
             action={
               <Button variant="secondary" onClick={() => setNewMaterial(true)}>
                 +
@@ -203,7 +203,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
         )}
         <div className="form-grid">
           <Input
-            label={`${t('stock.request_qty')}${unit ? ` (${unit})` : ''}`}
+            label={`${t('stock.request_qty')}${unit ? ` (${unitLabel(unit)})` : ''}`}
             inputMode="decimal"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
@@ -254,6 +254,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
       </div>
       {newMaterial && (
         <NewMaterialModal
+          projectId={projectId}
           onClose={() => setNewMaterial(false)}
           onCreated={(m) => {
             setMaterial(m.id);
@@ -333,7 +334,7 @@ export function ReconcileModal({
           }}
           getId={(m) => m.id}
           getLabel={(m) => m.name}
-          getSub={(m) => m.unit_id}
+          getSub={(m) => [unitLabel(m.unit_id), m.alias].filter(Boolean).join(' · ')}
         />
         {current && (
           <Alert tone={Number(current.reserved) > 0 ? 'warning' : 'info'}>
@@ -404,7 +405,7 @@ export function MinimumModal({
       }
     >
       <Input
-        label={`${t('stock.minimum')} (${balance.unit_id})`}
+        label={`${t('stock.minimum')} (${unitLabel(balance.unit_id)})`}
         inputMode="decimal"
         value={qty}
         onChange={(e) => setQty(e.target.value)}
@@ -478,7 +479,7 @@ export function CommandActionModal({
       <div className="stack">
         {action === 'accept' && (
           <Input
-            label={`${t('stock.accept_qty')} (${command.unit_id})`}
+            label={`${t('stock.accept_qty')} (${unitLabel(command.unit_id)})`}
             inputMode="decimal"
             value={qty}
             onChange={(e) => setQty(e.target.value)}

@@ -14,7 +14,7 @@ import {
 import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDateTime, formatMoney, formatQuantity } from '@/lib/format';
+import { formatDateTime, formatMoney, formatQuantity, unitLabel } from '@/lib/format';
 import {
   Alert,
   Badge,
@@ -262,7 +262,7 @@ function BalancesTab({
       render: (r) => (
         <>
           <div className="cell-main">{r.material_name}</div>
-          <div className="cell-sub">{r.unit_id}</div>
+          <div className="cell-sub">{unitLabel(r.unit_id)}</div>
         </>
       ),
     },
@@ -910,12 +910,12 @@ function RequestModal({ projectId, onClose }: { projectId: string; onClose: () =
               onChange={(id, m) => setLine(i, { material: id, label: m?.name ?? '', unit: m?.unit_id ?? '' })}
               getId={(m) => m.id}
               getLabel={(m) => m.name}
-              getSub={(m) => m.unit_id}
+              getSub={(m) => [unitLabel(m.unit_id), m.alias].filter(Boolean).join(' · ')}
             />
             <Input
               wrapClassName="grow"
               label={t('stock.request_qty')}
-              suffix={line.unit || undefined}
+              suffix={line.unit ? unitLabel(line.unit) : undefined}
               inputMode="decimal"
               value={line.qty}
               onChange={(e) => setLine(i, { qty: e.target.value })}
@@ -1049,7 +1049,7 @@ function RequestActionModal({
               ))}
             </Select>
             <Input
-              label={`${t('stock.request_qty')} (${request.unit_id})`}
+              label={`${t('stock.request_qty')} (${unitLabel(request.unit_id)})`}
               inputMode="decimal"
               value={qty}
               onChange={(e) => setQty(e.target.value)}

@@ -3,6 +3,47 @@ import { accountScope, assignedUser, permit, projectScope } from './permissions.
 import { dec, money, quantity } from './money.js';
 import { invariant } from './errors.js';
 import { notify, projectRecipients } from './notify.js';
+/** Nom so'zlari: kichik harf, ё → е; 3+ harfli so'z yoki raqamli bo'lak («из», «мм» hisobga olinmaydi). */
+const words = (name: string) =>
+  new Set(
+    name
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w.length > 2 || /\d/.test(w)),
+  );
+/**
+ * D32: yangi material nomiga o'xshash materiallar (`rows` — id, name, unit_id, aliases). Nom yoki muqobil nom aynan
+ * mos — `exact`; aks holda umumiy so'zlar qisqaroq nomning kamida 60 % i (kamida 2 ta; bir so'zli nomda 1) va o'lcham
+ * (raqamli bo'laklar) zid emas: kamroq raqamli nomning raqamlari ikkinchisida bor (57х3,5 ≠ 76х3,5).
+ * Eng o'xshashi birinchi, ko'pi bilan 5 ta. Hech narsa avtomatik bog'lanmaydi — tanlovni omborchi qiladi.
+ */
+export function similarMaterials(name: string, rows: Row[]) {
+  const want = words(name);
+  const lower = name.trim().toLowerCase();
+  const digits = (set: Set<string>) => [...set].filter((w) => /\d/.test(w));
+  const score = (other: string) => {
+    if (other.trim().toLowerCase() === lower) return 2;
+    const have = words(other);
+    const [few, many] = [digits(want), digits(have)].sort((a, b) => a.length - b.length);
+    if (!few!.every((w) => many!.includes(w))) return 0;
+    const common = [...want].filter((w) => have.has(w)).length;
+    const shorter = Math.min(want.size, have.size);
+    return shorter && common >= Math.min(2, shorter) ? common / shorter : 0;
+  };
+  return rows
+    .map((m) => ({ m, s: Math.max(...[m.name as string, ...(m.aliases as string[])].map(score)) }))
+    .filter((x) => x.s >= 0.6)
+    .sort((a, b) => b.s - a.s || String(a.m.name).localeCompare(b.m.name))
+    .slice(0, 5)
+    .map(({ m, s }) => ({
+      id: m.id,
+      name: m.name,
+      unit_id: m.unit_id,
+      aliases: m.aliases,
+      exact: s === 2,
+    }));
+}
 export async function balances(db: Db, tenant: string, material: string, accounts: string[]) {
   for (const account of [...new Set(accounts)].sort()) {
     await db.query(
