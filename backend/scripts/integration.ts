@@ -16,7 +16,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { createPool, transaction, one } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
 import { buildApp } from '../src/app.js';
-import { issueDueInvoices, periodEnd } from '../src/billing.js';
+import { AUTO_BLOCK_REASON, blockUnpaid, issueDueInvoices, periodEnd } from '../src/billing.js';
 import { hashPassword, digest } from '../src/security.js';
 import { form5Workbook } from '../tests/form5-fixture.js';
 import { dec } from '../src/money.js';
@@ -3354,6 +3354,107 @@ try {
   );
   passed.push(
     'Platform debtors: an overdue invoice lists the company first with overdue amount, days overdue and oldest due date; q matches the registration key',
+  );
+  // ---- D33: muddati tugab, to'lanmagan kompaniya avtomatik bloklanadi; to'lov ochadi, qo'lda qaror ustun
+  const autoT = await newTenant('Avto blok korxona', 'TEST-D33', 'adminavto');
+  const manualT = await newTenant('Qo‘lda ochilgan korxona', 'TEST-D33M', 'adminqolda');
+  // trial_once triggeri trialni o'zgartirmaydi — sinov uchun replika rejimida 6 kun oldin tugagan qilinadi
+  await admin.query(
+    "BEGIN; SET LOCAL session_replication_role=replica; UPDATE tenants SET trial_started_at=now()-interval '20 days',trial_ends_at=now()-interval '6 days' WHERE registration_key IN ('TEST-D33','TEST-D33M'); COMMIT;",
+  );
+  // Worker ishlashidan oldin qo'lda bloklanib, qo'lda ochilgan kompaniya — egasi shu uzilish bo'yicha qaror qilgan
+  for (const status of ['blocked', 'active'])
+    await call(
+      'PATCH',
+      `/v1/platform/tenants/${manualT.tenant.id}`,
+      {
+        status,
+        version: (await admin.query('SELECT version FROM tenants WHERE id=$1', [manualT.tenant.id])).rows[0].version,
+        reason: 'Egasi qarori',
+      },
+      ownerToken,
+    );
+  const autoState = async () =>
+    (
+      await admin!.query('SELECT status,block_reason,auto_blocked,version FROM tenants WHERE id=$1', [
+        autoT.tenant.id,
+      ])
+    ).rows[0];
+  const autoCard = async () =>
+    (await call('GET', `/v1/platform/tenants/${autoT.tenant.id}`, undefined, ownerToken)).access_state;
+  assert.equal(await autoCard(), 'overdue');
+  assert((await blockUnpaid(appPool!)) >= 1);
+  let autoRow = await autoState();
+  assert.deepEqual(
+    [autoRow.status, autoRow.auto_blocked, autoRow.block_reason],
+    ['blocked', true, AUTO_BLOCK_REASON],
+  );
+  assert.equal(await blockUnpaid(appPool!), 0);
+  assert.equal((await autoState()).version, autoRow.version);
+  assert.equal(
+    (await call('GET', `/v1/platform/tenants/${manualT.tenant.id}`, undefined, ownerToken)).access_state,
+    'overdue',
+  );
+  // Sessiya yopilmaydi: admin obuna sahifasini ko'radi, ish sahifalari TENANT_BLOCKED
+  assert.equal(
+    (await call('GET', '/v1/projects', undefined, autoT.token, undefined, 403)).error.code,
+    'TENANT_BLOCKED',
+  );
+  assert.equal((await call('GET', '/v1/billing', undefined, autoT.token)).tenant.access_state, 'blocked');
+  // Uzilishdan keyingi davr (kecha boshlangan) to'lansa zanjir ulanadi va avtomatik blok o'zi ochiladi
+  const autoInvoice = await call(
+    'POST',
+    '/v1/platform/billing/invoices',
+    { tenant_id: autoT.tenant.id, plan_version_id: plan.id, period_start: new Date(Date.now() - dayMs).toISOString() },
+    ownerToken,
+  );
+  const autoEntry = (kind: string, ref: string) =>
+    call(
+      'POST',
+      '/v1/platform/billing/entries',
+      { invoice_id: autoInvoice.id, kind, amount: autoInvoice.amount, external_ref: ref, reason: 'D33 sinovi' },
+      ownerToken,
+    );
+  await autoEntry('payment', 'D33-PAY-1');
+  autoRow = await autoState();
+  assert.deepEqual([autoRow.status, autoRow.auto_blocked, autoRow.block_reason], ['active', false, null]);
+  assert.equal(await autoCard(), 'paid');
+  await call('GET', '/v1/projects', undefined, autoT.token);
+  // Refund qoplashni qaytaradi — keyingi sikl yana bloklaydi
+  await autoEntry('refund', 'D33-REFUND-1');
+  assert.equal(await blockUnpaid(appPool!), 1);
+  assert.equal((await autoState()).status, 'blocked');
+  // Platforma egasi qo'lda ochsa, shu uzilish uchun qayta bloklanmaydi
+  await call(
+    'PATCH',
+    `/v1/platform/tenants/${autoT.tenant.id}`,
+    { status: 'active', version: (await autoState()).version, reason: 'To‘lov va’da qilindi' },
+    ownerToken,
+  );
+  assert.equal(await blockUnpaid(appPool!), 0);
+  assert.equal(await autoCard(), 'overdue');
+  // Qo'lda qo'yilgan blokni to'lov ochmaydi
+  await call(
+    'PATCH',
+    `/v1/platform/tenants/${autoT.tenant.id}`,
+    { status: 'blocked', version: (await autoState()).version, reason: 'Qoida buzilishi' },
+    ownerToken,
+  );
+  await autoEntry('payment', 'D33-PAY-2');
+  autoRow = await autoState();
+  assert.deepEqual(
+    [autoRow.status, autoRow.auto_blocked, autoRow.block_reason],
+    ['blocked', false, 'Qoida buzilishi'],
+  );
+  const autoAudit = (
+    await admin.query(
+      "SELECT action FROM audit_events WHERE resource_id=$1 AND details->>'automatic'='true' ORDER BY created_at,id",
+      [autoT.tenant.id],
+    )
+  ).rows.map((r) => r.action);
+  assert.deepEqual(autoAudit, ['tenant.blocked', 'tenant.active', 'tenant.blocked']);
+  passed.push(
+    'D33: an active company whose trial or paid period ended unpaid is blocked by the worker once (admin keeps the billing page), a covering payment after the gap reopens it, a refund blocks it again, a manual reopen (also of a never auto-blocked company) is not re-blocked for the same lapse, and a payment does not lift a manual block',
   );
   // ---- Bosqich 2: CBU kursi. Xatoda oxirgi kurs qoladi, 0 yozilmaydi; endpoint har bir foydalanuvchiga ochiq
   const noRate = await call('GET', '/v1/exchange-rates/latest', undefined, adminAgain);

@@ -20,7 +20,10 @@ export async function authenticate(db: Db, bearer: string | undefined, cookie?: 
   invariant(actor, 'UNAUTHORIZED', 401);
   return actor as Row;
 }
-/** Trial/to'lov holati faqat ko'rsatish uchun; avtomatik bloklash yo'q — platforma egasi qo'lda hal qiladi. */
+/**
+ * Trial/to'lov holati ko'rsatish uchun. «overdue» — muddat tugagan, lekin hali faol: worker keyingi siklda
+ * bloklaydi (D33, blockUnpaid) yoki platforma egasi shu uzilish uchun qo'lda ochgan.
+ */
 export function accessState(tenant: Row, now = Date.now()) {
   const day = 86400000;
   const trialEnd = tenant.trial_ends_at ? new Date(tenant.trial_ends_at).getTime() : null;

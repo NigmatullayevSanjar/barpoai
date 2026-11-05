@@ -622,12 +622,17 @@ async function runAction(db: Db, user: Row, action: string, lang: Lang): Promise
         const count = (state: string) => rows.filter((r) => r.access_state === state).length;
         return `${t(lang, 'tenants_header')}\n\n• trial: ${count('trial')}\n• paid: ${count('paid')}\n• overdue: ${count('overdue')}\n• pending: ${count('pending')}\n• blocked: ${count('blocked')}\n• archived: ${count('archived')}`;
       }
-      const debtors = rows.filter((r) => r.access_state === 'overdue');
+      // D33: to'lanmagani uchun avtomatik bloklangan kompaniya ham qarzdor (🔒)
+      const debtors = rows.filter(
+        (r) => r.access_state === 'overdue' || (r.status === 'blocked' && r.auto_blocked),
+      );
       if (!debtors.length) return t(lang, 'debtors_none');
       return (
         t(lang, 'debtors_header') +
         '\n\n' +
-        debtors.map((r) => `• ${r.legal_name} — ${r.days_overdue} kun`).join('\n')
+        debtors
+          .map((r) => `• ${r.legal_name} — ${r.days_overdue} kun${r.auto_blocked ? ' 🔒' : ''}`)
+          .join('\n')
       );
     }
     case 'support': {

@@ -1337,6 +1337,25 @@ try {
   checks.push(
     'Owner assigns plan, issues invoice and records payment; coverage extends paid_until',
   );
+  // D33: bloklangan kompaniya admini — banner va menyuda bitta «Obuna» (admin menyusida u bor, ikkinchisi chiqmaydi)
+  const errorsBeforeBlock = errors.length;
+  await owner.query("UPDATE tenants SET status='blocked' WHERE registration_key=$1", ['UI-TEST-001']);
+  await adminPage.goto(webURL + '/app/billing');
+  await adminPage.locator('.banner-danger').waitFor();
+  assert.equal(
+    await adminPage.locator('.sidebar nav a.nav-link', { hasText: /^Obuna$/ }).count(),
+    1,
+  );
+  await owner.query("UPDATE tenants SET status='active' WHERE registration_key=$1", ['UI-TEST-001']);
+  await adminPage.goto(webURL + '/app/billing');
+  await adminPage.locator('.banner-danger').waitFor({ state: 'detached' });
+  // Blok paytidagi 403 TENANT_BLOCKED kutilgan; boshqa xato bo'lmasligi shart
+  assert.deepEqual(
+    errors.slice(errorsBeforeBlock).filter((e) => !e.includes('"TENANT_BLOCKED"')),
+    [],
+  );
+  errors.length = errorsBeforeBlock;
+  checks.push('Blocked company admin sees the blocked banner and a single Obuna menu link');
 
   // 11-bosqich: qolgan rollar — login, menyu server ruxsati bilan bir xil, har ruxsatli sahifa xatosiz ochiladi
   const tenantRow = (
