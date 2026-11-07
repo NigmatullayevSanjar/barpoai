@@ -125,6 +125,8 @@ export function parseForm5(sheet: Sheet) {
   const mismatch: { row: number; excel: string; platform: string }[] = [];
   const missingUnit: number[] = [];
   const skipped: number[] = [];
+  // S3, D37: bosh pudratchi material qatorlari (A bo'sh, miqdori bor) — «kim beradi» tanlovi shularga tegadi
+  const gcRows: number[] = [];
   const projectQty: {
     row: number;
     code: string | null;
@@ -297,6 +299,7 @@ export function parseForm5(sheet: Sheet) {
     if (!a && (num(F) ?? num(E))) {
       // Bosh pudratchi materiali: raqamsiz qator, miqdor to'g'ridan-to'g'ri. Birligi yo'q bo'lsa — material birligi.
       counts.materials++;
+      gcRows.push(r);
       if (!raw) missingUnit.push(r);
       lines.push({
         _row: r,
@@ -322,6 +325,7 @@ export function parseForm5(sheet: Sheet) {
     percent: string | null;
     amount: string | null;
     addable: boolean;
+    key: string | null;
   }[] = [];
   for (let r = end; r <= sheet.rowCount && totals.length < 30; r++) {
     const label = text(at(r, 3));
@@ -336,14 +340,16 @@ export function parseForm5(sheet: Sheet) {
       rate: share,
       percent: share ? dec(share).mul(100).toFixed() : null,
       amount: amount ? money(amount) : null,
-      // Ulushli qatorni (masalan, «прочие затраты» 21 %) smetaga xizmat qatori qilib qo'shish mumkin; QQS — yo'q.
+      // Ulushli qator (masalan, «прочие затраты» 21 %), QQS emas — S3 da «boshqa xarajatlar» foizi sifatida taklif qilinadi
       addable: !!share && !/НДС|QQS|VAT/i.test(label),
+      key: excelKey(label),
     });
   }
   return {
     lines,
     errors,
     counts,
+    gcRows,
     excel: {
       total: totals[0]?.row === end ? totals[0].amount : null,
       rows: totals,
@@ -366,6 +372,42 @@ export function parseForm5(sheet: Sheet) {
       project_quantity_count: projectQty.length,
     },
   };
+}
+/**
+ * S3: Excel jamlar bloki qatorining smeta narxi zanjiridagi kaliti (egasining `локалка` yorliqlari bo'yicha);
+ * tanilmasa null. Tartib muhim: «ИТОГО С НДС» — QQSdan, «ИТОГО С УЧЕТОМ ПРОЧИХ» — «ИТОГО» dan oldin.
+ */
+const latinLookalikes: Record<string, string> = {
+  A: 'А',
+  B: 'В',
+  C: 'С',
+  E: 'Е',
+  H: 'Н',
+  K: 'К',
+  M: 'М',
+  O: 'О',
+  P: 'Р',
+  T: 'Т',
+  X: 'Х',
+};
+export function excelKey(label: string) {
+  // Egasining fayllarida yorliqlar qo'lda yozilgan: «С У ЧЕТОМ» (so'z ichida probel), «C НДС» (lotin C),
+  // «ГЕНПОДРДЧИКА» (harf tushgan) — probelsiz va kirill harflari bilan solishtiriladi
+  const raw = label.toUpperCase().replace(/\s+/g, '');
+  const l = raw.replace(/[ABCEHKMOPTX]/g, (c) => latinLookalikes[c]!);
+  if (/QQS|VAT/.test(raw)) return 'vat';
+  if (/ВОЗВРАТ/.test(l)) return 'customer_deduction';
+  if (/СНДС/.test(l)) return 'total_with_vat';
+  if (/НДС/.test(l)) return 'vat';
+  if (/СУЧ[ЕЁ]ТОМ/.test(l)) return 'total_without_vat';
+  if (/ПРОЧИЕ|НАКЛАДН/.test(l)) return 'other_costs';
+  if (/ЗАРПЛАТ|ОПЛАТАТРУДА|ЗАТРАТЫТРУДА/.test(l)) return 'labor';
+  if (/МАШИН|МЕХАНИЗМ/.test(l)) return 'equipment';
+  if (/МАТЕРИАЛ.*(ГЕНПОДР|ЗАКАЗЧ)/.test(l)) return 'customer_materials';
+  if (/МАТЕРИАЛ/.test(l)) return 'contractor_materials';
+  if (/ВСЕГОЗАТРАТ|ПРЯМЫХ/.test(l)) return 'direct_total';
+  if (/^ИТОГО/.test(l)) return 'total';
+  return null;
 }
 /** Inspeksiya uchun varaq qisqachasi; `too_large` varaq tanlanmaydi (chegara smeta importi bilan bir xil). */
 export function form5Summary(sheet: Sheet, maxRows: number, maxColumns: number) {

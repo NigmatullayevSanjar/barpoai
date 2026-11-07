@@ -43,6 +43,7 @@ import { createStock, transitionStock, reverseStock, reconcileStock, similarMate
 import { postFinance, reverseFinance, accountingMonthSql, journalWithDocSql } from './finance.js';
 import { money } from './money.js';
 import { autoRateSql, rateGroupSql } from './earnings.js';
+import { estimatePriceSummary } from './estimate-price.js';
 /** Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; smeta muharriridagi "Yangi material" ham. */
 async function canCreateMaterial(db: Db, actor: Row) {
   invariant(
@@ -401,7 +402,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/estimates/:id',
     summary:
-      'Joriy smeta (sarlavha bilan) va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona, bo‘lim bo‘yicha guruhlar (decimal)',
+      'Joriy smeta (sarlavha va sozlamalar bilan) va oylik qatorlar; price_summary — smeta narxi zanjiri (S3); totals — umumiy, material/ish jami va tur, kategoriya, zona, bo‘lim bo‘yicha guruhlar (decimal)',
     permission: 'estimates.read',
     params: idParams,
     sensitive: true,
@@ -449,6 +450,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       );
       return {
         ...estimate,
+        // S3 (D36–D39): smeta narxi zanjiri — qator jamlari va plan_total o'zgarmaydi; narx huquqisiz butunlay kesiladi
+        price_summary: await estimatePriceSummary(db, actor.tenant_id, estimate),
         totals: {
           ...totals,
           by_kind: pick('kind'),
@@ -552,6 +555,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           'norm_code',
           'resource_code',
           'section_name',
+          'supplied_by',
         ]),
         text,
       ),

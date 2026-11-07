@@ -35,14 +35,14 @@ Platforma shablonidagi oddiy import (ustunlarni moslash) o‘zgarishsiz qoladi.
 - Narxsiz resurs yoki material qatorlari soni va summaga ta’siri (0 deb olinadi).
 - Excel F ustuni `norma × hajm` ga teng emas — qator raqami va farq (tekshiruvda 361-qator xatosini shunday topdik).
 - Bir xil resursning narxi bo‘limlarda turlicha (masalan, ishchi soati 3 200 va 36 929,94).
-- Excel jami va platforma jami farqi (yaxlitlash va yuqoridagi sabablar).
+- Excel jami va platforma jami farqi (yaxlitlash va yuqoridagi sabablar). S3 (2026-11-07) dan Excel jamlar blokining har qatori smeta narxi zanjiri bilan solishtiriladi (`excel_rows[].platform_amount`, `difference`).
 - Miqdori «П» (loyihadan) bo‘lgan materiallar: soni va qatorlar (raqam va nom) — ular 0 miqdor bilan qo‘shilgan (D35).
 
 ## 4. Egasi qarorlari (2026-11-03)
 
 1. **Tashqi havolali fayllar** (`давальческие.xlsx` kabi) — **rad etiladi**, hozirgidek (`UNSAFE_WORKBOOK`). Xabar matniga yechim qo‘shiladi: «Excel’da Ma’lumotlar → Havolalarni tahrirlash → Havolani uzish, so‘ng qayta saqlang».
 2. **Qator chegarasi** — egasi keyinroq chegarani olib tashlashni so‘radi (D30): smeta 20 000 qatorgacha, shuning uchun `ОБЩЕЕ` (4 124 qator) bitta smeta bo‘lib yuklanadi; bo‘limlar bo‘yicha bo‘lish kerak emas. 20 000 dan oshsa — `WORKBOOK_LIMIT`.
-3. **Boshqa xarajatlar, bosh pudratchi materiallari qaytarilishi, QQS** (`локалка` dagi 21 %, «ВОЗВРАТ», 12 %) — import qilinmaydi, preview’da **«Excel jami» blokida ko‘rsatiladi**; 21 % ni bir tugma bilan «xizmat» qatori qilib qo‘shish mumkin.
+3. **Boshqa xarajatlar, bosh pudratchi materiallari qaytarilishi, QQS** (`локалка` dagi 21 %, «ВОЗВРАТ», 12 %) — qator bo‘lib import qilinmaydi, preview’da **«Excel jami» blokida ko‘rsatiladi**. ~~21 % ni bir tugma bilan «xizmat» qatori qilib qo‘shish~~ — S3 (2026-11-07, D39) dan tugma yo‘q: 21 % va QQS smeta sozlamasiga taklif qilinadi, bosh pudratchi materiallarini kim berishi varaq bo‘yicha tanlanadi (D37); eski foizli qatorlar smeta sahifasida bir tugma bilan sozlamaga o‘tkaziladi.
 4. **Haqiqiy fayllar** repoga qo‘shilmaydi (kompaniya nomlari, INN, hisob raqamlari); testlar uchun shu tuzilishdagi soxta fayllar yasaladi.
 5. **Navbat:** avval smeta tekshiruvidagi nuqsonlar tuzatiladi (smeta sahifasi jamlari, kategoriya guruhlari, eksport→import, xato matnlari, birlik to‘qnashuvi qatori), keyin Form 5.
 

@@ -32,6 +32,7 @@ export type EstimateTotals = {
   /** S2: «Раздел» bo'yicha (key '' — bo'limsiz qatorlar) */
   by_section: EstimateGroupTotal[];
 };
+export type SuppliedBy = 'contractor' | 'customer';
 export type EstimateLine = {
   id: string;
   kind: LineKind;
@@ -53,6 +54,8 @@ export type EstimateLine = {
   work_quantity: string | null;
   loss_percent: string;
   effective_quantity: string;
+  /** S3: material kim beradi (buyurtmachi — faqat material qatorida) */
+  supplied_by: SuppliedBy;
   unit_price?: string;
   /** V-C: brigada stavkasi (so'm/birlik), faqat ish qatorlari; narx huquqisiz kelmaydi */
   labor_rate?: string | null;
@@ -62,6 +65,23 @@ export type EstimateLine = {
   months: { month: string; quantity: string }[];
   fact_quantity: string;
   fact_value: string | null;
+};
+export type MarkupMode = 'free' | 'vmq583';
+/** S3: narx zanjiri qatori (kalitlar tartibi serverdan); summalar va foizlar serverda hisoblanadi */
+export type PriceSummaryLine = { key: string; amount: string; percent?: string };
+export type PriceSummary = {
+  markup_mode: MarkupMode;
+  other_costs_percent: string;
+  profit_percent: string;
+  production_costs_percent: string;
+  deduct_customer_materials: boolean;
+  vat_percent: string | null;
+  lines: PriceSummaryLine[];
+  total: string;
+  /** Zanjirdan tashqarida qolgan eski «… (21 %)» xizmat qatorlari (D29) */
+  percent_lines: { id: string; description: string; total: string; percent: string | null }[];
+  /** O'tkazilsa «boshqa xarajatlar» foizi (amaldagi + qatorlar); qator bo'lmasa null */
+  converted_other_costs_percent: string | null;
 };
 export type EstimateDetail = {
   id: string;
@@ -76,6 +96,14 @@ export type EstimateDetail = {
   contract_number: string | null;
   contract_date: string | null;
   contract_amount?: string | null;
+  /** S3: narx sozlamalari; foizlar narx huquqisiz kelmaydi */
+  markup_mode: MarkupMode;
+  deduct_customer_materials: boolean;
+  other_costs_percent?: string;
+  profit_percent?: string;
+  production_costs_percent?: string;
+  vat_percent?: string | null;
+  price_summary?: PriceSummary;
   lines: EstimateLine[];
   totals: EstimateTotals;
 };
@@ -110,6 +138,7 @@ export type LineDraft = {
   material_id: string;
   material_name: string;
   material_unit: string;
+  supplied_by: SuppliedBy;
   unit_id: string;
   mode: 'manual' | 'norm';
   quantity: string;
@@ -135,6 +164,7 @@ export const newLine = (partial: Partial<LineDraft> = {}): LineDraft => ({
   material_id: '',
   material_name: '',
   material_unit: '',
+  supplied_by: 'contractor',
   unit_id: '',
   mode: 'manual',
   quantity: '',
@@ -160,6 +190,7 @@ export const fromLine = (l: EstimateLine): LineDraft => ({
   material_id: l.material_id ?? '',
   material_name: l.material_name ?? '',
   material_unit: l.material_id ? l.unit_id : '',
+  supplied_by: l.supplied_by ?? 'contractor',
   unit_id: l.unit_id,
   mode: l.norm !== null ? 'norm' : 'manual',
   quantity: l.norm !== null ? '' : trimZeros(l.quantity),
@@ -175,6 +206,8 @@ export const fromLine = (l: EstimateLine): LineDraft => ({
 export const trimZeros = (v: string) => (v.includes('.') ? v.replace(/\.?0+$/, '') : v);
 const QTY = /^(0|[1-9]\d{0,17})(\.\d{1,6})?$/;
 export const AMOUNT = /^(0|[1-9]\d{0,17})(\.\d{1,2})?$/;
+/** S3: foiz 0-100, ko'pi bilan 4 kasr (serverdagi qoida bilan bir xil) */
+export const PERCENT = /^(100(\.0{1,4})?|[1-9]?\d(\.\d{1,4})?)$/;
 export const normalizeNumber = (v: string) => v.trim().replace(/\s/g, '').replace(',', '.');
 /** Ko'rsatish uchun taxminiy hisob; server decimal bilan qayta hisoblaydi. */
 export function effectiveOf(d: LineDraft) {
@@ -226,7 +259,7 @@ export function toApiLine(d: LineDraft, position: number) {
     ...(d.section_name.trim() ? { section_name: d.section_name.trim() } : {}),
     ...(d.note.trim() ? { note: d.note.trim() } : {}),
     ...(d.zone_id ? { zone_id: d.zone_id } : {}),
-    ...(d.kind === 'material' ? { material_id: d.material_id } : {}),
+    ...(d.kind === 'material' ? { material_id: d.material_id, supplied_by: d.supplied_by } : {}),
     ...(d.loss_percent ? { loss_percent: normalizeNumber(d.loss_percent) } : {}),
     ...(d.months.length
       ? {

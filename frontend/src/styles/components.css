@@ -1609,6 +1609,34 @@
   font-family: var(--font-mono);
   font-size: var(--fs-lg);
 }
+/* S3: narx zanjiri — yorliq, foiz, summa */
+.est-chain dl {
+  margin: 0;
+}
+.est-chain dl > div {
+  display: grid;
+  grid-template-columns: 1fr 80px minmax(150px, auto);
+  gap: 20px;
+  padding: 6px 0;
+}
+.est-chain dt {
+  color: var(--text-2);
+}
+.est-chain dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.est-chain .est-chain-percent {
+  color: var(--text-2);
+}
+.est-chain .est-chain-total {
+  border-top: 1px solid var(--border);
+  font-weight: 800;
+}
+.est-chain .est-chain-total dt {
+  color: inherit;
+}
 
 /* ---------- Vazifalar Kanban (Figma "vazifalar"): ustun sarlavhasida rangli nuqta va son, kartada daraja va sana ---------- */
 .kanban-col > header {

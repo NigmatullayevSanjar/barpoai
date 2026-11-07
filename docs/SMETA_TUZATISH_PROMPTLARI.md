@@ -2,7 +2,7 @@
 
 > **Asos:** `docs/research/SMETA_TADQIQOT_2026_11_06.md` — O‘zbekiston normalari (ShNK 4.01.16-09, ShNK 4.02.70-05, VMQ 577, VMQ 583, VMQ 46), MDH va xalqaro amaliyot, egasining Excel fayllari va 101-app.com bilan solishtirish.
 > **Foydalanish:** har promptni yangi Claude Code sessiyasiga to‘liq nusxalang. Promptdan oldin sarlavhadagi modelni `/model` bilan tanlang (`TZ_VA_NARX_REJASI.md` 6.0-bo‘limi). Hamma promptlar bir xil yakunlanadi: avval reja, keyin egasining tasdig‘i, keyin ish, keyin tekshiruv; commit yo‘q. Har bosqich alohida PR: `main-vxg6su` → PR → egasi birlashtiradi.
-> **Holat:** S1 bajarildi (2026-11-06, commit `62ecbbf`); S2 bajarildi (2026-11-07; egasi qarorlari: eski qatorlar to‘ldirilmaydi, sarlavha reviziyasiz alohida endpoint bilan, kod izohda takrorlanmaydi, «Раздел» ustuni bo‘limga, bo‘lim — filtr, bitta «Shifr» ustuni); S3–S5 ishga tushirilmagan. 1-bo‘limdagi qarorlar (D35–D41) egasi tomonidan **tasdiqlangan (2026-11-06)** va `docs/TZ_VA_NARX_REJASI.md` 1-bo‘limiga yozilgan.
+> **Holat:** S1 bajarildi (2026-11-06, commit `62ecbbf`); S2 bajarildi (2026-11-07, commit `9e00b54`; egasi qarorlari: eski qatorlar to‘ldirilmaydi, sarlavha reviziyasiz alohida endpoint bilan, kod izohda takrorlanmaydi, «Раздел» ustuni bo‘limga, bo‘lim — filtr, bitta «Shifr» ustuni); S3 bajarildi (2026-11-07; egasi qarorlari: sozlamalar sarlavha endpoint’i orqali reviziyasiz, smeta sahifasida tahrirlanadi, VMQ 583 da foyda 7 % va ishlab chiqarish 2,5/5 % qat’iy, «buyurtmachi» tanlovi faqat bosh pudratchi material qatorlariga, eski 21 % qatorlari bir tugma bilan sozlamaga); S4–S5 ishga tushirilmagan. 1-bo‘limdagi qarorlar (D35–D41) egasi tomonidan **tasdiqlangan (2026-11-06)** va `docs/TZ_VA_NARX_REJASI.md` 1-bo‘limiga yozilgan.
 
 ---
 

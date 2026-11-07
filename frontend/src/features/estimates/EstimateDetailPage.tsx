@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ChevronDown, Download, History, Pencil } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronDown, Download, History, Pencil, Settings } from 'lucide-react';
 import { saveBase64File } from '@/lib/download';
 import { api, ApiError } from '@/lib/api';
 import { DetailError } from '@/app/guards';
@@ -27,6 +27,7 @@ import {
   AMOUNT,
   lineKinds,
   normalizeNumber,
+  PERCENT,
   trimZeros,
   type EstimateDetail,
   type EstimateGroupTotal,
@@ -34,6 +35,8 @@ import {
   type EstimateResources,
   type EstimateTotals,
   type LineKind,
+  type MarkupMode,
+  type PriceSummary,
 } from './model';
 
 type Tab = 'lines' | 'summary' | 'resources' | 'revisions';
@@ -303,6 +306,7 @@ export function EstimateDetailPage() {
               </dl>
             </section>
           )}
+          {d.price_summary && <PriceSummaryCard estimate={d} summary={d.price_summary} />}
         </>
       )}
       {tab === 'summary' && <SummaryTab totals={d.totals} pricesVisible={pricesVisible} />}
@@ -602,6 +606,237 @@ function SummaryTab({ totals, pricesVisible }: { totals: EstimateTotals; pricesV
       <Table title={t('est.by_category')} rows={totals.by_category} name={(k) => k || '—'} />
       <Table title={t('est.by_zone')} rows={totals.by_zone} name={(k) => k || '—'} />
     </div>
+  );
+}
+
+const boldChainKeys = new Set(['direct_total', 'total', 'total_without_vat', 'total_with_vat']);
+const percentText = (v: string) => `${trimZeros(v).replace('.', ',')} %`;
+
+/**
+ * S3: «Smeta yakuni» — narx zanjiri (to'g'ridan-to'g'ri xarajat → boshqa xarajat → ishlab chiqarish → QQS).
+ * Barcha summa va foizlar serverdan (`price_summary`); frontend hech narsa qo'shmaydi.
+ */
+function PriceSummaryCard({ estimate, summary }: { estimate: EstimateDetail; summary: PriceSummary }) {
+  const { t, lang } = useT();
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [settings, setSettings] = useState(false);
+  const convert = useMutation({
+    mutationFn: () =>
+      api(`/v1/estimates/${estimate.id}/percent-lines/convert`, {
+        method: 'POST',
+        body: { version: estimate.revision },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['estimate', estimate.id] });
+      await queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      await queryClient.invalidateQueries({ queryKey: ['estimate-revisions', estimate.id] });
+      toast.success(t('common.saved'));
+    },
+    onError: (e: ApiError) => toast.error(errorMessage(t, e.code, e.status)),
+  });
+  const canEdit = can('estimates', 'update');
+  return (
+    <section className="card card-pad stack est-chain" style={{ gap: 12 }}>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <div className="stat-label">{t('est.price.title')}</div>
+        <Badge tone="brand">{t(`est.markup.${summary.markup_mode}`)}</Badge>
+        <span className="spacer" />
+        {canEdit && (
+          <Button size="sm" variant="secondary" icon={<Settings />} onClick={() => setSettings(true)}>
+            {t('est.price.settings')}
+          </Button>
+        )}
+      </div>
+      {summary.percent_lines.length > 0 && (
+        <Alert tone="warning">
+          <div className="stack" style={{ gap: 8 }}>
+            <span>
+              {t('est.price.percent_lines', {
+                list: summary.percent_lines.map((x) => x.description).join('; '),
+              })}
+            </span>
+            {canEdit && (
+              <div>
+                <Button size="sm" variant="secondary" loading={convert.isPending} onClick={() => convert.mutate()}>
+                  {t('est.price.convert', { percent: percentText(summary.converted_other_costs_percent ?? '0') })}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Alert>
+      )}
+      <dl>
+        {summary.lines.map((l) => (
+          <div key={l.key} className={boldChainKeys.has(l.key) ? 'est-chain-total' : undefined}>
+            <dt>{t(`est.price.${l.key}`)}</dt>
+            <dd className="est-chain-percent">{l.percent ? percentText(l.percent) : ''}</dd>
+            <dd>{formatMoney(l.amount, lang)}</dd>
+          </div>
+        ))}
+      </dl>
+      {settings && <PriceSettingsModal estimate={estimate} onClose={() => setSettings(false)} />}
+    </section>
+  );
+}
+
+type VatChoice = 'none' | '12' | '6' | 'custom';
+const vatChoiceOf = (vat: string | null | undefined): VatChoice => {
+  if (vat === null || vat === undefined) return 'none';
+  const v = trimZeros(vat);
+  return v === '12' || v === '6' ? v : 'custom';
+};
+
+/** S3: narx sozlamalari (rejim, boshqa/ishlab chiqarish xarajati, foyda, QQS). Yangi reviziya yaratmaydi; faqat o'zgargan maydonlar yuboriladi. */
+function PriceSettingsModal({ estimate, onClose }: { estimate: EstimateDetail; onClose: () => void }) {
+  const { t } = useT();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const initial = {
+    other: trimZeros(estimate.other_costs_percent ?? ''),
+    profit: trimZeros(estimate.profit_percent ?? ''),
+    production: trimZeros(estimate.production_costs_percent ?? ''),
+  };
+  const [mode, setMode] = useState<MarkupMode>(estimate.markup_mode);
+  const [other, setOther] = useState(initial.other);
+  const [profit, setProfit] = useState(initial.profit);
+  const [production, setProduction] = useState(initial.production);
+  const [mountain, setMountain] = useState(initial.production === '5');
+  const [deduct, setDeduct] = useState(estimate.deduct_customer_materials);
+  const [vatChoice, setVatChoice] = useState<VatChoice>(vatChoiceOf(estimate.vat_percent));
+  const [vatCustom, setVatCustom] = useState(
+    vatChoiceOf(estimate.vat_percent) === 'custom' ? trimZeros(estimate.vat_percent ?? '') : '',
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const vmq = mode === 'vmq583';
+  const changeMode = (next: MarkupMode) => {
+    setMode(next);
+    if (next === 'vmq583' && estimate.markup_mode !== 'vmq583') setOther('20');
+    if (next === 'free') {
+      setOther(initial.other);
+      setProfit(initial.profit);
+      setProduction(initial.production);
+    }
+  };
+  const mutation = useMutation({
+    mutationFn: (body: Record<string, string | boolean | null>) =>
+      api(`/v1/estimates/${estimate.id}/header`, { method: 'PATCH', body }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['estimate', estimate.id] });
+      toast.success(t('common.saved'));
+      onClose();
+    },
+    onError: (e: ApiError) => toast.error(errorMessage(t, e.code, e.status)),
+  });
+  const submit = () => {
+    const otherN = normalizeNumber(other);
+    const profitN = vmq ? '7' : normalizeNumber(profit);
+    const productionN = vmq ? (mountain ? '5' : '2.5') : normalizeNumber(production);
+    const vatN = vatChoice === 'none' ? null : vatChoice === 'custom' ? normalizeNumber(vatCustom) : vatChoice;
+    const bad: Record<string, string> = {};
+    if (!PERCENT.test(otherN)) bad.other = t('est.err.percent');
+    if (!PERCENT.test(profitN)) bad.profit = t('est.err.percent');
+    if (!PERCENT.test(productionN)) bad.production = t('est.err.percent');
+    if (vatN !== null && !PERCENT.test(vatN)) bad.vat = t('est.err.percent');
+    setErrors(bad);
+    if (Object.keys(bad).length) return;
+    const next: Record<string, string | boolean | null> = {
+      markup_mode: mode,
+      other_costs_percent: otherN,
+      profit_percent: profitN,
+      production_costs_percent: productionN,
+      deduct_customer_materials: deduct,
+      vat_percent: vatN,
+    };
+    const old = estimate as unknown as Record<string, string | boolean | null | undefined>;
+    // foiz: «21» va serverdagi «21.0000» bir xil (matn bo'yicha, arifmetikasiz)
+    const changed = Object.fromEntries(
+      Object.entries(next).filter(([key, value]) => {
+        const was = old[key] ?? null;
+        return typeof value === 'string' && typeof was === 'string'
+          ? trimZeros(value) !== trimZeros(was)
+          : value !== was;
+      }),
+    );
+    if (!Object.keys(changed).length) return onClose();
+    mutation.mutate(changed);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={t('est.price.settings')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={mutation.isPending}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack">
+        <Select label={t('est.price.mode')} value={mode} onChange={(e) => changeMode(e.target.value as MarkupMode)}>
+          <option value="free">{t('est.markup.free')}</option>
+          <option value="vmq583">{t('est.markup.vmq583')}</option>
+        </Select>
+        <Input
+          label={t('est.price.other_costs_percent')}
+          inputMode="decimal"
+          value={other}
+          onChange={(e) => setOther(e.target.value)}
+          error={errors.other}
+        />
+        {vmq ? (
+          <>
+            <Input label={t('est.price.profit_percent')} value="7" disabled readOnly />
+            <label className="checkbox">
+              <input type="checkbox" checked={mountain} onChange={(e) => setMountain(e.target.checked)} />{' '}
+              {t('est.price.mountain')}
+            </label>
+          </>
+        ) : (
+          <>
+            <Input
+              label={t('est.price.profit_percent')}
+              inputMode="decimal"
+              value={profit}
+              onChange={(e) => setProfit(e.target.value)}
+              error={errors.profit}
+            />
+            <Input
+              label={t('est.price.production_costs_percent')}
+              inputMode="decimal"
+              value={production}
+              onChange={(e) => setProduction(e.target.value)}
+              error={errors.production}
+            />
+          </>
+        )}
+        <label className="checkbox">
+          <input type="checkbox" checked={deduct} onChange={(e) => setDeduct(e.target.checked)} />{' '}
+          {t('est.price.deduct')}
+        </label>
+        <Select label={t('est.price.vat')} value={vatChoice} onChange={(e) => setVatChoice(e.target.value as VatChoice)}>
+          <option value="none">{t('est.price.vat_none')}</option>
+          <option value="12">12 %</option>
+          <option value="6">6 %</option>
+          <option value="custom">{t('est.price.vat_custom')}</option>
+        </Select>
+        {vatChoice === 'custom' && (
+          <Input
+            label={t('est.price.vat_percent')}
+            inputMode="decimal"
+            value={vatCustom}
+            onChange={(e) => setVatCustom(e.target.value)}
+            error={errors.vat}
+          />
+        )}
+      </div>
+    </Modal>
   );
 }
 

@@ -1598,7 +1598,7 @@ try {
   await mockCtx.close();
   checks.push('Malformed (non-UUID) detail ids render the not-found view without a retry button');
 
-  // 7c. D29: Form 5 fayli — varaqlar ro'yxati, tekshiruv, 21 % qatorini qo'shish, smeta saqlanadi
+  // 7c. D29: Form 5 fayli — varaqlar ro'yxati, tekshiruv (Excel jamlari zanjir bilan solishtiriladi), smeta saqlanadi
   const form5Path = resolve(tmpdir(), 'barpo-ui-form5-' + process.pid + '.xlsx');
   await form5Workbook().xlsx.writeFile(form5Path);
   await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
@@ -1612,14 +1612,16 @@ try {
   await f5dialog.getByText(/Tekshiruv o‘tdi: 11 ta qator/).waitFor();
   await f5dialog.getByText(/Excel «ВСЕГО ЗАТРАТ»: 18\s340\s000/).waitFor();
   await f5dialog.getByText(/norma × ish hajmiga teng emas/).waitFor();
-  assert.equal(await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).count(), 1);
-  await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).click();
-  await f5dialog.getByText(/Tekshiruv o‘tdi: 12 ta qator/).waitFor();
+  // S3: qo'shish tugmasi yo'q; 21 % platforma summasi taqqoslash jadvalida, smeta narxi zanjirdan (QQS bilan)
+  assert.equal(await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).count(), 0);
+  await f5dialog.getByRole('cell').filter({ hasText: /^3\s850\s975,8\s/ }).waitFor();
+  await f5dialog.getByText(/Smeta narxi:\s*24\s851\s630,5/).waitFor();
   await f5dialog.getByRole('button', { name: '1 ta smetani yaratish' }).click();
   await adminPage.getByRole('status').filter({ hasText: '1 ta smeta import qilindi' }).waitFor();
-  await adminPage.getByText('ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)').waitFor();
+  await adminPage.getByText('КЛАДКА ПЕРЕГОРОДОК').first().waitFor();
+  assert.equal(await adminPage.getByText('ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)').count(), 0);
   checks.push(
-    'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview shows the Excel total and warnings, the 21 % row is added from the platform total, and the estimate is saved',
+    'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview compares the Excel totals block with the platform price chain (21 % row from the platform total) and shows the estimate price, and the estimate is saved without a percent service line (S3)',
   );
   // S2: shifr ustuni, bo'lim filtri, resurslar yig'masi, sarlavha (shartnoma) tahriri — yangi smeta sahifasida
   await adminPage.getByRole('columnheader', { name: 'Shifr', exact: true }).waitFor();
@@ -1653,6 +1655,33 @@ try {
   await headerFacts.getByText(/311\s671\s640/).waitFor();
   await headerFacts.getByText('Reviziya 1', { exact: true }).waitFor();
   checks.push('Estimate header (contract number and amount) is saved from the modal and shown on the info card without a new revision (S2)');
+  // S3: «Smeta yakuni» — zanjir serverdan (Form 5 dan taklif qilingan 21 % + QQS 12 %); sozlamada VMQ 583 ga o'tkazilsa yangilanadi
+  // «Smeta yakuni» qatorlar tabida (yuqorida «Resurslar yig‘masi» tabi ochilgan edi)
+  await adminPage.getByRole('tab', { name: /^Qatorlar/ }).click();
+  const priceChain = adminPage.locator('section.est-chain');
+  await priceChain.getByText('Smeta yakuni', { exact: true }).waitFor();
+  await priceChain.getByText('Erkin', { exact: true }).waitFor();
+  await priceChain
+    .locator('dl > div', { hasText: 'QQS bilan jami' })
+    .getByText(/24\s851\s630,5/)
+    .waitFor();
+  await priceChain.getByRole('button', { name: 'Sozlamalar', exact: true }).click();
+  const priceDialog = adminPage.getByRole('dialog');
+  await priceDialog.getByLabel('Hisoblash rejimi').selectOption('vmq583');
+  await priceDialog.getByLabel('Boshqa xarajatlar, %').fill('20');
+  await priceDialog.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await priceDialog.waitFor({ state: 'hidden' });
+  await priceChain.getByText('VMQ 583', { exact: true }).waitFor();
+  await priceChain.getByText('27 %', { exact: true }).waitFor();
+  await priceChain.getByText('2,5 %', { exact: true }).waitFor();
+  await priceChain
+    .locator('dl > div', { hasText: 'QQS bilan jami' })
+    .getByText(/26\s597\s406,19/)
+    .waitFor();
+  await adminPage.locator('dl.block-facts').getByText('Reviziya 1', { exact: true }).waitFor();
+  checks.push(
+    'Estimate detail shows the price chain card from the server (Form 5 settings, 24 851 630,5 with VAT); switching to VMQ 583 in the settings modal updates it to 26 597 406,19 without a new revision (S3)',
+  );
   // D35: «Нормы» varag'idagi «П» (miqdor loyihadan) material — tekshiruvda qator raqami bilan ogohlantirish; smeta yaratilmaydi
   await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Excel import' }).first().click();

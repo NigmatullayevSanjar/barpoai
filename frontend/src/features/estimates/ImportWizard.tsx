@@ -26,6 +26,7 @@ const fields = [
   'norm',
   'work_quantity',
   'loss_percent',
+  'supplied_by',
 ] as const;
 type Field = (typeof fields)[number];
 const required: Field[] = ['description', 'quantity', 'unit_price'];
@@ -53,6 +54,7 @@ const guessOrder: [Field, RegExp, RegExp?][] = [
   ['norm', /norma|норма|norm/i, /kod|код|шифр|code/i],
   ['work_quantity', /hajm|объ[её]м|work/i],
   ['loss_percent', /yo.qot|потер|loss/i],
+  ['supplied_by', /kim beradi|кто постав|поставщик материал|supplied/i],
 ];
 const totalHeader = /jami|итого|всего|total/i;
 function guessMapping(headers: string[]) {

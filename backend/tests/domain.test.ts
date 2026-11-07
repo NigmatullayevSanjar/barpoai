@@ -209,6 +209,8 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
   const local = parseForm5(book.getWorksheet('Локалка 1')!)!;
   assert.deepEqual(local.errors, []);
   assert.deepEqual(local.counts, { works: 2, resources: 7, materials: 2, priced: 8 });
+  // S3, D37: «kim beradi» tanlovi faqat bosh pudratchi material qatorlariga (A bo'sh, miqdori bor)
+  assert.deepEqual(local.gcRows, [15, 16]);
   assert.deepEqual(local.lines[0], {
     _row: 9,
     kind: 'labor',
@@ -297,6 +299,7 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
         percent: null,
         amount: '18340000.00',
         addable: false,
+        key: 'direct_total',
       },
       {
         row: 23,
@@ -305,8 +308,17 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
         percent: '21',
         amount: '3851400.00',
         addable: true,
+        key: 'other_costs',
       },
-      { row: 24, label: 'НДС', rate: '0.12', percent: '12', amount: '2663868.00', addable: false },
+      {
+        row: 24,
+        label: 'НДС',
+        rate: '0.12',
+        percent: '12',
+        amount: '2663868.00',
+        addable: false,
+        key: 'vat',
+      },
     ],
   });
   const norms = parseForm5(book.getWorksheet('Нормы')!)!;

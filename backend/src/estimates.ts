@@ -7,6 +7,7 @@ import { DomainError, invariant } from './errors.js';
 import { dec, money, plannedQuantity } from './money.js';
 import { digest } from './security.js';
 import { form5Summary } from './form5.js';
+import { applyPriceSettings } from './estimate-price.js';
 /**
  * D27: `l` qatori va oldingi reviziyalardagi «o'sha» qatorlari (bir xil `lineage_id`) — fakt reviziyada yo'qolmaydi.
  * `column` — fakt yozuvidagi smeta qatori ustuni (masalan, `pe.estimate_line_id`).
@@ -57,6 +58,8 @@ export async function validateEstimate(db: Db, actor: Row, input: Row) {
       'MATERIAL_LINE_REFERENCE_REQUIRED',
       400,
     );
+    // S3, D37: «buyurtmachi beradi» faqat material qatorida
+    invariant(line.supplied_by !== 'customer' || line.kind === 'material', 'SUPPLIED_BY_MATERIAL_ONLY', 400);
     if (line.material_id) {
       const material = await one(
         db,
@@ -174,7 +177,7 @@ export function alignKeys(a: string[], b: string[]) {
 export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: Row): Promise<Row> {
   await permit(db, actor, existing ? 'estimates.edit' : 'estimates.import');
   await validateEstimate(db, actor, input);
-  const estimate =
+  let estimate =
     existing ??
     (await one(
       db,
@@ -196,14 +199,16 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
     ]);
     estimate.revision++;
   }
+  // S3: sozlamalar (yaratishda — masalan, Form 5 taklifi; reviziyada — berilganlari) snapshot'ga ham tushadi
+  if (input.settings) estimate = await applyPriceSettings(db, estimate, input.settings);
   const lines = [];
   for (const line of input.lines) {
     const effective = plannedQuantity(line);
     const position = line.position ?? input.lines.indexOf(line);
     const row = await one(
       db,
-      `INSERT INTO estimate_lines(tenant_id,project_id,estimate_id,zone_id,material_id,kind,description,unit_id,quantity,norm,work_quantity,loss_percent,effective_quantity,unit_price,total,category,note,position,labor_rate,lineage_id,norm_code,resource_code,section_name)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,coalesce($20::uuid,gen_random_uuid()),$21,$22,$23) RETURNING *`,
+      `INSERT INTO estimate_lines(tenant_id,project_id,estimate_id,zone_id,material_id,kind,description,unit_id,quantity,norm,work_quantity,loss_percent,effective_quantity,unit_price,total,category,note,position,labor_rate,lineage_id,norm_code,resource_code,section_name,supplied_by)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,coalesce($20::uuid,gen_random_uuid()),$21,$22,$23,$24) RETURNING *`,
       [
         actor.tenant_id,
         input.project_id,
@@ -228,6 +233,7 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
         line.norm_code || null,
         line.resource_code || null,
         line.section_name || null,
+        line.supplied_by ?? 'contractor',
       ],
     );
     for (const month of line.months ?? [])
@@ -555,6 +561,18 @@ export async function resolveImportNames(
     xizmat: 'service',
     услуга: 'service',
   };
+  const suppliers: Record<string, string> = {
+    contractor: 'contractor',
+    pudratchi: 'contractor',
+    subpudratchi: 'contractor',
+    подрядчик: 'contractor',
+    субподрядчик: 'contractor',
+    customer: 'customer',
+    buyurtmachi: 'customer',
+    'bosh pudratchi': 'customer',
+    заказчик: 'customer',
+    генподрядчик: 'customer',
+  };
   const units = new Set((await db.query('SELECT id FROM units')).rows.map((u) => u.id as string));
   const errors: { row: number; field: string; message: string }[] = [];
   const converted: { row: number; from: string; to: string }[] = [];
@@ -564,6 +582,12 @@ export async function resolveImportNames(
     const row = (_row as number | undefined) ?? index + 2;
     let massTo: string | undefined;
     if (next.kind) next.kind = kinds[String(next.kind).trim().toLowerCase()] ?? next.kind;
+    // S3, D37: «Kim beradi» ustuni (subpudratchi nuqtai nazaridan bosh pudratchi materiali — buyurtmachiniki)
+    if (next.supplied_by !== undefined)
+      next.supplied_by = suppliers[String(next.supplied_by).trim().toLowerCase()] ?? next.supplied_by;
+    // «buyurtmachi» faqat material qatorida — xato Excel qatori bilan (umumiy 400 emas)
+    if (next.supplied_by === 'customer' && next.kind && next.kind !== 'material')
+      errors.push({ row, field: 'supplied_by', message: String(line.supplied_by) });
     const unitRaw = String(next.unit_id ?? '');
     if (next.unit_id) {
       const unit = String(next.unit_id).trim().toLowerCase().replace(/\.$/, '');
@@ -660,6 +684,8 @@ export async function storeImportPreview(
         };
       });
     invariant(rows.length === 0, 'IMPORT_ROWS_INVALID', 400, rows.slice(0, 200));
+    // Qatorlardan tashqari xato (masalan, S3 sozlamasi) — umumiy validatsiya xatosi
+    throw shape.error;
   }
   await validateEstimate(db, actor, input);
   const row = await one(
