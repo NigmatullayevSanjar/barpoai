@@ -48,10 +48,26 @@ type SheetPreview = {
     price_varies: { code: string | null; name: string; min_price: string; max_price: string }[];
     missing_unit: number[];
     skipped_works: number[];
+    project_quantity: {
+      row: number;
+      code: string | null;
+      name: string;
+      unit: string | null;
+      category: string | null;
+      zone: string | null;
+    }[];
+    project_quantity_count: number;
   };
 };
 type RowIssue = { sheet?: string; row: number; field: string; message: string };
 const rowList = (rows: number[]) => rows.slice(0, 30).join(', ') + (rows.length > 30 ? ', …' : '');
+/** Bir xil nomli qatorlar bitta guruhda: «Nom: 21, 27, 33; …» (uzun ro'yxat matnni cho'zmasin). */
+const rowsByName = (items: { row: number; name: string }[], more: boolean) => {
+  const groups = new Map<string, number[]>();
+  for (const p of items) groups.set(p.name, [...(groups.get(p.name) ?? []), p.row]);
+  const list = [...groups].slice(0, 5).map(([name, rows]) => `${name}: ${rowList(rows)}`);
+  return list.join('; ') + (more || groups.size > 5 ? '; …' : '');
+};
 
 /**
  * D29: Form 5 (ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ) importi — varaqlarni tanlash → server tekshiruvi → hammasi bitta amalda
@@ -381,6 +397,11 @@ function Form5Warnings({
       }),
     w.missing_unit.length > 0 && t('est.f5_warn_missing_unit', { rows: rowList(w.missing_unit) }),
     w.skipped_works.length > 0 && t('est.f5_warn_skipped', { rows: rowList(w.skipped_works) }),
+    w.project_quantity_count > 0 &&
+      t('est.f5_warn_project_qty', {
+        n: w.project_quantity_count,
+        rows: rowsByName(w.project_quantity, w.project_quantity_count > w.project_quantity.length),
+      }),
   ].filter(Boolean) as string[];
   if (!items.length) return null;
   return (

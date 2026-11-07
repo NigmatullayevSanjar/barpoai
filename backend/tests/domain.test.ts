@@ -256,6 +256,8 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
     ],
     missing_unit: [16],
     skipped_works: [21],
+    project_quantity: [],
+    project_quantity_count: 0,
   });
   assert.deepEqual(local.excel, {
     total: '18340000.00',
@@ -287,7 +289,107 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
       norms.lines[1]!.unit_price,
       norms.warnings.unpriced,
     ],
-    [3, '1000.000000', '0.00', 2],
+    [4, '1000.000000', '0.00', 2],
+  );
+  // D35: «П» — miqdor loyihadan: material qatori 0 miqdor bilan, ishning kategoriyasida; narxsizlar soniga kirmaydi
+  assert.deepEqual(norms.lines[3], {
+    _row: 11,
+    kind: 'material',
+    category: 'Е0101-001-01 РАЗРАБОТКА ГРУНТА',
+    description: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
+    material_name: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
+    unit_id: 'kg',
+    quantity: '0.000000',
+    unit_price: '0.00',
+    note: 'П54889 · П — miqdor loyihadan',
+  });
+  assert.deepEqual(norms.counts, { works: 1, resources: 2, materials: 1, priced: 0 });
+  assert.deepEqual(
+    [norms.warnings.project_quantity, norms.warnings.project_quantity_count],
+    [
+      [
+        {
+          row: 11,
+          code: 'П54889',
+          name: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
+          unit: 'кг',
+          category: 'Е0101-001-01 РАЗРАБОТКА ГРУНТА',
+          zone: null,
+        },
+      ],
+      1,
+    ],
+  );
+  // D35 chekka holatlari: E va F ikkalasi «П», kichik «п», narxli varaqda G bo'sh / 0 / narx bor, F da miqdor bor,
+  // hajmi «--» ish ostidagi «П» (resurslari bilan birga o'tkaziladi)
+  const edge = new ExcelJS.Workbook();
+  const es = edge.addWorksheet('П holatlari');
+  es.getRow(5).values = [
+    'N п.п.',
+    'Шифр номера нормативов и коды ресурсов',
+    'Наименование работ и затрат',
+    'Единица измерения',
+    'Количество',
+    'Количество',
+    'Стоимость',
+    'Стоимость',
+  ];
+  es.getRow(6).values = [1, 2, 3, 4, 5, 6, 7, 8];
+  const edgeRows: [number, unknown[]][] = [
+    [7, [null, null, 'Раздел 1. Полы 1-этаж']],
+    [8, [1, 'Е1101-065-01', 'НАЛИВНЫЕ ПОЛЫ', '100М2 ПОЛА', 1, 1]],
+    [9, ['1.1', 1, 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', 'ЧЕЛ.-Ч', 10, 10, 30000]],
+    [10, [null, 'П1', 'СМЕСЬ А', 'кг', 'П', 'П']],
+    [11, [null, 'П2', 'СМЕСЬ Б', 'кг', 'п', null, 0]],
+    [12, [null, 'С3', 'ПЛЕНКА', 'м2', 'П', null, 2500]],
+    [13, [null, 'С4', 'ГРУНТОВКА', 'кг', 'П', 12, 4000]],
+    [14, [2, 'Е1101-066-01', 'СТЯЖКА', '100М2', '--', '--']],
+    [15, ['2.1', 1, 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', 'ЧЕЛ.-Ч', 5, null, 30000]],
+    [16, [null, 'П5', 'СМЕСЬ В', 'кг', 'П']],
+  ];
+  for (const [r, values] of edgeRows) es.getRow(r).values = values as ExcelJS.CellValue[];
+  const edgeBook = new ExcelJS.Workbook();
+  await edgeBook.xlsx.load((await edge.xlsx.writeBuffer()) as any);
+  const ep = parseForm5(edgeBook.getWorksheet('П holatlari')!)!;
+  assert.deepEqual(ep.errors, []);
+  assert.deepEqual(
+    ep.lines.map((l) => [
+      l._row,
+      l.kind,
+      l.quantity,
+      l.unit_price,
+      l.category,
+      l.zone_name ?? null,
+    ]),
+    [
+      [8, 'labor', '100.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      [9, 'labor', '10.000000', '30000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      [10, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      [11, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      [12, 'material', '0.000000', '2500.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      // F da miqdor bor — oddiy material qatori (bosh pudratchi materiali kabi), miqdor F dan
+      [13, 'material', '12.000000', '4000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+    ],
+  );
+  assert.deepEqual(
+    [
+      ep.warnings.project_quantity.map((p) => [p.row, p.zone]),
+      ep.warnings.project_quantity_count,
+      ep.warnings.unpriced,
+      ep.warnings.skipped_works,
+      ep.counts,
+    ],
+    [
+      [
+        [10, '1-qavat'],
+        [11, '1-qavat'],
+        [12, '1-qavat'],
+      ],
+      3,
+      0,
+      [14],
+      { works: 1, resources: 1, materials: 4, priced: 3 },
+    ],
   );
   // natijasiz formula — qator xatosi
   const broken = new ExcelJS.Workbook();

@@ -163,6 +163,8 @@ export const estimatesUz: Record<string, string> = {
   'est.f5_warn_price_varies': 'Bir xil resursning narxi turlicha: {list}',
   'est.f5_warn_missing_unit': 'Birligi yo‘q qatorlar materialning birligini oldi: {rows}',
   'est.f5_warn_skipped': 'Hajmi yo‘q («--») ish qatorlari resurslari bilan o‘tkazildi: {rows}',
+  'est.f5_warn_project_qty':
+    'Miqdori loyihadan olinadigan («П») {n} ta material 0 miqdor bilan qo‘shildi — miqdorni muharrirda kiriting: {rows}',
   'est.f5_commit': '{n} ta smetani yaratish',
   'est.f5_done': '{n} ta smeta import qilindi',
   'est.import_expired': 'Tekshiruv muddati o‘tdi, qayta tekshiring.',

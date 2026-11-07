@@ -4541,7 +4541,7 @@ try {
       [
         ['Накладная', false, 0, 0, 0, 0],
         ['Локалка 1', true, 2, 7, 2, 8],
-        ['Нормы', true, 1, 2, 0, 0],
+        ['Нормы', true, 1, 2, 1, 0],
       ],
     ],
   );
@@ -4576,7 +4576,7 @@ try {
       f5lok.created,
       f5lok.converted,
       f5lok.excel_rows.map((x: any) => [x.row, x.addable, x.added]),
-      [f5norm.lines, f5norm.total, f5norm.warnings.unpriced],
+      [f5norm.lines, f5norm.total, f5norm.warnings.unpriced, f5norm.warnings.project_quantity_count, f5norm.warnings.project_quantity.map((p: any) => p.row)],
     ],
     [
       12,
@@ -4592,7 +4592,7 @@ try {
         [23, true, true],
         [24, false, false],
       ],
-      [3, '0.00', 2],
+      [4, '0.00', 2, 1, [11]],
     ],
   );
   // biri xato bo'lsa hech biri saqlanmaydi
@@ -4616,6 +4616,12 @@ try {
     [f5est.lines.length, f5est.totals.total, f5est.lines.at(-1).kind, f5est.lines.at(-1).description],
     [12, '22188955.80', 'service', 'ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)'],
   );
+  // D35: «П» (miqdor loyihadan) material qatori 0 miqdor bilan saqlanadi, izohda asl kod va belgi
+  const f5normEst = await call('GET', `/v1/estimates/${f5saved.estimates[1].id}`, undefined, adminAgain);
+  assert.deepEqual(
+    f5normEst.lines.filter((l: any) => l.kind === 'material').map((l: any) => [l.description, l.unit_id, l.quantity, l.note, l.total]),
+    [['СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА', 'kg', '0.000000', 'П54889 · П — miqdor loyihadan', '0.00']],
+  );
   assert.deepEqual(
     (await admin.query("SELECT name,kind FROM zones WHERE project_id=$1 AND name LIKE '%-qavat' ORDER BY name", [projectQ.id])).rows,
     [
@@ -4626,7 +4632,7 @@ try {
   const f5matrix = await call('GET', `/v1/projects/${projectQ.id}/floor-progress`, undefined, adminAgain);
   assert.deepEqual(f5matrix.floors.map((f: any) => f.name).sort(), ['1-qavat', '2-qavat']);
   passed.push(
-    'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, Excel total and the 21 % row from the platform total; VAT not addable), row errors carry the sheet, and all sheets commit together or not at all (D29)',
+    'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, Excel total and the 21 % row from the platform total; VAT not addable), row errors carry the sheet, and all sheets commit together or not at all (D29); a material whose quantity is «П» (taken from the project) is kept with quantity 0 and a warning (D35)',
   );
   // ---- D32 (2026-11-05): Form 5 ish qatoriga akkord mehnat resurslaridan × obyekt foizi; resurs qatorlari stavkasiz;
   // qo'lda stavka ustun; narx reviziyada o'zgarsa yangi hisobotga yangi stavka, qabul qilingani qotirilgan

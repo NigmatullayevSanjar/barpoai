@@ -1621,6 +1621,18 @@ try {
   checks.push(
     'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview shows the Excel total and warnings, the 21 % row is added from the platform total, and the estimate is saved',
   );
+  // D35: «Нормы» varag'idagi «П» (miqdor loyihadan) material — tekshiruvda qator raqami bilan ogohlantirish; smeta yaratilmaydi
+  await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Excel import' }).first().click();
+  const f5again = adminPage.getByRole('dialog');
+  await f5again.locator('input[type=file]').setInputFiles(form5Path);
+  await f5again.getByText(/Form 5 \(ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ\) deb tanildi/).waitFor();
+  await f5again.getByRole('checkbox', { name: 'Локалка 1', exact: true }).uncheck();
+  await f5again.getByRole('button', { name: 'Tekshirish' }).click();
+  await f5again.getByText(/Miqdori loyihadan olinadigan \(«П»\) 1 ta material 0 miqdor bilan qo‘shildi.*СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА: 11/).waitFor();
+  await adminPage.keyboard.press('Escape');
+  await f5again.waitFor({ state: 'hidden' });
+  checks.push('Form 5 import: a material whose quantity is «П» (from the project) is listed in the preview warnings with its Excel row (D35)');
 
   // 8. Chiqish cookie'ni tozalaydi
   await managerPage.getByRole('button', { name: /Sinov menejeri/ }).click();

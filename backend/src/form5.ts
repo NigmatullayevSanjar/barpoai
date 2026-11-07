@@ -108,6 +108,9 @@ function layout(sheet: Sheet) {
   return null;
 }
 type RowError = { row: number; field: string; message: string };
+/** «П» — normada sarfi berilmagan, loyiha (ishchi chizmalar) bo'yicha olinadigan material (ShNK 4.02.70-05, 1.9-band). */
+const isProjectQuantity = (v: unknown) => typeof v === 'string' && v.trim().toUpperCase() === 'П';
+const PROJECT_QUANTITY_NOTE = 'П — miqdor loyihadan';
 /** Varaqni platforma import qatorlariga aylantiradi (`_row` — Excel qatori); Form 5 bo'lmasa null. */
 export function parseForm5(sheet: Sheet) {
   const found = layout(sheet);
@@ -121,6 +124,14 @@ export function parseForm5(sheet: Sheet) {
   const mismatch: { row: number; excel: string; platform: string }[] = [];
   const missingUnit: number[] = [];
   const skipped: number[] = [];
+  const projectQty: {
+    row: number;
+    code: string | null;
+    name: string;
+    unit: string | null;
+    category: string | null;
+    zone: string | null;
+  }[] = [];
   const prices = new Map<string, { code: string | null; name: string; prices: Set<string> }>();
   let unpriced = 0;
   let work: { code: string; name: string; qty: Decimal; category: string } | null = null;
@@ -237,6 +248,39 @@ export function parseForm5(sheet: Sheet) {
       });
       continue;
     }
+    if (!a && !num(F) && (isProjectQuantity(E) || isProjectQuantity(F))) {
+      // D35 (ShNK 4.02.70-05, 1.9-band): «П» — sarfi loyihadan (ishchi chizmalardan) olinadigan material.
+      // Miqdor 0 bilan saqlanadi va keyin muharrirda kiritiladi (F da miqdor bo'lsa — oddiy material qatori);
+      // u normaning qismi, shuning uchun hajmi yo'q ish ostida resurslari bilan birga o'tkaziladi.
+      if (!work && skipping) continue;
+      counts.materials++;
+      if (!raw) missingUnit.push(r);
+      projectQty.push({
+        row: r,
+        code,
+        name,
+        unit: raw,
+        category: work?.category ?? null,
+        zone,
+      });
+      const g = at(r, 7);
+      const gPrice = num(g);
+      lines.push({
+        _row: r,
+        kind: 'material',
+        category: work?.category ?? null,
+        description: name.slice(0, 500),
+        material_name: name.slice(0, 500),
+        ...(zone ? { zone_name: zone } : {}),
+        ...(u ? { unit_id: u.unit } : {}),
+        quantity: quantity(0),
+        // Narx faqat G da musbat son (yoki natijasiz formula — xato) bo'lsa; aks holda 0, narxsizlar soniga kirmaydi
+        unit_price:
+          g === NO_RESULT || (gPrice && !gPrice.isZero()) ? priceOf(r, code, name) : '0.00',
+        note: [note, PROJECT_QUANTITY_NOTE].filter(Boolean).join(' · '),
+      });
+      continue;
+    }
     if (!a && (num(F) ?? num(E))) {
       // Bosh pudratchi materiali: raqamsiz qator, miqdor to'g'ridan-to'g'ri. Birligi yo'q bo'lsa — material birligi.
       counts.materials++;
@@ -303,6 +347,8 @@ export function parseForm5(sheet: Sheet) {
         }),
       missing_unit: missingUnit.slice(0, 50),
       skipped_works: skipped.slice(0, 50),
+      project_quantity: projectQty.slice(0, 50),
+      project_quantity_count: projectQty.length,
     },
   };
 }

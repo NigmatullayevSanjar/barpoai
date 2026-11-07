@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs';
  * «ВСЕГО ЗАТРАТ» (22-qator) 18 340 000.00, farq −2 020.00; 23-qator 21 % qo'shiladi, 24-qator QQS — yo'q;
  * 13-qator miqdori norma × hajmga teng emas; 14-qatorda narx yo'q; 16-qatorda birlik yo'q; 20-qator kg → t
  * (material 13-qatorda t); 21-qator hajmi «--» (o'tkaziladi); 18-qator «1 СЕКЦИЯ» — D32 da qo'shilgan birlik (seksiya).
+ * «Нормы» 11-qatori — miqdori «П» (loyihadan) material: 0 miqdor bilan qo'shiladi va ogohlantiriladi (D35).
  * `brokenFormula` — 10-qator normasi natijasiz formula (qator xatosi).
  */
 export function form5Workbook({ brokenFormula = false } = {}) {
@@ -74,5 +75,6 @@ export function form5Workbook({ brokenFormula = false } = {}) {
   norms.getRow(8).values = [1, 'Е0101-001-01', 'РАЗРАБОТКА ГРУНТА', '1000 М3', 1, 1];
   norms.getRow(9).values = ['1.1', 1, 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', 'ЧЕЛ.-Ч', 10, 10];
   norms.getRow(10).values = ['1.2', 1199, 'ЭКСКАВАТОРЫ', 'МАШ.-Ч', 5, 5];
+  norms.getRow(11).values = [null, 'П54889', 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА', 'кг', 'П'];
   return book;
 }
