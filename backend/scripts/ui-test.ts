@@ -419,7 +419,7 @@ try {
   checks.push(
     'Estimate created in the grid editor with labor and material lines; totals match decimal arithmetic',
   );
-  await adminPage.getByRole('button', { name: 'Tahrirlash' }).click();
+  await adminPage.getByRole('button', { name: 'Tahrirlash', exact: true }).click();
   await adminPage.getByRole('heading', { name: /yangi reviziya/ }).waitFor();
   await adminPage
     .locator('table.grid-editor tbody tr')
@@ -1621,6 +1621,38 @@ try {
   checks.push(
     'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview shows the Excel total and warnings, the 21 % row is added from the platform total, and the estimate is saved',
   );
+  // S2: shifr ustuni, bo'lim filtri, resurslar yig'masi, sarlavha (shartnoma) tahriri — yangi smeta sahifasida
+  await adminPage.getByRole('columnheader', { name: 'Shifr', exact: true }).waitFor();
+  await adminPage.getByRole('cell', { name: 'Е0804-003-01 ДОП. 12', exact: true }).waitFor();
+  await adminPage.getByText('УСТАНОВКА КАРКАСА').first().waitFor();
+  const sectionFilter = adminPage.getByLabel('Bo‘lim', { exact: true });
+  await sectionFilter.selectOption({ label: 'Раздел 1. Кладка стен 1-этаж' });
+  await adminPage.getByText('УСТАНОВКА КАРКАСА').first().waitFor({ state: 'hidden' });
+  await adminPage.getByText('КЛАДКА ПЕРЕГОРОДОК').first().waitFor();
+  await sectionFilter.selectOption('all');
+  await adminPage.getByText('УСТАНОВКА КАРКАСА').first().waitFor();
+  await adminPage.getByRole('tab', { name: 'Resurslar yig‘masi' }).click();
+  await adminPage.getByRole('heading', { name: 'Mehnat (kishi-soat)', exact: true }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Mashinalar (mashina-soat)', exact: true }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Materiallar', exact: true }).waitFor();
+  await adminPage.getByText('КРАНЫ НА АВТОМОБИЛЬНОМ ХОДУ').waitFor();
+  await adminPage.getByText(/Form 5 ish pozitsiyalari/).waitFor();
+  checks.push(
+    'Estimate detail shows the norm code column, filters lines by section, and lists the resource summary by kind (S2)',
+  );
+  await adminPage.getByRole('button', { name: 'Sarlavhani tahrirlash' }).click();
+  const headerDialog = adminPage.getByRole('dialog');
+  await headerDialog.getByLabel('Shartnoma raqami').fill('PD-17');
+  const contractAmount = headerDialog.getByLabel(/Shartnoma summasi/);
+  await contractAmount.fill('311671640');
+  assert.match(await contractAmount.inputValue(), /^311\s671\s640$/);
+  await headerDialog.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await headerDialog.waitFor({ state: 'hidden' });
+  const headerFacts = adminPage.locator('dl.block-facts');
+  await headerFacts.getByText('PD-17', { exact: true }).waitFor();
+  await headerFacts.getByText(/311\s671\s640/).waitFor();
+  await headerFacts.getByText('Reviziya 1', { exact: true }).waitFor();
+  checks.push('Estimate header (contract number and amount) is saved from the modal and shown on the info card without a new revision (S2)');
   // D35: «Нормы» varag'idagi «П» (miqdor loyihadan) material — tekshiruvda qator raqami bilan ogohlantirish; smeta yaratilmaydi
   await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Excel import' }).first().click();

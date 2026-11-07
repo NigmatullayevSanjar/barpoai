@@ -213,6 +213,8 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
     _row: 9,
     kind: 'labor',
     category: 'Е0804-003-01 КЛАДКА ПЕРЕГОРОДОК',
+    norm_code: 'Е0804-003-01 ДОП. 12',
+    section_name: 'Раздел 1. Кладка стен 1-этаж',
     description: 'КЛАДКА ПЕРЕГОРОДОК',
     zone_name: '1-qavat',
     unit_id: 'm2',
@@ -234,6 +236,32 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
       [18, 'labor', 'section', null, '2-qavat'],
       [19, 'labor', 'hour', '3.550000', '2-qavat'],
       [20, 'material', 'kg', '1.200000', '2-qavat'],
+    ],
+  );
+  // S2: ish qatorida to'liq norma shifri (qo'shimchasi bilan), qolganlarida resurs kodi; bo'lim — oxirgi «Раздел …»;
+  // izohda kod takrorlanmaydi (faqat ko'paytmali yoki platformada yo'q asl birlik)
+  const s1 = 'Раздел 1. Кладка стен 1-этаж';
+  const s2 = 'Раздел 2. Монтаж 2 этаж';
+  assert.deepEqual(
+    local.lines.map((l) => [
+      l._row,
+      l.norm_code ?? null,
+      l.resource_code ?? null,
+      l.section_name ?? null,
+      l.note ?? null,
+    ]),
+    [
+      [9, 'Е0804-003-01 ДОП. 12', null, s1, '100 М2'],
+      [10, null, '1', s1, null],
+      [11, null, '762', s1, null],
+      [12, null, '19412', s1, null],
+      [13, null, '923565', s1, null],
+      [14, null, '9219', s1, null],
+      [15, null, 'pcpc0281970', s1, null],
+      [16, null, 'pcpc0315941', s1, null],
+      [18, 'Е0501-061-01', null, s2, null],
+      [19, null, '1', s2, null],
+      [20, null, '35310', s2, null],
     ],
   );
   const total = local.lines.reduce(
@@ -296,12 +324,13 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
     _row: 11,
     kind: 'material',
     category: 'Е0101-001-01 РАЗРАБОТКА ГРУНТА',
+    resource_code: 'П54889',
     description: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
     material_name: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
     unit_id: 'kg',
     quantity: '0.000000',
     unit_price: '0.00',
-    note: 'П54889 · П — miqdor loyihadan',
+    note: 'П — miqdor loyihadan',
   });
   assert.deepEqual(norms.counts, { works: 1, resources: 2, materials: 1, priced: 0 });
   assert.deepEqual(
@@ -360,17 +389,19 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
       l.unit_price,
       l.category,
       l.zone_name ?? null,
+      l.norm_code ?? l.resource_code,
     ]),
     [
-      [8, 'labor', '100.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
-      [9, 'labor', '10.000000', '30000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
-      [10, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
-      [11, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
-      [12, 'material', '0.000000', '2500.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      [8, 'labor', '100.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'Е1101-065-01'],
+      [9, 'labor', '10.000000', '30000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', '1'],
+      [10, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'П1'],
+      [11, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'П2'],
+      [12, 'material', '0.000000', '2500.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'С3'],
       // F da miqdor bor — oddiy material qatori (bosh pudratchi materiali kabi), miqdor F dan
-      [13, 'material', '12.000000', '4000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat'],
+      [13, 'material', '12.000000', '4000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'С4'],
     ],
   );
+  assert.ok(ep.lines.every((l) => l.section_name === 'Раздел 1. Полы 1-этаж'));
   assert.deepEqual(
     [
       ep.warnings.project_quantity.map((p) => [p.row, p.zone]),

@@ -13,6 +13,7 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  Input,
   Modal,
   PageHeader,
   SearchInput,
@@ -23,15 +24,19 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { useProjects } from '@/features/projects/ProjectsPage';
 import {
+  AMOUNT,
   lineKinds,
+  normalizeNumber,
+  trimZeros,
   type EstimateDetail,
   type EstimateGroupTotal,
   type EstimateLine,
+  type EstimateResources,
   type EstimateTotals,
   type LineKind,
 } from './model';
 
-type Tab = 'lines' | 'summary' | 'revisions';
+type Tab = 'lines' | 'summary' | 'resources' | 'revisions';
 export function EstimateDetailPage() {
   const { id = '' } = useParams();
   const { t, lang } = useT();
@@ -47,22 +52,38 @@ export function EstimateDetailPage() {
   const [tab, setTab] = useState<Tab>('lines');
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | LineKind>('all');
+  const [section, setSection] = useState('all');
+  const [headerEdit, setHeaderEdit] = useState(false);
   const [archive, setArchive] = useState(false);
   const [reason, setReason] = useState('');
   const d = query.data;
   const project = projects.data?.items.find((p) => p.id === d?.project_id);
   const pricesVisible = d?.totals.total !== undefined;
+  // S2: «Раздел» ro'yxati — qatorlarning birinchi uchragan tartibida; bo'limsiz qatorlar bo'lsa alohida variant.
+  const sections = useMemo(
+    () => [...new Set((d?.lines ?? []).map((l) => l.section_name).filter((s): s is string => Boolean(s)))],
+    [d],
+  );
+  const hasUnsectioned = (d?.lines ?? []).some((l) => !l.section_name);
   const visible = useMemo(
     () =>
       (d?.lines ?? []).filter(
         (l) =>
           (kind === 'all' || l.kind === kind) &&
+          (section === 'all' || (l.section_name ?? '') === section) &&
           (!search ||
-            [l.description, l.category, l.material_name, l.zone_name, l.note].some((f) =>
-              (f ?? '').toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-            )),
+            [
+              l.description,
+              l.category,
+              l.material_name,
+              l.zone_name,
+              l.note,
+              l.norm_code,
+              l.resource_code,
+              l.section_name,
+            ].some((f) => (f ?? '').toLocaleLowerCase().includes(search.toLocaleLowerCase()))),
       ),
-    [d, kind, search],
+    [d, kind, section, search],
   );
   const archiveMutation = useMutation({
     mutationFn: () =>
@@ -144,8 +165,46 @@ export function EstimateDetailPage() {
               </small>
             </dd>
           </div>
+          <div>
+            <dt>{t('est.header.basis')}</dt>
+            <dd>{d.basis || '—'}</dd>
+          </div>
+          <div>
+            <dt>{t('est.header.price_level_date')}</dt>
+            <dd>{formatDate(d.price_level_date, lang)}</dd>
+          </div>
+          <div>
+            <dt>{t('est.header.labor_rate_source')}</dt>
+            <dd>{d.labor_rate_source || '—'}</dd>
+          </div>
+          <div>
+            <dt>{t('est.header.contract')}</dt>
+            <dd>
+              {d.contract_number || d.contract_date
+                ? [d.contract_number, d.contract_date ? formatDate(d.contract_date, lang) : null]
+                    .filter(Boolean)
+                    .join(' · ')
+                : '—'}
+            </dd>
+          </div>
+          {pricesVisible && d.contract_amount && (
+            <div>
+              <dt>{t('est.header.contract_amount')}</dt>
+              <dd>{formatMoney(d.contract_amount, lang)}</dd>
+            </div>
+          )}
         </dl>
+        {can('estimates', 'update') && (
+          <div style={{ marginTop: 12 }}>
+            <Button variant="secondary" icon={<Pencil />} onClick={() => setHeaderEdit(true)}>
+              {t('est.header.edit')}
+            </Button>
+          </div>
+        )}
       </div>
+      {headerEdit && (
+        <HeaderModal estimate={d} pricesVisible={pricesVisible} onClose={() => setHeaderEdit(false)} />
+      )}
       {!pricesVisible && <Alert tone="warning">{t('est.unit_price_hidden')}</Alert>}
       <div className="toolbar blocks-toolbar">
         <SearchInput value={search} onChange={setSearch} placeholder={t('est.search_lines')} />
@@ -161,6 +220,21 @@ export function EstimateDetailPage() {
             </option>
           ))}
         </Select>
+        {sections.length > 0 && (
+          <Select
+            aria-label={t('est.filter_section')}
+            value={section}
+            onChange={(e) => setSection(e.target.value)}
+          >
+            <option value="all">{t('common.all')}</option>
+            {sections.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+            {hasUnsectioned && <option value="">{t('est.unsectioned')}</option>}
+          </Select>
+        )}
         <span className="spacer" />
         {can('estimates', 'update') && (
           <Button variant="secondary" icon={<Pencil />} onClick={() => navigate(`/app/estimates/${id}/edit`)}>
@@ -190,6 +264,7 @@ export function EstimateDetailPage() {
         items={[
           { key: 'lines', label: t('est.lines'), count: d.lines.length },
           { key: 'summary', label: t('est.summary') },
+          { key: 'resources', label: t('est.resources') },
           { key: 'revisions', label: t('est.revisions') },
         ]}
       />
@@ -198,13 +273,17 @@ export function EstimateDetailPage() {
           <LinesTable
             lines={visible}
             pricesVisible={pricesVisible}
-            categories={search || kind !== 'all' ? undefined : d.totals.by_category}
+            categories={search || kind !== 'all' || section !== 'all' ? undefined : d.totals.by_category}
             total={
               search
                 ? undefined
-                : kind === 'all'
-                  ? d.totals.total
-                  : d.totals.by_kind.find((g) => g.key === kind)?.total
+                : section !== 'all'
+                  ? kind === 'all'
+                    ? d.totals.by_section.find((g) => g.key === section)?.total
+                    : undefined
+                  : kind === 'all'
+                    ? d.totals.total
+                    : d.totals.by_kind.find((g) => g.key === kind)?.total
             }
           />
           {pricesVisible && (
@@ -227,6 +306,7 @@ export function EstimateDetailPage() {
         </>
       )}
       {tab === 'summary' && <SummaryTab totals={d.totals} pricesVisible={pricesVisible} />}
+      {tab === 'resources' && <ResourcesTab id={id} revision={d.revision} pricesVisible={pricesVisible} />}
       {tab === 'revisions' && <RevisionsTab id={id} current={d.revision} />}
       <ConfirmDialog
         open={archive}
@@ -275,8 +355,8 @@ function LinesTable({
       else next.add(c);
       return next;
     });
-  // Ustunlar: 7 asosiy + narx, stavka, jami (narx ko'rinsa) + fakt, oylar, izoh. Jami summasi «Jami» ustuni ostida.
-  const colSpan = pricesVisible ? 13 : 10;
+  // Ustunlar: 8 asosiy (shifr bilan) + narx, stavka, jami (narx ko'rinsa) + fakt, oylar, izoh. Jami summasi «Jami» ustuni ostida.
+  const colSpan = pricesVisible ? 14 : 11;
   // Har kategoriya bitta guruh (birinchi uchragan tartibda): bir ish bir necha qavatda takrorlansa ham guruh bitta,
   // ostidagi jami (serverdagi kategoriya jami) shu guruh qatorlariga teng.
   const groups: { category: string; lines: EstimateLine[] }[] = [];
@@ -299,6 +379,7 @@ function LinesTable({
           <tr>
             <th>{t('est.col.n')}</th>
             <th>{t('est.col.kind')}</th>
+            <th>{t('est.col.code')}</th>
             <th>{t('est.col.description')}</th>
             <th>{t('est.col.zone')}</th>
             <th>{t('est.col.unit')}</th>
@@ -341,6 +422,9 @@ function LinesTable({
                   <Badge tone={l.kind === 'material' ? 'info' : l.kind === 'labor' ? 'brand' : 'neutral'}>
                     {t(`est.kind.${l.kind}`)}
                   </Badge>
+                </td>
+                <td className="muted" style={{ fontSize: 'var(--fs-xs)', overflowWrap: 'anywhere', minWidth: 90 }}>
+                  {l.norm_code ?? l.resource_code ?? '—'}
                 </td>
                 <td>
                   <div className="cell-main">{l.description}</div>
@@ -407,7 +491,7 @@ function LinesTable({
         {pricesVisible && total !== undefined && (
           <tfoot>
             <tr className="est-grand">
-              <td colSpan={9} style={{ textAlign: 'right' }}>
+              <td colSpan={10} style={{ textAlign: 'right' }}>
                 {t('est.total')}
               </td>
               <td className="num">{formatMoney(total, lang, false)}</td>
@@ -456,11 +540,11 @@ function FragmentRow({
       {children}
       {subtotal !== undefined && (
         <tr className="est-subtotal">
-          <td colSpan={9} style={{ textAlign: 'right' }}>
+          <td colSpan={10} style={{ textAlign: 'right' }}>
             {subtotalLabel}
           </td>
           <td className="num">{formatMoney(subtotal, lang, false)}</td>
-          <td colSpan={colSpan - 10} />
+          <td colSpan={colSpan - 11} />
         </tr>
       )}
     </>
@@ -517,6 +601,189 @@ function SummaryTab({ totals, pricesVisible }: { totals: EstimateTotals; pricesV
       <Table title={t('est.by_kind')} rows={totals.by_kind} name={(k) => t(`est.kind.${k}`)} />
       <Table title={t('est.by_category')} rows={totals.by_category} name={(k) => k || '—'} />
       <Table title={t('est.by_zone')} rows={totals.by_zone} name={(k) => k || '—'} />
+    </div>
+  );
+}
+
+/** S2: smeta sarlavhasi (asos, narx darajasi, shartnoma). Yangi reviziya yaratmaydi; bo'sh maydon tozalanadi. */
+function HeaderModal({
+  estimate,
+  pricesVisible,
+  onClose,
+}: {
+  estimate: EstimateDetail;
+  pricesVisible: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [basis, setBasis] = useState(estimate.basis ?? '');
+  const [priceLevelDate, setPriceLevelDate] = useState(estimate.price_level_date ?? '');
+  const [laborRateSource, setLaborRateSource] = useState(estimate.labor_rate_source ?? '');
+  const [contractNumber, setContractNumber] = useState(estimate.contract_number ?? '');
+  const [contractDate, setContractDate] = useState(estimate.contract_date ?? '');
+  const [contractAmount, setContractAmount] = useState(estimate.contract_amount ?? '');
+  const [amountError, setAmountError] = useState('');
+  const mutation = useMutation({
+    mutationFn: (body: Record<string, string | null>) =>
+      api(`/v1/estimates/${estimate.id}/header`, { method: 'PATCH', body }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['estimate', estimate.id] });
+      toast.success(t('common.saved'));
+      onClose();
+    },
+    onError: (e: ApiError) => toast.error(errorMessage(t, e.code, e.status)),
+  });
+  const orNull = (v: string) => v.trim() || null;
+  const submit = () => {
+    const amount = normalizeNumber(contractAmount);
+    if (pricesVisible && amount && !AMOUNT.test(amount)) {
+      setAmountError(t('est.err.price'));
+      return;
+    }
+    setAmountError('');
+    // Faqat o'zgargan maydonlar yuboriladi: boshqa oynada saqlangan tahrir ustidan yozilmaydi, auditda ham faqat o'zgarish
+    const next: Record<string, string | null> = {
+      basis: orNull(basis),
+      price_level_date: orNull(priceLevelDate),
+      labor_rate_source: orNull(laborRateSource),
+      contract_number: orNull(contractNumber),
+      contract_date: orNull(contractDate),
+      ...(pricesVisible ? { contract_amount: amount || null } : {}),
+    };
+    const changed = Object.fromEntries(
+      Object.entries(next).filter(([key, value]) => {
+        const old = (estimate as unknown as Record<string, string | null | undefined>)[key] ?? null;
+        // summa: «311671640» va serverdagi «311671640.00» bir xil (matn bo'yicha, arifmetikasiz)
+        return key === 'contract_amount' && value !== null && old !== null
+          ? trimZeros(value) !== trimZeros(old)
+          : value !== old;
+      }),
+    );
+    if (!Object.keys(changed).length) return onClose();
+    mutation.mutate(changed);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={t('est.header.edit')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={mutation.isPending}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack">
+        <Textarea label={t('est.header.basis')} value={basis} onChange={(e) => setBasis(e.target.value)} />
+        <Input
+          type="date"
+          label={t('est.header.price_level_date')}
+          value={priceLevelDate}
+          onChange={(e) => setPriceLevelDate(e.target.value)}
+        />
+        <Input
+          label={t('est.header.labor_rate_source')}
+          value={laborRateSource}
+          onChange={(e) => setLaborRateSource(e.target.value)}
+        />
+        <Input
+          label={t('est.header.contract_number')}
+          value={contractNumber}
+          onChange={(e) => setContractNumber(e.target.value)}
+        />
+        <Input
+          type="date"
+          label={t('est.header.contract_date')}
+          value={contractDate}
+          onChange={(e) => setContractDate(e.target.value)}
+        />
+        {pricesVisible && (
+          <Input
+            label={t('est.header.contract_amount')}
+            inputMode="decimal"
+            value={contractAmount}
+            onChange={(e) => setContractAmount(e.target.value)}
+            error={amountError || undefined}
+          />
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * S2: resurslar yig'masi — mehnat, mashinalar, materiallar, xizmatlar bo'yicha kod + nom + birlik bo'yicha jamlangan miqdor.
+ * Summalar va jami serverdan (frontend qo'shmaydi).
+ */
+function ResourcesTab({ id, revision, pricesVisible }: { id: string; revision: number; pricesVisible: boolean }) {
+  const { t, lang } = useT();
+  const query = useQuery({
+    queryKey: ['estimate-resources', id, revision],
+    queryFn: () => api<EstimateResources>(`/v1/estimates/${id}/resources`),
+  });
+  if (query.isError)
+    return (
+      <Alert tone="danger">{errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)}</Alert>
+    );
+  if (!query.data) return <p className="muted">{t('common.loading')}</p>;
+  const { items, by_kind: byKind, total } = query.data;
+  if (!items.length) return <p className="muted">{t('est.res.empty')}</p>;
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <p className="muted text-sm">{t('est.res.hint')}</p>
+      {byKind.map((g) => (
+        <section key={g.key} className="card">
+          <div className="card-header">
+            <h3>{t(`est.res.kind.${g.key}`)}</h3>
+            {pricesVisible && g.total !== undefined && <b>{formatMoney(g.total, lang)}</b>}
+          </div>
+          <div className="table-wrap">
+            <table className="table table-dense">
+              <thead>
+                <tr>
+                  <th>{t('est.res.code')}</th>
+                  <th>{t('common.name')}</th>
+                  <th>{t('est.col.unit')}</th>
+                  <th className="num">{t('est.col.quantity')}</th>
+                  {pricesVisible && <th className="num">{t('est.res.amount')}</th>}
+                  <th className="num">{t('est.lines')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items
+                  .filter((r) => r.kind === g.key)
+                  .map((r, i) => (
+                    <tr key={`${r.resource_code ?? ''}|${r.name}|${r.unit_id}|${i}`}>
+                      <td className="muted">{r.resource_code ?? '—'}</td>
+                      <td>{r.name}</td>
+                      <td>{unitLabel(r.unit_id)}</td>
+                      <td className="num">{formatQuantity(r.quantity)}</td>
+                      {pricesVisible && <td className="num">{formatMoney(r.amount, lang, false)}</td>}
+                      <td className="num">{r.line_count}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+      {pricesVisible && total !== undefined && (
+        <section className="card card-pad est-calc">
+          <dl>
+            <div className="est-grand-total">
+              <span>{t('est.res.total')}</span>
+              <span>{formatMoney(total, lang)}</span>
+            </div>
+          </dl>
+        </section>
+      )}
     </div>
   );
 }

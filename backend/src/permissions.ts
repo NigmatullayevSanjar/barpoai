@@ -426,6 +426,8 @@ export function redactPrices(value: any): any {
             'price',
             'monthly_price',
             'fact_value',
+            // S2, D41: smeta sarlavhasidagi pudrat shartnomasi summasi
+            'contract_amount',
             // Narx varaqasi (Bosqich 4)
             'cost',
             'cost_m2',

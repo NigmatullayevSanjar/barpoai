@@ -7,6 +7,7 @@ import { type Row } from './db.js';
  * D29: Form 5 — «ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ» varag'i (loyiha: docs/FORM5_IMPORT_LOYIHA.md).
  * Ish qatori (A butun son, B norma kodi) → «ish» qatori; uning tagidagi resurslar (A «13.1») → norma × ish hajmi;
  * bosh pudratchi materiali (A bo'sh, miqdor bor) → material qatori; «Раздел … N этаж» → qavat zonasi;
+ * S2: ish qatorida to'liq norma shifri (`norm_code`), qolganlarida resurs kodi (`resource_code`), hammasida bo'lim nomi;
  * «ВСЕГО ЗАТРАТ» dan keyingi jamlar bloki o'qilmaydi, faqat «Excel jami» sifatida qaytadi.
  * Formula katagidan Excel saqlagan oxirgi natija olinadi; natijasi yo'q formula — qator xatosi.
  */
@@ -137,6 +138,8 @@ export function parseForm5(sheet: Sheet) {
   let work: { code: string; name: string; qty: Decimal; category: string } | null = null;
   let skipping = false;
   let zone: string | null = null;
+  // S2: oxirgi «Раздел …» qatorining to'liq matni — keyingi barcha qatorlarga
+  let section: string | null = null;
   let end = sheet.rowCount + 1;
   const unitOf = (raw: string) => {
     const u = form5Unit(raw);
@@ -170,8 +173,11 @@ export function parseForm5(sheet: Sheet) {
     const code = text(B);
     if (!a && /^раздел/i.test(name)) {
       zone = form5Floor(name);
+      section = name.trim().slice(0, 300);
       continue;
     }
+    const sectionField = section ? { section_name: section } : {};
+    const resourceCode = code?.trim() ? { resource_code: code.trim().slice(0, 60) } : {};
     if (/^\d+$/.test(a) && code) {
       const qty = num(F) ?? num(E);
       // Hajmi «--» yoki bo'sh — ishlatilmagan variant: resurslari bilan o'tkaziladi (ogohlantirish);
@@ -192,6 +198,8 @@ export function parseForm5(sheet: Sheet) {
         _row: r,
         kind: 'labor',
         category: work.category,
+        norm_code: code.trim().slice(0, 200),
+        ...sectionField,
         description: name.slice(0, 500),
         ...(zone ? { zone_name: zone } : {}),
         unit_id: u.unit,
@@ -208,7 +216,8 @@ export function parseForm5(sheet: Sheet) {
       : /МАШ/i.test(raw ?? '')
         ? 'equipment'
         : 'material';
-    const note = [code, u && !u.known ? raw : null].filter(Boolean).join(' · ') || undefined;
+    // Kod endi `resource_code` da; izohda faqat platformada yo'q asl birlik
+    const note = u && !u.known ? raw! : undefined;
     if (/^\d+\.\d+$/.test(a)) {
       const norm = num(E);
       if (!work && skipping) continue;
@@ -236,6 +245,8 @@ export function parseForm5(sheet: Sheet) {
         _row: r,
         kind,
         category: work.category,
+        ...resourceCode,
+        ...sectionField,
         description: name.slice(0, 500),
         ...(kind === 'material' ? { material_name: name.slice(0, 500) } : {}),
         ...(zone ? { zone_name: zone } : {}),
@@ -269,6 +280,8 @@ export function parseForm5(sheet: Sheet) {
         _row: r,
         kind: 'material',
         category: work?.category ?? null,
+        ...resourceCode,
+        ...sectionField,
         description: name.slice(0, 500),
         material_name: name.slice(0, 500),
         ...(zone ? { zone_name: zone } : {}),
@@ -289,6 +302,8 @@ export function parseForm5(sheet: Sheet) {
         _row: r,
         kind: 'material',
         category: work?.category ?? null,
+        ...resourceCode,
+        ...sectionField,
         description: name.slice(0, 500),
         material_name: name.slice(0, 500),
         ...(zone ? { zone_name: zone } : {}),

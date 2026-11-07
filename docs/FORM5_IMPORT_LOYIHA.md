@@ -18,11 +18,11 @@ Platforma shablonidagi oddiy import (ustunlarni moslash) o‘zgarishsiz qoladi.
 
 | Excel qatori | Qanday tanilinadi | Platformada |
 |---|---|---|
-| Bo‘lim | A bo‘sh, C «Раздел …» bilan boshlanadi | Keyingi qatorlarning zonasi: bo‘lim nomidagi qavat («1-этаже», «6 этаж», «Цокольный») — obyektdagi shu nomli qavat zonasi, yo‘q bo‘lsa yaratiladi |
-| Ish | A butun son, B norma kodi (Е0804-003-01…) | «Ish» qatori: nom = C, kategoriya = «kod + nom», miqdor = hajm × birlik ko‘paytmasi («100 М2» → m2 ×100), narx 0 (narx resurslarda) |
-| Resurs | A «13.1» ko‘rinishida | Resurs qatori: norma = E, ish hajmi = ishning hajmi (`norma × hajm`); ЧЕЛ.-Ч → ish haqi/soat, МАШ.-Ч → texnika/soat, qolgani material; narx = G |
-| Bosh pudratchi materiali | A bo‘sh, C, D, E bor (B — `pcpc…` kodi bo‘lishi mumkin) | Material qatori, miqdor = E (normasiz), narx = G |
-| Miqdori loyihadan («П») material (D35, 2026-11-06) | A bo‘sh, E yoki F = «П», F da son yo‘q (B — `П…`, `С…`, `М…` kodi); ShNK 4.02.70-05, 1.9-band | Material qatori **miqdor 0** bilan, o‘sha ishning kategoriyasi va zonasida; izohda asl kod va «П — miqdor loyihadan»; G da musbat narx bo‘lsa saqlanadi; hajmi «--» ish ostida — o‘tkaziladi; miqdor keyin muharrirda kiritiladi. Egasining `Иш турлари` faylida 51 ta (yig‘ma `ОБЩЕЕ` varag‘ida yo‘q); shu sababli to‘plam varaqlarining qatorlar soni oshadi: Е11 15 → 18, Е22 626 → 653, Е23 394 → 411, Е27 968 → 972 |
+| Bo‘lim | A bo‘sh, C «Раздел …» bilan boshlanadi | Keyingi qatorlarning zonasi: bo‘lim nomidagi qavat («1-этаже», «6 этаж», «Цокольный») — obyektdagi shu nomli qavat zonasi, yo‘q bo‘lsa yaratiladi; to‘liq matni keyingi barcha qatorlarning `section_name` maydoniga (S2) |
+| Ish | A butun son, B norma kodi (Е0804-003-01…) | «Ish» qatori: nom = C, kategoriya = «kod + nom», `norm_code` = B ning to‘liq matni, qo‘shimchasi bilan (S2), miqdor = hajm × birlik ko‘paytmasi («100 М2» → m2 ×100), narx 0 (narx resurslarda) |
+| Resurs | A «13.1» ko‘rinishida | Resurs qatori: norma = E, ish hajmi = ishning hajmi (`norma × hajm`); ЧЕЛ.-Ч → ish haqi/soat, МАШ.-Ч → texnika/soat, qolgani material; narx = G; `resource_code` = B (S2) |
+| Bosh pudratchi materiali | A bo‘sh, C, D, E bor (B — `pcpc…` kodi bo‘lishi mumkin) | Material qatori, miqdor = E (normasiz), narx = G; `resource_code` = B (S2) |
+| Miqdori loyihadan («П») material (D35, 2026-11-06) | A bo‘sh, E yoki F = «П», F da son yo‘q (B — `П…`, `С…`, `М…` kodi); ShNK 4.02.70-05, 1.9-band | Material qatori **miqdor 0** bilan, o‘sha ishning kategoriyasi va zonasida; asl kod `resource_code` da (S2), izohda «П — miqdor loyihadan»; G da musbat narx bo‘lsa saqlanadi; hajmi «--» ish ostida — o‘tkaziladi; miqdor keyin muharrirda kiritiladi. Egasining `Иш турлари` faylida 51 ta (yig‘ma `ОБЩЕЕ` varag‘ida yo‘q); shu sababli to‘plam varaqlarining qatorlar soni oshadi: Е11 15 → 18, Е22 626 → 653, Е23 394 → 411, Е27 968 → 972 |
 | Jamlar bloki | C «ВСЕГО ЗАТРАТ», «ИТОГО», «НДС» | O‘qilmaydi; preview’da «Excel jami» sifatida solishtirish uchun ko‘rsatiladi |
 
 - **Formulalar:** Excel saqlagan oxirgi natija o‘qiladi (formula qayta hisoblanmaydi). Natijasi yo‘q formula — qator xatosi.

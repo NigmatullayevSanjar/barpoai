@@ -772,6 +772,7 @@ try {
     by_kind: [{ key: 'material', count: 1, total: '260.00', value: '0.00' }],
     by_category: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
     by_zone: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
+    by_section: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
   });
   const estForeman = await call('GET', `/v1/estimates/${est.id}`, undefined, foreman.token);
   assert.equal(estForeman.totals.total, undefined);
@@ -4616,11 +4617,13 @@ try {
     [f5est.lines.length, f5est.totals.total, f5est.lines.at(-1).kind, f5est.lines.at(-1).description],
     [12, '22188955.80', 'service', 'ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)'],
   );
-  // D35: «П» (miqdor loyihadan) material qatori 0 miqdor bilan saqlanadi, izohda asl kod va belgi
+  // D35: «П» (miqdor loyihadan) material qatori 0 miqdor bilan saqlanadi, izohda belgi; asl kod resurs kodi maydonida (S2)
   const f5normEst = await call('GET', `/v1/estimates/${f5saved.estimates[1].id}`, undefined, adminAgain);
   assert.deepEqual(
-    f5normEst.lines.filter((l: any) => l.kind === 'material').map((l: any) => [l.description, l.unit_id, l.quantity, l.note, l.total]),
-    [['СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА', 'kg', '0.000000', 'П54889 · П — miqdor loyihadan', '0.00']],
+    f5normEst.lines
+      .filter((l: any) => l.kind === 'material')
+      .map((l: any) => [l.description, l.unit_id, l.quantity, l.resource_code, l.note, l.total]),
+    [['СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА', 'kg', '0.000000', 'П54889', 'П — miqdor loyihadan', '0.00']],
   );
   assert.deepEqual(
     (await admin.query("SELECT name,kind FROM zones WHERE project_id=$1 AND name LIKE '%-qavat' ORDER BY name", [projectQ.id])).rows,
@@ -4737,6 +4740,241 @@ try {
   assert.ok(['l', 'section', 'boiler', 'cycle', 'end'].every((u) => catalogUnits.includes(u)), catalogUnits.join(','));
   passed.push(
     'Form 5 piece rate (D32): the work line rate comes from its labor resources × the project percent and follows a price revision, resource lines get no automatic rate, a typed rate wins, accepted rates stay frozen; a differing invoice name is offered the similar estimate material (not other sizes) and saved as its alias by the warehouse role only, then found by search; Л, СЕКЦИЯ, КОТЕЛ, ЦИКЛ, КОНЕЦ are platform units',
+  );
+  // ---- S2 (2026-11-07): qator kodlari va bo'lim, smeta sarlavhasi (D41), resurslar yig'masi
+  // Form 5: ish qatorida to'liq shifr (qo'shimchasi bilan), resursda kod, hamma qatorda bo'lim; izohda kod takrorlanmaydi
+  const f5kladka = f5est.lines.find((l: any) => l.description === 'КЛАДКА ПЕРЕГОРОДОК');
+  const f5labor = f5est.lines.find((l: any) => l.description === 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ' && l.zone_name === '1-qavat');
+  assert.deepEqual(
+    [f5kladka.norm_code, f5kladka.resource_code, f5kladka.section_name, f5labor.resource_code, f5labor.note, f5labor.section_name],
+    ['Е0804-003-01 ДОП. 12', null, 'Раздел 1. Кладка стен 1-этаж', '1', null, 'Раздел 1. Кладка стен 1-этаж'],
+  );
+  assert.deepEqual(
+    f5est.totals.by_section.map((g: any) => [g.key, g.count]).sort(),
+    [['', 1], ['Раздел 1. Кладка стен 1-этаж', 8], ['Раздел 2. Монтаж 2 этаж', 3]].sort(),
+  );
+  const fullCode = 'Е0804-003-01 ДОП. 11 ГОСАРХИТЕКТСТРОЙ РУЗ ПР. № 429 ОТ 15.12.17';
+  const s2Lines = [
+    { kind: 'labor', description: 'Kladka', unit_id: 'm2', quantity: '100', unit_price: '0', category: 'Е0804-003-01 Kladka', norm_code: fullCode, section_name: 'Раздел 1. Стены 1-этаж' },
+    { kind: 'labor', description: 'Ishchilar mehnati', unit_id: 'hour', quantity: '50', norm: '0.5', work_quantity: '100', unit_price: '30000', category: 'Е0804-003-01 Kladka', resource_code: '1', section_name: 'Раздел 1. Стены 1-этаж' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '200', norm: '2', work_quantity: '100', unit_price: '1500', category: 'Е0804-003-01 Kladka', resource_code: '19412', section_name: 'Раздел 1. Стены 1-этаж' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '40', unit_price: '1500', resource_code: '19412', section_name: 'Раздел 2. Пол' },
+    { kind: 'equipment', description: 'Kran', unit_id: 'hour', quantity: '3', unit_price: '200000', resource_code: '762', section_name: 'Раздел 2. Пол' },
+    { kind: 'service', description: 'Tashish', unit_id: 'pcs', quantity: '1', unit_price: '50000' },
+  ];
+  const s2Est = await call('POST', '/v1/estimates', { project_id: projectQ.id, name: 'S2 kodlar', lines: s2Lines }, adminAgain);
+  const s2Detail = await call('GET', `/v1/estimates/${s2Est.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    s2Detail.lines.map((l: any) => [l.norm_code, l.resource_code, l.section_name]),
+    s2Lines.map((l: any) => [l.norm_code ?? null, l.resource_code ?? null, l.section_name ?? null]),
+  );
+  assert.equal(s2Detail.totals.total, '2510000.00');
+  assert.deepEqual(
+    s2Detail.totals.by_section.map((g: any) => [g.key, g.count, g.total]),
+    [
+      ['Раздел 1. Стены 1-этаж', 3, '1800000.00'],
+      ['Раздел 2. Пол', 2, '660000.00'],
+      ['', 1, '50000.00'],
+    ],
+  );
+  // Resurslar yig'masi: ish pozitsiyasi (normasiz, narxsiz «Kladka») kirmaydi; bir material ikki bo'limda — bitta qator;
+  // yig'ma jami = smeta jami
+  const s2Res = await call('GET', `/v1/estimates/${s2Est.id}/resources`, undefined, adminAgain);
+  assert.deepEqual(
+    s2Res.items.map((r: any) => [r.kind, r.name, r.unit_id, r.resource_code, r.line_count, r.quantity, r.amount]),
+    [
+      ['labor', 'Ishchilar mehnati', 'hour', '1', 1, '50.000000', '1500000.00'],
+      ['equipment', 'Kran', 'hour', '762', 1, '3.000000', '600000.00'],
+      ['material', material.name, 'kg', '19412', 2, '240.000000', '360000.00'],
+      ['service', 'Tashish', 'pcs', null, 1, '1.000000', '50000.00'],
+    ],
+  );
+  assert.deepEqual(
+    [s2Res.by_kind.map((k: any) => [k.key, k.count, k.total]), s2Res.total, s2Res.revision],
+    [
+      [
+        ['labor', 1, '1500000.00'],
+        ['equipment', 1, '600000.00'],
+        ['material', 2, '360000.00'],
+        ['service', 1, '50000.00'],
+      ],
+      s2Detail.totals.total,
+      1,
+    ],
+  );
+  const s2ResFore = await call('GET', `/v1/estimates/${s2Est.id}/resources`, undefined, forePx);
+  assert.deepEqual(
+    [s2ResFore.items[2].quantity, s2ResFore.items[2].amount, s2ResFore.by_kind[0].total, s2ResFore.total],
+    ['240.000000', undefined, undefined, undefined],
+  );
+  // Sarlavha (D41): reviziya yaratmaydi, audit eski va yangi qiymat bilan; shartnoma summasi narx huquqisiz ko'rinmaydi
+  const header = {
+    basis: 'Ishchi chizmalar 12-AR',
+    price_level_date: '2026-10-01',
+    labor_rate_source: 'VMQ 583: MHTEKM 5 % / soat',
+    contract_number: 'PD-17',
+    contract_date: '2026-10-15',
+    contract_amount: '311671640.00',
+  };
+  const s2Header = await call('PATCH', `/v1/estimates/${s2Est.id}/header`, header, adminAgain);
+  assert.deepEqual(
+    [s2Header.revision, Object.fromEntries(Object.keys(header).map((k) => [k, s2Header[k]]))],
+    [1, header],
+  );
+  await call('PATCH', `/v1/estimates/${s2Est.id}/header`, { contract_amount: '-1' }, adminAgain, undefined, 400);
+  await call('PATCH', `/v1/estimates/${s2Est.id}/header`, { contract_number: 'X' }, forePx, undefined, 403);
+  const s2Fore = await call('GET', `/v1/estimates/${s2Est.id}`, undefined, forePx);
+  assert.deepEqual([s2Fore.contract_number, s2Fore.contract_amount], ['PD-17', undefined]);
+  const s2Cleared = await call('PATCH', `/v1/estimates/${s2Est.id}/header`, { basis: '', contract_number: null }, adminAgain);
+  assert.deepEqual(
+    [s2Cleared.basis, s2Cleared.contract_number, s2Cleared.contract_amount, s2Cleared.price_level_date],
+    [null, null, '311671640.00', '2026-10-01'],
+  );
+  assert.deepEqual(
+    (
+      await admin.query(
+        "SELECT details FROM audit_events WHERE action='estimates.header' AND resource_id=$1 ORDER BY created_at,id",
+        [s2Est.id],
+      )
+    ).rows.map((r) => r.details),
+    [
+      { before: Object.fromEntries(Object.keys(header).map((k) => [k, null])), after: header },
+      { before: { basis: header.basis, contract_number: 'PD-17' }, after: { basis: null, contract_number: null } },
+    ],
+  );
+  // Egasi qarori (2026-11-07): shartnoma summasi mijoz adminining auditida ko'rinadi, platforma auditida yo'q («o'zgardi» belgisi)
+  const tenantHeaderAudit = (await call('GET', '/v1/audit?action=estimates.header', undefined, adminAgain)).items.filter(
+    (a: any) => a.resource_id === s2Est.id,
+  );
+  assert.deepEqual(
+    tenantHeaderAudit.map((a: any) => a.details.after.contract_amount ?? null),
+    [null, '311671640.00'],
+  );
+  const platformHeaderAudit = (
+    await call('GET', `/v1/platform/audit?action=estimates.header&tenant_id=${t.id}`, undefined, ownerToken)
+  ).items.filter((a: any) => a.resource_id === s2Est.id);
+  assert.deepEqual(
+    platformHeaderAudit.map((a: any) => [
+      JSON.stringify(a.details).includes('311671640'),
+      a.details.contract_amount_changed ?? false,
+      a.details.after.contract_number ?? null,
+    ]),
+    [
+      [false, false, null],
+      [false, true, 'PD-17'],
+    ],
+  );
+  // Reviziya kodlarni va sarlavhani saqlaydi (snapshot ham); bo'lim o'zgarsa ham lineage o'sha (moslash kaliti o'zgarmagan)
+  const s2Revised = await call(
+    'PATCH',
+    `/v1/estimates/${s2Est.id}`,
+    { project_id: projectQ.id, name: 'S2 kodlar', version: 1, lines: s2Lines.map((l) =>
+        l.description === 'Kran' ? { ...l, quantity: '4' } : l.resource_code === '1' ? { ...l, section_name: 'Раздел 3. Пол' } : l,
+      ) },
+    adminAgain,
+  );
+  const s2After = await call('GET', `/v1/estimates/${s2Revised.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    [s2After.revision, s2After.lines[0].norm_code, s2After.lines[4].section_name, s2After.contract_amount, s2After.price_level_date],
+    [2, fullCode, 'Раздел 2. Пол', '311671640.00', '2026-10-01'],
+  );
+  assert.deepEqual(
+    s2After.lines.map((l: any) => l.lineage_id),
+    s2Detail.lines.map((l: any) => l.lineage_id),
+  );
+  const s2Snapshot = await call('GET', `/v1/estimates/${s2Est.id}/revisions/2`, undefined, adminAgain);
+  assert.deepEqual(
+    [
+      s2Snapshot.lines[0].norm_code,
+      s2Snapshot.lines[1].resource_code,
+      s2Snapshot.lines[1].section_name,
+      s2Snapshot.contract_number,
+      s2Snapshot.contract_amount,
+    ],
+    [fullCode, '1', 'Раздел 3. Пол', null, '311671640.00'],
+  );
+  const s2SnapshotFore = await call('GET', `/v1/estimates/${s2Est.id}/revisions/2`, undefined, forePx);
+  assert.deepEqual([s2SnapshotFore.contract_amount, s2SnapshotFore.lines[1].total], [undefined, undefined]);
+  // Ish pozitsiyasi ostida faqat mashina yoki faqat «П» material bo'lsa ham u yig'maga kirmaydi
+  const s2Works = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectQ.id,
+      name: 'S2 ish pozitsiyalari',
+      lines: [
+        { kind: 'labor', description: 'Qazish', unit_id: 'm3', quantity: '10', unit_price: '0', category: 'Е0101-001-01 Qazish' },
+        { kind: 'equipment', description: 'Ekskavator', unit_id: 'hour', quantity: '5', norm: '0.5', work_quantity: '10', unit_price: '100000', category: 'Е0101-001-01 Qazish', resource_code: '1199' },
+        { kind: 'labor', description: 'Pol quyish', unit_id: 'm2', quantity: '20', unit_price: '0', category: 'Е1101-065-01 Pol' },
+        { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '0', unit_price: '0', category: 'Е1101-065-01 Pol', resource_code: 'П1', note: 'П — miqdor loyihadan' },
+        { kind: 'labor', description: 'Qo‘lda ish', unit_id: 'm2', quantity: '3', unit_price: '0' },
+      ],
+    },
+    adminAgain,
+  );
+  const s2WorksRes = await call('GET', `/v1/estimates/${s2Works.id}/resources`, undefined, adminAgain);
+  assert.deepEqual(
+    [s2WorksRes.items.map((r: any) => [r.kind, r.name, r.quantity]), s2WorksRes.total],
+    [
+      [
+        ['labor', 'Qo‘lda ish', '3.000000'],
+        ['equipment', 'Ekskavator', '5.000000'],
+        ['material', material.name, '0.000000'],
+      ],
+      '500000.00',
+    ],
+  );
+  // Qator qidiruvi norma kodi va bo'lim bo'yicha
+  const s2Search = async (q: string) =>
+    (await call('GET', `/v1/estimate-lines?project_id=${projectQ.id}&q=${encodeURIComponent(q)}`, undefined, adminAgain)).items.map(
+      (l: any) => l.description,
+    );
+  assert.deepEqual(await s2Search('ГОСАРХИТЕКТ'), ['Kladka']);
+  assert.deepEqual((await s2Search('Раздел 2. Пол')).sort(), ['Kran', 'Sement']);
+  // Eksport: yangi ustunlar va «Resurslar yig'masi» varag'i; eksport → import kodlarni saqlaydi
+  const s2File = await call('GET', `/v1/estimates/${s2Est.id}/export`, undefined, adminAgain);
+  const s2Book = new ExcelJS.Workbook();
+  await s2Book.xlsx.load(Buffer.from(s2File.base64, 'base64') as any);
+  const s2Sheet = s2Book.getWorksheet('Smeta')!;
+  const s2Sum = s2Book.getWorksheet('Resurslar yig‘masi')!;
+  assert.deepEqual(
+    [
+      (s2Sheet.getRow(1).values as unknown[]).slice(1, 7),
+      s2Sum.rowCount,
+      (s2Sum.getRow(4).values as unknown[]).slice(1),
+      s2Sum.getRow(6).getCell(6).value,
+    ],
+    [
+      ['№', 'Turi', 'Bo‘lim', 'Norma kodi', 'Resurs kodi', 'Kategoriya'],
+      6,
+      ['material', '19412', material.name, 'kg', 240, 360000],
+      2710000,
+    ],
+  );
+  const s2Fore2 = await call('GET', `/v1/estimates/${s2Est.id}/export`, undefined, forePx);
+  const s2ForeBook = new ExcelJS.Workbook();
+  await s2ForeBook.xlsx.load(Buffer.from(s2Fore2.base64, 'base64') as any);
+  assert.deepEqual(
+    (s2ForeBook.getWorksheet('Resurslar yig‘masi')!.getRow(1).values as unknown[]).slice(1),
+    ['Turi', 'Resurs kodi', 'Nomi', 'Birlik', 'Miqdor'],
+  );
+  const s2Back = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'S2 qayta',
+      file_base64: s2File.base64,
+      mapping: { kind: 'Turi', section_name: 'Bo‘lim', norm_code: 'Norma kodi', resource_code: 'Resurs kodi', category: 'Kategoriya', description: 'Nomi', material_name: 'Material', unit_id: 'Birlik', quantity: 'Miqdor', norm: 'Norma', work_quantity: 'Ish hajmi', unit_price: 'Birlik narxi' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual(
+    [s2Back.total, s2Back.preview.lines.map((l: any) => [l.norm_code ?? null, l.resource_code ?? null, l.section_name ?? null])],
+    [s2After.totals.total, s2After.lines.map((l: any) => [l.norm_code, l.resource_code, l.section_name])],
+  );
+  passed.push(
+    'S2: estimate lines keep the full norm code, the resource code and the section (Form 5 and manual lines, through revisions, snapshots, search and the Excel export → import round trip); the estimate header (basis, price level date, labor rate source, contract number, date and amount — D41) is edited without a new revision, audited with old and new values, and the contract amount is hidden without prices.read; the resource summary groups labor, machines, materials and services, leaves Form 5 work positions out and adds up to the estimate total, also as an export sheet',
   );
   // ---- Tarif tahriri: narx va limit o'zgaradi, chiqarilgan invoyslar summasi o'zgarmaydi, o'chirish taqiq
   const invoicesBefore = (

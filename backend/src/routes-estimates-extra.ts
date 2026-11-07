@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { type Endpoint } from './http.js';
-import { audit, one } from './db.js';
+import { audit, one, type Db } from './db.js';
 import { dec, money, plannedQuantity } from './money.js';
-import { idParams, text, uuid } from './schemas.js';
+import { estimateHeader, idParams, text, uuid } from './schemas.js';
 import { projectScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import {
@@ -18,6 +18,45 @@ import {
   base64Length,
 } from './estimates.js';
 import { parseForm5 } from './form5.js';
+const kindOrder = ['labor', 'equipment', 'material', 'service'];
+/**
+ * S2: smetaning resurslar yig'masi (joriy qatorlar): tur + nom (material — katalog nomi) + birlik + resurs kodi bo'yicha
+ * Σ hisobiy miqdor va Σ summa. Form 5 ish pozitsiyasi (mehnat, normasiz, narxi 0; guruhida — bir xil kategoriya va zona —
+ * resurs yoki material qatori bor) resurs emas, ish hajmi: kirmaydi; summasi 0, shuning uchun yig'ma jami = smeta jami.
+ */
+async function estimateResources(db: Db, tenantId: string, estimateId: string) {
+  const resourceLines = `WITH r AS (
+     SELECT l.*,coalesce(m.name,l.description) resource_name
+     FROM estimate_lines l LEFT JOIN materials m ON m.id=l.material_id
+       LEFT JOIN (SELECT g.category,coalesce(g.zone_id::text,'') zone_key,
+                    bool_or(NOT (g.kind='labor' AND g.norm IS NULL)) has_resources FROM estimate_lines g
+                  WHERE g.tenant_id=$1 AND g.estimate_id=$2 AND g.archived_at IS NULL AND g.category IS NOT NULL
+                  GROUP BY g.category,coalesce(g.zone_id::text,'')) gr
+         ON gr.category=l.category AND gr.zone_key=coalesce(l.zone_id::text,'')
+     WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL
+       AND NOT (l.kind='labor' AND l.norm IS NULL AND l.unit_price=0 AND coalesce(gr.has_resources,false)))`;
+  const params = [tenantId, estimateId, kindOrder];
+  const items = (
+    await db.query(
+      `${resourceLines}
+       SELECT kind,resource_name name,unit_id,resource_code,count(*)::int line_count,
+         sum(effective_quantity)::text quantity,sum(total)::numeric(20,2)::text amount
+       FROM r GROUP BY kind,coalesce(material_id::text,description),resource_name,unit_id,resource_code
+       ORDER BY array_position($3::text[],kind),min(position),name`,
+      params,
+    )
+  ).rows;
+  const byKind = (
+    await db.query(
+      `${resourceLines}
+       SELECT kind key,count(*)::int count,sum(total)::numeric(20,2)::text total
+       FROM r GROUP BY kind ORDER BY array_position($3::text[],kind)`,
+      params,
+    )
+  ).rows;
+  const total = money(byKind.reduce((s, k) => s.plus(k.total), dec('0')));
+  return { items, by_kind: byKind, total };
+}
 /** Smeta uchun yordamchi endpointlar: Excel inspeksiya, reviziyalar tarixi, Excel eksport. */
 export function estimateExtraRoutes(add: (r: Endpoint) => void) {
   add({
@@ -204,6 +243,62 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     },
   });
   add({
+    method: 'PATCH',
+    path: '/v1/estimates/:id/header',
+    summary:
+      'Smeta sarlavhasi: asos, narx darajasi sanasi, ish haqi stavkasi manbai, pudrat shartnomasi (raqam, sana, summa QQS bilan — D41); reviziya yaratmaydi, audit eski va yangi qiymat bilan',
+    permission: 'estimates.edit',
+    params: idParams,
+    body: estimateHeader,
+    idempotent: true,
+    sensitive: true,
+    handler: async ({ db, actor, params, body }) => {
+      const existing = await one(
+        db,
+        'SELECT * FROM estimates WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE',
+        [actor.tenant_id, params.id],
+      );
+      await projectScope(db, actor, existing.project_id);
+      // Berilmagan maydon o'zgarmaydi; null yoki bo'sh matn tozalaydi. Kalitlar zod strictObject dan — SQL ga xavfsiz.
+      const changes = Object.entries(body).map(([key, value]) => [
+        key,
+        value === '' ? null : value,
+      ]);
+      if (!changes.length) return existing;
+      const updated = await one(
+        db,
+        `UPDATE estimates SET ${changes.map(([key], i) => `${key}=$${i + 2}`).join(',')} WHERE id=$1 RETURNING *`,
+        [params.id, ...changes.map(([, value]) => value)],
+      );
+      await audit(db, actor, 'estimates.header', params.id, {
+        before: Object.fromEntries(changes.map(([key]) => [key, existing[key as string]])),
+        after: Object.fromEntries(changes),
+      });
+      return updated;
+    },
+  });
+  add({
+    method: 'GET',
+    path: '/v1/estimates/:id/resources',
+    summary:
+      'Resurslar yig‘masi (joriy qatorlar): tur, nom, birlik, resurs kodi bo‘yicha jami miqdor va summa; Form 5 ish pozitsiyalari kirmaydi; summa faqat narx huquqi bilan',
+    permission: 'estimates.read',
+    params: idParams,
+    sensitive: true,
+    handler: async ({ db, actor, params }) => {
+      const estimate = await one(db, 'SELECT * FROM estimates WHERE tenant_id=$1 AND id=$2', [
+        actor.tenant_id,
+        params.id,
+      ]);
+      await projectScope(db, actor, estimate.project_id);
+      return {
+        estimate_id: estimate.id,
+        revision: estimate.revision,
+        ...(await estimateResources(db, actor.tenant_id, estimate.id)),
+      };
+    },
+  });
+  add({
     method: 'GET',
     path: '/v1/estimates/:id/export',
     summary:
@@ -229,6 +324,10 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
       const columns = [
         { header: '№', key: 'n', width: 6 },
         { header: 'Turi', key: 'kind', width: 12 },
+        // S2: bo'lim va kodlar — import shu sarlavhalarni taniydi (eksport → import aylanmasi)
+        { header: 'Bo‘lim', key: 'section_name', width: 24 },
+        { header: 'Norma kodi', key: 'norm_code', width: 18 },
+        { header: 'Resurs kodi', key: 'resource_code', width: 12 },
         { header: 'Kategoriya', key: 'category', width: 18 },
         { header: 'Nomi', key: 'description', width: 42 },
         { header: 'Material', key: 'material_name', width: 24 },
@@ -253,6 +352,9 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
         sheet.addRow({
           n: i + 1,
           kind: l.kind,
+          section_name: l.section_name ?? '',
+          norm_code: l.norm_code ?? '',
+          resource_code: l.resource_code ?? '',
           category: l.category ?? '',
           description: l.description,
           material_name: l.material_name ?? '',
@@ -274,6 +376,29 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
         });
         totalRow.font = { bold: true };
       }
+      // S2: «Resurslar yig'masi» varag'i — mehnat, mashinalar, materiallar, xizmatlar (narx huquqisiz summasiz)
+      const resources = await estimateResources(db, actor.tenant_id, estimate.id);
+      const summary = book.addWorksheet('Resurslar yig‘masi');
+      summary.columns = [
+        { header: 'Turi', key: 'kind', width: 12 },
+        { header: 'Resurs kodi', key: 'resource_code', width: 12 },
+        { header: 'Nomi', key: 'name', width: 48 },
+        { header: 'Birlik', key: 'unit_id', width: 8 },
+        { header: 'Miqdor', key: 'quantity', width: 14 },
+        ...(prices ? [{ header: 'Summa', key: 'amount', width: 16 }] : []),
+      ];
+      summary.getRow(1).font = { bold: true };
+      for (const r of resources.items)
+        summary.addRow({
+          kind: r.kind,
+          resource_code: r.resource_code ?? '',
+          name: r.name,
+          unit_id: r.unit_id,
+          quantity: Number(r.quantity),
+          ...(prices ? { amount: Number(r.amount) } : {}),
+        });
+      if (prices && resources.items.length)
+        summary.addRow({ name: 'JAMI', amount: Number(resources.total) }).font = { bold: true };
       const buffer = Buffer.from(await book.xlsx.writeBuffer());
       await audit(db, actor, 'export.estimate', params.id, { revision: estimate.revision });
       const safe =

@@ -377,7 +377,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/estimate-lines',
     summary:
-      'Obyektning joriy smeta qatorlari (vazifaga bog‘lash tanlovi): nom, birlik, reja hajmi, smeta nomi; narxsiz',
+      'Obyektning joriy smeta qatorlari (vazifaga bog‘lash tanlovi): nom, birlik, reja hajmi, smeta nomi; narxsiz; q — nom, smeta, kategoriya, norma kodi yoki bo‘lim',
     permission: 'estimates.read',
     query: searchQuery.extend({ project_id: uuid }),
     handler: async ({ db, actor, query }) => {
@@ -385,10 +385,11 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       return {
         items: (
           await db.query(
-            `SELECT l.id,l.estimate_id,e.name estimate_name,l.kind,l.description,l.unit_id,l.effective_quantity::text effective_quantity,l.category,z.name zone_name
+            `SELECT l.id,l.estimate_id,e.name estimate_name,l.kind,l.description,l.unit_id,l.effective_quantity::text effective_quantity,l.category,l.norm_code,l.section_name,z.name zone_name
              FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
              WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.archived_at IS NULL AND e.archived_at IS NULL
-               AND ($3::text IS NULL OR l.description ILIKE $3 ESCAPE '\\' OR e.name ILIKE $3 ESCAPE '\\' OR coalesce(l.category,'') ILIKE $3 ESCAPE '\\')
+               AND ($3::text IS NULL OR l.description ILIKE $3 ESCAPE '\\' OR e.name ILIKE $3 ESCAPE '\\' OR coalesce(l.category,'') ILIKE $3 ESCAPE '\\'
+                    OR coalesce(l.norm_code,'') ILIKE $3 ESCAPE '\\' OR coalesce(l.section_name,'') ILIKE $3 ESCAPE '\\')
              ORDER BY e.name,l.position,l.id LIMIT $4 OFFSET $5`,
             [actor.tenant_id, query.project_id, query.q ? likePattern(query.q) : null, query.limit, query.offset],
           )
@@ -400,7 +401,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/estimates/:id',
     summary:
-      'Joriy smeta va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona bo‘yicha guruhlar (decimal)',
+      'Joriy smeta (sarlavha bilan) va oylik qatorlar; totals — umumiy, material/ish jami va tur, kategoriya, zona, bo‘lim bo‘yicha guruhlar (decimal)',
     permission: 'estimates.read',
     params: idParams,
     sensitive: true,
@@ -415,7 +416,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       const groups = (
         await db.query(
           `WITH l AS (
-             SELECT l.kind,coalesce(l.category,'') category,coalesce(z.name,'') zone,l.total,
+             SELECT l.kind,coalesce(l.category,'') category,coalesce(z.name,'') zone,coalesce(l.section_name,'') section,l.total,
                CASE WHEN l.kind='material'
                  THEN (SELECT coalesce(-sum(j.amount),0) FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory')
                  ELSE 0 END fact_value
@@ -423,7 +424,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
              WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL)
            SELECT 'kind' grp,kind key,count(*)::int count,sum(total)::numeric(20,2)::text total,sum(fact_value)::numeric(20,2)::text value FROM l GROUP BY kind
            UNION ALL SELECT 'category',category,count(*)::int,sum(total)::numeric(20,2)::text,sum(fact_value)::numeric(20,2)::text FROM l GROUP BY category
-           UNION ALL SELECT 'zone',zone,count(*)::int,sum(total)::numeric(20,2)::text,sum(fact_value)::numeric(20,2)::text FROM l GROUP BY zone`,
+           UNION ALL SELECT 'zone',zone,count(*)::int,sum(total)::numeric(20,2)::text,sum(fact_value)::numeric(20,2)::text FROM l GROUP BY zone
+           UNION ALL SELECT 'section',section,count(*)::int,sum(total)::numeric(20,2)::text,sum(fact_value)::numeric(20,2)::text FROM l GROUP BY section`,
           [actor.tenant_id, params.id],
         )
       ).rows;
@@ -452,6 +454,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           by_kind: pick('kind'),
           by_category: pick('category'),
           by_zone: pick('zone'),
+          by_section: pick('section'),
         },
         // D32: `auto_labor_rate` — avtomatik akkord stavkasi; guruh ko'rsatkichlari bir marta hisoblanadi (4 000+ qator)
         lines: (
@@ -546,6 +549,9 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           'zone_name',
           'category',
           'note',
+          'norm_code',
+          'resource_code',
+          'section_name',
         ]),
         text,
       ),
