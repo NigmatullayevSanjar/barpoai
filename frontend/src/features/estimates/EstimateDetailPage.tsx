@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ChevronDown, Download, History, Pencil, Settings } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronDown, Download, FileText, History, Pencil, Settings } from 'lucide-react';
 import { saveBase64File } from '@/lib/download';
 import { api, ApiError } from '@/lib/api';
 import { DetailError } from '@/app/guards';
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useProjects } from '@/features/projects/ProjectsPage';
+import { ActDialog } from './ActDialog';
 import {
   AMOUNT,
   lineKinds,
@@ -58,6 +59,7 @@ export function EstimateDetailPage() {
   const [section, setSection] = useState('all');
   const [headerEdit, setHeaderEdit] = useState(false);
   const [archive, setArchive] = useState(false);
+  const [act, setAct] = useState(false);
   const [reason, setReason] = useState('');
   const d = query.data;
   const project = projects.data?.items.find((p) => p.id === d?.project_id);
@@ -252,6 +254,11 @@ export function EstimateDetailPage() {
         >
           {t('est.export')}
         </Button>
+        {pricesVisible && (
+          <Button variant="secondary" icon={<FileText />} onClick={() => setAct(true)}>
+            {t('est.act.button')}
+          </Button>
+        )}
         {can('estimates', 'delete') && (
           <Button
             variant="ghost"
@@ -312,6 +319,7 @@ export function EstimateDetailPage() {
       {tab === 'summary' && <SummaryTab totals={d.totals} pricesVisible={pricesVisible} />}
       {tab === 'resources' && <ResourcesTab id={id} revision={d.revision} pricesVisible={pricesVisible} />}
       {tab === 'revisions' && <RevisionsTab id={id} current={d.revision} />}
+      {act && <ActDialog id={id} onClose={() => setAct(false)} />}
       <ConfirmDialog
         open={archive}
         onClose={() => setArchive(false)}

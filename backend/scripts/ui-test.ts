@@ -1682,6 +1682,27 @@ try {
   checks.push(
     'Estimate detail shows the price chain card from the server (Form 5 settings, 24 851 630,5 with VAT); switching to VMQ 583 in the settings modal updates it to 26 597 406,19 without a new revision (S3)',
   );
+  // S4: dalolatnoma (F-2/F-3) — bu smetada qabul qilingan hajm yo'q: joriy oy uchun bo'sh holat, Excel baribir yuklanadi
+  await adminPage.getByRole('button', { name: 'Dalolatnoma (F-2/F-3)', exact: true }).click();
+  const actDialog = adminPage.getByRole('dialog');
+  await actDialog.getByRole('heading', { name: 'Bajarilgan ishlar dalolatnomasi (F-2, F-3)' }).waitFor();
+  await actDialog.getByText('Tanlangan davrda qabul qilingan ish yo‘q.', { exact: true }).waitFor();
+  await actDialog.getByText('Yil boshidan', { exact: true }).waitFor();
+  await actDialog.getByRole('button', { name: 'Sana oralig‘i', exact: true }).click();
+  await actDialog.getByText('Boshlanish sanasi', { exact: true }).waitFor();
+  await actDialog.getByText('Tanlangan davrda qabul qilingan ish yo‘q.', { exact: true }).waitFor();
+  await actDialog.getByRole('button', { name: 'Oy bo‘yicha', exact: true }).click();
+  await actDialog.getByText('Oy', { exact: true }).waitFor();
+  const [actDownload] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    actDialog.getByRole('button', { name: 'Excel (F-2, F-3)', exact: true }).click(),
+  ]);
+  assert.match(actDownload.suggestedFilename(), /^akt-.*\.xlsx$/);
+  await actDialog.getByRole('button', { name: 'Yopish', exact: true }).click();
+  await actDialog.waitFor({ state: 'hidden' });
+  checks.push(
+    'Estimate detail opens the monthly completion act dialog (F-2/F-3): current month shows the empty state with the three range totals, the period toggles between month and date range, and the Excel export downloads an akt-*.xlsx file (S4)',
+  );
   // D35: «Нормы» varag'idagi «П» (miqdor loyihadan) material — tekshiruvda qator raqami bilan ogohlantirish; smeta yaratilmaydi
   await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Excel import' }).first().click();

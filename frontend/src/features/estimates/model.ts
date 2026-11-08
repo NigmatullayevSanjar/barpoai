@@ -291,3 +291,63 @@ export const useZones = (projectId: string) =>
     queryFn: () => api<ListResponse<Zone>>(`/v1/projects/${projectId}/zones`),
     enabled: Boolean(projectId),
   });
+
+/** S4: oylik bajarilgan ishlar dalolatnomasi (F-2 / F-3), `GET /v1/estimates/:id/acts`; barcha raqamlar serverdan. */
+export type ActRange = 'start' | 'year' | 'period';
+export type ActBasis = 'work' | 'norm' | 'consumption' | 'progress';
+export type ActLine = {
+  id: string;
+  kind: LineKind;
+  description: string;
+  unit_id: string;
+  norm: string | null;
+  unit_price: string;
+  supplied_by: SuppliedBy;
+  section_name: string | null;
+  norm_code: string | null;
+  resource_code: string | null;
+  position: number;
+  basis: ActBasis;
+  quantity: Record<ActRange, string>;
+  amount: Record<ActRange, string>;
+};
+export type ActTotals = { lines: PriceSummaryLine[]; total: string };
+export type EstimateAct = {
+  estimate: { id: string; name: string; revision: number; project_id: string };
+  parties: {
+    contractor: string | null;
+    contractor_address: string | null;
+    contractor_phone: string | null;
+    customer: string | null;
+    project: string | null;
+    project_address: string | null;
+    estimate: string | null;
+    revision: number;
+  };
+  period: { from: string; to: string; year_from: string };
+  settings: {
+    markup_mode: MarkupMode;
+    other_costs_percent: string;
+    profit_percent: string;
+    production_costs_percent: string;
+    deduct_customer_materials: boolean;
+    vat_percent: string | null;
+  };
+  lines: ActLine[];
+  totals: Record<ActRange, ActTotals>;
+  contract: {
+    number: string | null;
+    date: string | null;
+    amount: string | null;
+    amount_without_vat: string | null;
+    vat: string | null;
+    percent: Record<ActRange, string | null>;
+  };
+  warnings: {
+    /** Joriy reviziyada yo'q qatorlar fakti (uch jamg'arma) — summaga kirmaydi */
+    removed_lines: { description: string; unit_id: string; quantity: Record<ActRange, string> }[];
+    unlinked_consumption: { name: string; unit_id: string; quantity: string }[];
+    /** Form 5 resursiga yoki foizli qatorga yozilgan qabul qilingan hajm — hisobga olinmaydi */
+    ignored_progress: { description: string; unit_id: string; quantity: Record<ActRange, string> }[];
+  };
+};

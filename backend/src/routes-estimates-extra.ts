@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { type Endpoint } from './http.js';
-import { audit, one, type Db } from './db.js';
+import { audit, one, type Db, type Row } from './db.js';
 import { dec, money, plannedQuantity } from './money.js';
-import { estimateHeader, idParams, priceSettings, text, uuid, version } from './schemas.js';
+import { date, estimateHeader, idParams, priceSettings, text, uuid, version } from './schemas.js';
+import { actWorkbook, estimateAct, type ActParties } from './estimate-acts.js';
 import {
   assertPriceSettings,
   convertedPercent,
@@ -14,7 +15,7 @@ import {
   settingsOf,
   suggestFromExcel,
 } from './estimate-price.js';
-import { projectScope, allowed } from './permissions.js';
+import { projectScope, allowed, permit } from './permissions.js';
 import { invariant } from './errors.js';
 import {
   inspectWorkbook,
@@ -83,6 +84,38 @@ async function estimateResources(db: Db, tenantId: string, estimateId: string) {
   ).rows;
   const total = money(byKind.reduce((s, k) => s.plus(k.total), dec('0')));
   return { items, by_kind: byKind, total };
+}
+/**
+ * S4 (D40): dalolatnoma davri — berilmasa joriy oy (Toshkent), `to` berilib `from` berilmasa — `to` oyining boshidan.
+ * Narx huquqi (marshrut ruxsati) va smetani ko'rish huquqi kerak; prorab, brigadir, omborchi ololmaydi (D20).
+ */
+const actQuery = z.strictObject({ from: date.optional(), to: date.optional() });
+async function loadAct(db: Db, actor: Row, id: string, query: { from?: string; to?: string }) {
+  const estimate = await one(db, 'SELECT * FROM estimates WHERE tenant_id=$1 AND id=$2', [
+    actor.tenant_id,
+    id,
+  ]);
+  await projectScope(db, actor, estimate.project_id);
+  await permit(db, actor, 'estimates.read');
+  const today = (await one(db, "SELECT (now() AT TIME ZONE 'Asia/Tashkent')::date::text d", []))
+    .d as string;
+  const to = query.to ?? today;
+  const from = query.from ?? `${to.slice(0, 7)}-01`;
+  invariant(from <= to, 'DATE_RANGE_INVALID', 400);
+  // F-3 dagi «yil boshidan» `to` yilidan olinadi — davr bitta yil ichida bo'lsin
+  invariant(from.slice(0, 4) === to.slice(0, 4), 'ACT_PERIOD_CROSSES_YEAR', 400);
+  const parties = await one(
+    db,
+    `SELECT t.legal_name contractor,t.address contractor_address,t.phone contractor_phone,p.customer_name customer,
+       p.name project,p.address project_address
+     FROM projects p JOIN tenants t ON t.id=p.tenant_id WHERE p.tenant_id=$1 AND p.id=$2`,
+    [actor.tenant_id, estimate.project_id],
+  );
+  return {
+    estimate,
+    parties: { ...parties, estimate: estimate.name, revision: estimate.revision } as ActParties,
+    act: await estimateAct(db, actor.tenant_id, estimate, from, to),
+  };
 }
 /** Smeta uchun yordamchi endpointlar: Excel inspeksiya, reviziyalar tarixi, Excel eksport. */
 export function estimateExtraRoutes(add: (r: Endpoint) => void) {
@@ -418,6 +451,52 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
         estimate_id: estimate.id,
         revision: estimate.revision,
         ...(await estimateResources(db, actor.tenant_id, estimate.id)),
+      };
+    },
+  });
+  add({
+    method: 'GET',
+    path: '/v1/estimates/:id/acts',
+    summary:
+      'Dalolatnoma (S4, D40): davr (from…to, standart — joriy oy) bo‘yicha qabul qilingan ish hajmi va ombor sarfidan F-2 qatorlari, smeta narxi zanjiri uch jamg‘arma bilan (qurilish boshidan, yil boshidan, davr) va shartnomaga nisbatan foiz (F-3); holat saqlanmaydi',
+    permission: 'prices.read',
+    params: idParams,
+    query: actQuery,
+    sensitive: true,
+    handler: async ({ db, actor, params, query }) => {
+      const { estimate, parties, act } = await loadAct(db, actor, params.id, query);
+      return {
+        estimate: {
+          id: estimate.id,
+          name: estimate.name,
+          revision: estimate.revision,
+          project_id: estimate.project_id,
+        },
+        parties,
+        ...act,
+      };
+    },
+  });
+  add({
+    method: 'GET',
+    path: '/v1/estimates/:id/acts/export',
+    summary:
+      'Dalolatnoma Excel’da: F-2 (АКТ ВЫПОЛНЕННЫХ РАБОТ, lokal resurs smeta) va F-3 (СПРАВКА-СЧЕТ-ФАКТУРА, 16 ustun) varaqlari; qiymatlar, formula emas; audit export.estimate_act',
+    permission: 'prices.read',
+    params: idParams,
+    query: actQuery,
+    handler: async ({ db, actor, params, query }) => {
+      const { estimate, parties, act } = await loadAct(db, actor, params.id, query);
+      const base64 = await actWorkbook(act, parties);
+      await audit(db, actor, 'export.estimate_act', params.id, {
+        revision: estimate.revision,
+        from: act.period.from,
+        to: act.period.to,
+      });
+      return {
+        filename: `${`akt-${estimate.name}-${act.period.from}-${act.period.to}`.replace(/[^\w.-]+/g, '_')}.xlsx`,
+        mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        base64,
       };
     },
   });

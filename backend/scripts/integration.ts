@@ -5196,6 +5196,202 @@ try {
   passed.push(
     'S3: the estimate price chain (labor, machines, contractor and customer materials, services → direct costs, other costs with profit, production costs, customer materials deduction, optional VAT) matches the control example to the tiyin in both «free» (2 374 400.00) and «VMQ 583» (2 564 800.00) modes; the VMQ 583 preset is checked; settings change without a revision and stay in snapshots; plan_total is unchanged; the chain and percents are hidden without prices.read; the export ends with the totals block and «Kim beradi» round-trips; an old D29 percent line is left out of the chain and moves into the settings in one new revision',
   );
+  // ---- S4 (2026-11-07): dalolatnoma F-2 / F-3 (D40, D41) — davr bo'yicha qabul qilingan hajm, Form 5 resurslari
+  // norma × ish ulushi, normasiz material — ombor sarfi (storno bilan), reviziyalar bo'ylab lineage, S3 zanjiri, shartnoma %
+  const s4Block = await call('POST', '/v1/materials', { name: 'S4 gazoblok', unit_id: 'pcs' }, whP);
+  const s4Lines = [
+    { kind: 'labor', description: 'Kladka', unit_id: 'm2', quantity: '100', unit_price: '0', category: 'Е0804-003-01 Kladka', norm_code: 'Е0804-003-01', section_name: 'Раздел 1. Стены' },
+    { kind: 'labor', description: 'Ishchilar', unit_id: 'hour', quantity: '50', norm: '0.5', work_quantity: '100', unit_price: '30000', category: 'Е0804-003-01 Kladka', resource_code: '1', section_name: 'Раздел 1. Стены' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '200', norm: '2', work_quantity: '100', unit_price: '1500', category: 'Е0804-003-01 Kladka', resource_code: '19412', section_name: 'Раздел 1. Стены' },
+    { kind: 'material', description: 'Gazoblok', material_id: s4Block.id, unit_id: 'pcs', quantity: '10', unit_price: '100', supplied_by: 'customer', category: 'Е0804-003-01 Kladka', section_name: 'Раздел 1. Стены' },
+    { kind: 'equipment', description: 'Kran', unit_id: 'hour', quantity: '10', unit_price: '200000' },
+  ];
+  const s4 = await call('POST', '/v1/estimates', { project_id: projectQ.id, name: 'S4 dalolatnoma', lines: s4Lines }, adminAgain);
+  await call(
+    'PATCH',
+    `/v1/estimates/${s4.id}/header`,
+    { other_costs_percent: '21', vat_percent: '12', contract_number: 'SP-4', contract_date: '2026-09-01', contract_amount: '10000000' },
+    adminAgain,
+  );
+  const s4Report = async (lineId: string, qty: string, day: string) => {
+    const r = await call(
+      'POST',
+      '/v1/reports',
+      { project_id: projectQ.id, kind: 'daily', report_date: day, content: 'S4 dalolatnoma', estimate_line_id: lineId, progress_quantity: qty },
+      brigadierAgain2,
+    );
+    await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
+    return (await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)).progress;
+  };
+  // 2025-yil fakti: «qurilish boshidan» ga kiradi, «yil boshidan» ga emas
+  await s4Report(s4.lines[0].id, '10', '2025-12-20');
+  await s4Report(s4.lines[0].id, '40', '2026-09-20');
+  // Reviziyadan oldingi texnika fakti — joriy (yangi) narxda hisoblanadi
+  await s4Report(s4.lines[4].id, '1', '2026-09-25');
+  // Reviziya: Kran narxi 250 000 — fakt lineage bo'yicha yangi qatorga o'tadi, narx joriy reviziyadan
+  const s4Rev = await call(
+    'PATCH',
+    `/v1/estimates/${s4.id}`,
+    { project_id: projectQ.id, name: 'S4 dalolatnoma', version: 1, lines: s4Lines.map((l) => (l.description === 'Kran' ? { ...l, unit_price: '250000' } : l)) },
+    adminAgain,
+  );
+  const s4Oct = await s4Report(s4Rev.lines[0].id, '30', '2026-10-05');
+  await s4Report(s4Rev.lines[4].id, '2', '2026-10-06');
+  // Qabul qilinmagan hisobot dalolatnomaga kirmaydi
+  await call(
+    'POST',
+    '/v1/reports',
+    { project_id: projectQ.id, kind: 'daily', report_date: '2026-10-10', content: 'Qabul qilinmagan', estimate_line_id: s4Rev.lines[0].id, progress_quantity: '99' },
+    brigadierAgain2,
+  );
+  // UTC+5 chegarasi: 31.10 19:30 UTC — Toshkentda 1-noyabr; oktyabr dalolatnomasiga kirmaydi
+  await admin.query(
+    "INSERT INTO progress_corrections(tenant_id,progress_entry_id,quantity_delta,reason,created_by,created_at) VALUES($1,$2,'3','Chegara sinovi',$3,'2026-10-31T19:30:00Z')",
+    [t.id, s4Oct.id, auth.user.id],
+  );
+  // Tuzatish (bugun kiritilgan) oktyabr dalolatnomasiga kirmaydi — kiritilgan sana davriga tushadi
+  await call('POST', `/v1/progress-entries/${s4Oct.id}/corrections`, { quantity_delta: '5', reason: 'Qayta o‘lchash' }, adminAgain);
+  // Ombor sarfi (bugun): bog'langan 3 + bog'langan 1 (storno qilinadi) + bog'lanmagan 1
+  await call('POST', '/v1/stock/commands', { project_id: projectQ.id, kind: 'opening', material_id: s4Block.id, to_account_id: qWarehouse.account.id, quantity: '10', unit_cost: '0', reason: 'Buyurtmachi materiali' }, whP);
+  const s4Transfer = await call(
+    'POST',
+    '/v1/stock/commands',
+    { project_id: projectQ.id, kind: 'transfer', material_id: s4Block.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '5', reason: 'Brigadirga' },
+    whP,
+  );
+  await call('POST', `/v1/stock/commands/${s4Transfer.id}/actions`, { version: 1, action: 'accept', quantity: '5' }, brigP);
+  const s4Consume = async (qty: string, lineId?: string) => {
+    const c = await call(
+      'POST',
+      '/v1/stock/commands',
+      { project_id: projectQ.id, kind: 'consumption', material_id: s4Block.id, from_account_id: qCustody.id, quantity: qty, ...(lineId ? { estimate_line_id: lineId } : {}), reason: 'S4 sarf' },
+      brigP,
+    );
+    await call('POST', `/v1/stock/commands/${c.id}/actions`, { version: 1, action: 'review' }, foreP);
+    return c;
+  };
+  await s4Consume('3', s4Rev.lines[3].id);
+  const s4Wrong = await s4Consume('1', s4Rev.lines[3].id);
+  await call('POST', `/v1/stock/commands/${s4Wrong.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, whP);
+  await s4Consume('1');
+  const s4Act = (q: string, token = adminAgain, status?: number) =>
+    call('GET', `/v1/estimates/${s4.id}/acts${q}`, undefined, token, undefined, status);
+  const actOct = await s4Act('?from=2026-10-01&to=2026-10-31');
+  const actPick = (a: any, range: string) =>
+    a.lines.map((l: any) => [l.description, l.basis, l.quantity[range], l.amount[range]]);
+  assert.deepEqual(actPick(actOct, 'period'), [
+    ['Kladka', 'work', '30.000000', '0.00'],
+    ['Ishchilar', 'norm', '15.000000', '450000.00'],
+    ['Sement', 'norm', '60.000000', '90000.00'],
+    ['Kran', 'progress', '2.000000', '500000.00'],
+  ]);
+  assert.deepEqual(actPick(actOct, 'start').map((l: any[]) => l[2]), ['80.000000', '40.000000', '160.000000', '3.000000']);
+  assert.deepEqual(actPick(actOct, 'year').map((l: any[]) => l[2]), ['70.000000', '35.000000', '140.000000', '3.000000']);
+  const actTotal = (a: any, range: string, key: string) =>
+    a.totals[range].lines.find((l: any) => l.key === key)?.amount;
+  assert.deepEqual(
+    [
+      actOct.period,
+      actTotal(actOct, 'period', 'direct_total'),
+      actTotal(actOct, 'period', 'other_costs'),
+      actTotal(actOct, 'period', 'total_with_vat'),
+      actTotal(actOct, 'start', 'total_with_vat'),
+      actOct.totals.year.total,
+      actOct.contract,
+      actOct.warnings,
+    ],
+    [
+      { from: '2026-10-01', to: '2026-10-31', year_from: '2026-01-01' },
+      '1040000.00',
+      '218400.00',
+      '1409408.00',
+      '2967888.00',
+      '2723952.00',
+      {
+        number: 'SP-4',
+        date: '2026-09-01',
+        amount: '10000000.00',
+        amount_without_vat: '8928571.43',
+        vat: '1071428.57',
+        percent: { start: '29.68', year: '27.24', period: '14.09' },
+      },
+      { removed_lines: [], unlinked_consumption: [], ignored_progress: [] },
+    ],
+  );
+  // Keng davr: tuzatish (+5) va ombor sarfi (3, storno chiqarilgan) kiradi; bog'lanmagan sarf — ogohlantirish
+  // (davr bitta yil ichida bo'ladi — joriy yil: bugungi sarf va tuzatishlar kiradi, «qurilish boshidan» — hammasi)
+  const actYear = new Date().getFullYear();
+  const actWide = await s4Act(`?from=${actYear}-01-01&to=${actYear}-12-31`);
+  assert.deepEqual(
+    [
+      actWide.lines.find((l: any) => l.description === 'Kladka').quantity.start,
+      actWide.lines.find((l: any) => l.description === 'Gazoblok')?.basis,
+      actWide.lines.find((l: any) => l.description === 'Gazoblok')?.quantity.start,
+      actTotal(actWide, 'start', 'customer_materials'),
+      actTotal(actWide, 'start', 'customer_deduction'),
+      actWide.warnings.unlinked_consumption,
+    ],
+    ['88.000000', 'consumption', '3.000000', '300.00', '-300.00', [{ name: 'S4 gazoblok', unit_id: 'pcs', quantity: '1.000000' }]],
+  );
+  // Excel: F-2 va F-3 varaqlari, qiymatlar (formula emas), audit
+  const actFile = await call('GET', `/v1/estimates/${s4.id}/acts/export?from=2026-10-01&to=2026-10-31`, undefined, adminAgain);
+  const actBook = new ExcelJS.Workbook();
+  await actBook.xlsx.load(Buffer.from(actFile.base64, 'base64') as any);
+  const actRowsOf = (name: string) => {
+    const out: unknown[][] = [];
+    actBook.getWorksheet(name)!.eachRow((row) =>
+      out.push(Array.from(row.values as unknown[]).slice(1).map((v) => (v === '' || v === undefined ? null : v))),
+    );
+    return out;
+  };
+  const actF2 = actRowsOf('F-2');
+  const actF3 = actRowsOf('F-3');
+  assert.deepEqual(
+    [
+      actBook.worksheets.map((w) => w.name),
+      actF2.find((r) => r[2] === 'Ishchilar'),
+      actF2.find((r) => r[2] === 'Итого с НДС')?.[7],
+      actF3.find((r) => r[1] === 'ВСЕГО СМР')?.slice(5, 7),
+      actF3.find((r) => r[1] === 'Итого с НДС')?.slice(5, 16),
+    ],
+    [
+      ['F-2', 'F-3'],
+      ['1.1', '1', 'Ishchilar', 'чел.-ч', 0.5, 15, 30000, 450000],
+      1409408,
+      [8928571.43, null],
+      [10000000, null, null, 29.68, 2967888, null, 27.24, 2723952, null, 14.09, 1409408],
+    ],
+  );
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='export.estimate_act' AND resource_id=$1", [s4.id])).rows[0].n,
+    1,
+  );
+  // Joriy reviziyadan olib tashlangan qator fakti — ogohlantirish, summaga kirmaydi
+  await call(
+    'PATCH',
+    `/v1/estimates/${s4.id}`,
+    { project_id: projectQ.id, name: 'S4 dalolatnoma', version: 2, lines: s4Lines.filter((l) => l.description !== 'Kran') },
+    adminAgain,
+  );
+  const actOctAfter = await s4Act('?from=2026-10-01&to=2026-10-31');
+  assert.deepEqual(
+    [actOctAfter.warnings.removed_lines, actTotal(actOctAfter, 'period', 'equipment'), actTotal(actOctAfter, 'period', 'direct_total')],
+    [
+      [{ description: 'Kran', unit_id: 'hour', quantity: { start: '3.000000', year: '3.000000', period: '2.000000' } }],
+      '0.00',
+      '540000.00',
+    ],
+  );
+  // Standart davr — joriy oy; noto'g'ri oraliq; huquq (prorab, brigadir — yo'q)
+  const actCurrent = await s4Act('');
+  assert(actCurrent.period.from.endsWith('-01') && actCurrent.period.from <= actCurrent.period.to);
+  assert.equal((await s4Act('?from=2026-10-31&to=2026-10-01', adminAgain, 400)).error.code, 'DATE_RANGE_INVALID');
+  assert.equal((await s4Act('?from=2025-12-01&to=2026-01-31', adminAgain, 400)).error.code, 'ACT_PERIOD_CROSSES_YEAR');
+  await s4Act('?from=2026-10-01&to=2026-10-31', forePx, 403);
+  await s4Act('?from=2026-10-01&to=2026-10-31', brigadierAgain2, 403);
+  passed.push(
+    'S4: the completion act for a period (accepted reports by report date, corrections by their own date, Form 5 resources as norm × work share, normless materials from linked stock consumption with reversals, facts across revisions by lineage at current prices) feeds the S3 chain for the period, the year and since the start, with the contract percent; removed lines and unlinked consumption are warnings; foreman and brigadier are refused; the Excel file has F-2 and F-3 sheets with values and is audited',
+  );
   // ---- Tarif tahriri: narx va limit o'zgaradi, chiqarilgan invoyslar summasi o'zgarmaydi, o'chirish taqiq
   const invoicesBefore = (
     await admin.query('SELECT id,amount::text FROM billing_invoices WHERE plan_version_id=$1 ORDER BY id', [plan.id])
