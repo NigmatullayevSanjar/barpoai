@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { type Endpoint } from './http.js';
-import { audit, one } from './db.js';
+import { audit, one, type Row } from './db.js';
 import { dec, money, plannedQuantity } from './money.js';
 import { idParams, text, uuid } from './schemas.js';
 import { projectScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import {
+  importTarget,
   inspectWorkbook,
   openWorkbook,
   resolveImportNames,
@@ -49,6 +50,8 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
             name: text,
             // «Excel jami» blokidagi ulushli qatorlar (masalan, 21 %) — xizmat qatori bo'lib qo'shiladi
             add_rows: z.array(z.number().int().positive()).max(20).optional(),
+            // D35: berilsa — shu smetaning yangi reviziyasi; bir smetaga bitta varaq
+            estimate_id: uuid.optional(),
           }),
         )
         .min(1)
@@ -58,8 +61,14 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     sensitive: true,
     handler: async ({ db, actor, body }) => {
+      const picks: { sheet: string; name: string; add_rows?: number[]; estimate_id?: string }[] =
+        body.sheets;
+      const targetIds = picks.flatMap((p) => (p.estimate_id ? [p.estimate_id] : []));
+      invariant(new Set(targetIds).size === targetIds.length, 'DUPLICATE_TARGET', 400);
+      const targets = new Map<string, Row>();
+      for (const id of targetIds)
+        targets.set(id, await importTarget(db, actor, body.project_id, id));
       const workbook = await openWorkbook(body.file_base64, ESTIMATE_FILE_BYTES);
-      const picks: { sheet: string; name: string; add_rows?: number[] }[] = body.sheets;
       const parsed = picks.map((pick) => {
         const sheet = workbook.getWorksheet(pick.sheet);
         invariant(sheet, 'SHEET_NOT_FOUND', 400);
@@ -107,17 +116,20 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
           name: p.pick.name,
           lines: [...lines, ...extras],
         };
+        const target = p.pick.estimate_id ? targets.get(p.pick.estimate_id) : undefined;
         const stored = await storeImportPreview(
           db,
           actor,
           input,
           (n) => p.lines[n]?._row ?? 0,
           p.pick.sheet,
+          target,
         );
         sheets.push({
           ...stored.row,
           sheet: p.pick.sheet,
           name: p.pick.name,
+          target: target ?? null,
           lines: input.lines.length,
           total: stored.total,
           direct_total: money(direct),
@@ -138,7 +150,7 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/estimate-imports/form5/commit',
     summary:
-      'Form 5 previewlari bitta amalda smeta bo‘ladi; biri xato bo‘lsa hech biri saqlanmaydi',
+      'Form 5 previewlari bitta amalda smeta (yoki tanlangan smetaning yangi reviziyasi, D35) bo‘ladi; biri xato bo‘lsa hech biri saqlanmaydi',
     permission: 'estimates.import',
     body: z.strictObject({
       items: z

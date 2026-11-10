@@ -514,6 +514,14 @@ try {
   assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish', exact: true }).count(), 0);
   checks.push('Tenant admin sees the stock page without any action buttons (read-only warehouse and materials)');
   await warehousePage.goto(stockUrl);
+  // D35: smetadagi, hali kelmagan material qoldiqlarda reja bilan va «Kirim yo'q» holatida
+  await warehousePage.getByRole('columnheader', { name: 'Reja (smeta)' }).waitFor();
+  await warehousePage
+    .getByRole('row')
+    .filter({ hasText: 'Sement M500' })
+    .getByText('Kirim yo‘q', { exact: true })
+    .waitFor();
+  checks.push('Warehouse balances list an estimate material before any receipt with its plan and the “no receipt” state (D35)');
   await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
   await pickOption(warehousePage.getByRole('dialog'), 'Material', 'Tosh 118', /Tosh 118/);
   assert.equal(

@@ -220,8 +220,15 @@ export function StockPage() {
   );
 }
 
-const stateOf = (b: Balance): 'out' | 'low' | 'enough' =>
-  Number(b.available) <= 0 ? 'out' : b.low ? 'low' : 'enough';
+// D35: smetadagi, hali kirim qilinmagan material — «Kirim yo'q» (Tugagan emas)
+const stateOf = (b: Balance): 'none' | 'out' | 'low' | 'enough' =>
+  Number(b.available) <= 0
+    ? Number(b.quantity) === 0 && Number(b.received_quantity) === 0
+      ? 'none'
+      : 'out'
+    : b.low
+      ? 'low'
+      : 'enough';
 function BalancesTab({
   d,
   projectId,
@@ -254,6 +261,37 @@ function BalancesTab({
   );
   const accountOf = (id: string) => d.accounts.find((a) => a.id === id);
   const pricesVisible = d.balances.some((b) => b.value !== undefined);
+  const planVisible = d.balances.some((b) => b.plan_quantity !== null);
+  const planColumns: Column<Balance>[] = planVisible
+    ? [
+        {
+          key: 'plan',
+          header: t('stock.plan'),
+          align: 'right',
+          sortValue: (r) => Number(r.plan_quantity ?? -1),
+          render: (r) =>
+            r.plan_quantity === null ? (
+              <span className="muted">—</span>
+            ) : (
+              <span className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                {r.over_plan && <Badge tone="warning">{t('stock.over_plan')}</Badge>}
+                {formatQuantity(r.plan_quantity)}
+              </span>
+            ),
+        },
+        {
+          key: 'received',
+          header: t('stock.received'),
+          align: 'right',
+          render: (r) =>
+            accountOf(r.account_id)?.kind === 'warehouse' ? (
+              formatQuantity(r.received_quantity)
+            ) : (
+              <span className="muted">—</span>
+            ),
+        },
+      ]
+    : [];
   const columns: Column<Balance>[] = [
     {
       key: 'material',
@@ -282,6 +320,7 @@ function BalancesTab({
         );
       },
     },
+    ...planColumns,
     {
       key: 'quantity',
       header: t('stock.quantity'),
@@ -312,7 +351,7 @@ function BalancesTab({
       render: (r) => {
         const s = stateOf(r);
         return (
-          <span className={`status-text-${s === 'enough' ? 'active' : s === 'low' ? 'inactive' : 'danger'}`}>
+          <span className={`status-text-${s === 'enough' ? 'active' : s === 'low' ? 'inactive' : s === 'none' ? 'muted' : 'danger'}`}>
             {t(`stock.state.${s}`)}
           </span>
         );

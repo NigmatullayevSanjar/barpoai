@@ -508,7 +508,8 @@ export function convertMass(line: Row, to: string): Row | null {
  * Topilmagan nomlar xato sifatida qaytadi; yashirincha yangi yozuv yaratilmaydi.
  */
 /**
- * Excel nomlarini bazadagi material va zonalarga bog'laydi. Topilmagan nomlar (material, zona) avtomatik yaratiladi:
+ * Excel nomlarini bazadagi material va zonalarga bog'laydi (material — nomi yoki muqobil nomi bo'yicha, D35; mavjud
+ * material o'zgartirilmaydi). Topilmagan nomlar (material, zona) avtomatik yaratiladi:
  * obyekt ochilgach smetani darhol yuklash mumkin (egasi qarori, 2026-10-22). Material birligi qatordagi birlikdan
  * (yo'q bo'lsa "dona"). Yaratilganlar soni `created` da qaytadi. Birlik xatolari — platformada yo'q birlik yoki mavjud
  * materialning boshqa birligi — Excel qator raqami bilan `errors` da (tekshiruvda yiqilmasdan oldin). t ↔ kg qatorlari
@@ -524,12 +525,20 @@ export async function resolveImportNames(
 ) {
   await projectScope(db, actor, projectId);
   const created = { materials: 0, zones: 0 };
-  const materials = (
+  // D35: material nomi yoki muqobil nomi (material_aliases) bo'yicha topiladi; nom muqobil nomdan ustun
+  const materials = new Map<string, Row>();
+  for (const m of (
     await db.query(
-      'SELECT id,name,unit_id FROM materials WHERE tenant_id=$1 AND archived_at IS NULL',
+      `SELECT m.id,m.name,m.unit_id,m.name key,0 o FROM materials m WHERE m.tenant_id=$1 AND m.archived_at IS NULL
+       UNION ALL
+       SELECT m.id,m.name,m.unit_id,a.name,1 FROM material_aliases a JOIN materials m ON m.tenant_id=a.tenant_id AND m.id=a.material_id
+       WHERE a.tenant_id=$1 AND m.archived_at IS NULL ORDER BY o`,
       [actor.tenant_id],
     )
-  ).rows;
+  ).rows) {
+    const key = String(m.key).toLowerCase();
+    if (!materials.has(key)) materials.set(key, { id: m.id, name: m.name, unit_id: m.unit_id });
+  }
   const zones = (
     await db.query('SELECT id,name FROM zones WHERE tenant_id=$1 AND project_id=$2', [
       actor.tenant_id,
@@ -570,7 +579,7 @@ export async function resolveImportNames(
     if (!unitKnown) errors.push({ row, field: 'unit_id', message: unitRaw });
     if (next.material_name !== undefined) {
       const name = String(next.material_name).trim().toLowerCase();
-      const found = materials.find((m) => m.name.toLowerCase() === name);
+      const found = materials.get(name);
       if (!found) {
         if (unitKnown) {
           const made = await one(
@@ -578,7 +587,7 @@ export async function resolveImportNames(
             'INSERT INTO materials(tenant_id,name,unit_id) VALUES($1,$2,$3) RETURNING id,name,unit_id',
             [actor.tenant_id, String(next.material_name).trim(), next.unit_id ?? 'pcs'],
           );
-          materials.push(made);
+          materials.set(name, made);
           created.materials++;
           next.material_id = made.id;
           next.unit_id ??= made.unit_id;
@@ -632,6 +641,18 @@ export async function resolveImportNames(
   return { lines: out, errors, created, converted };
 }
 /**
+ * D35: import qaysi mavjud smetaga yangi reviziya bo'lib tushadi — o'sha obyektning arxivlanmagan smetasi; reviziya
+ * huquqi (`estimates.edit`) previewdayoq tekshiriladi.
+ */
+export async function importTarget(db: Db, actor: Row, projectId: string, estimateId: string) {
+  await permit(db, actor, 'estimates.edit');
+  return one(
+    db,
+    'SELECT id,name,revision FROM estimates WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND archived_at IS NULL',
+    [actor.tenant_id, projectId, estimateId],
+  );
+}
+/**
  * Import tekshiruvi (preview): qator qiymatlari sxemasi — xato Excel qatori bilan (`rowOf`, Form 5 da `sheet` ham),
  * domen tekshiruvi, `import_previews` ga yozuv va server jamlari (O3). Smeta saqlanmaydi.
  */
@@ -641,6 +662,7 @@ export async function storeImportPreview(
   input: Row,
   rowOf: (n: number) => number,
   sheet?: string,
+  target?: Row,
 ) {
   const shape = estimateInput.safeParse(input);
   if (!shape.success) {
@@ -661,8 +683,16 @@ export async function storeImportPreview(
   await validateEstimate(db, actor, input);
   const row = await one(
     db,
-    "INSERT INTO import_previews(tenant_id,project_id,created_by,payload,digest,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '1 hour') RETURNING id,digest,expires_at",
-    [actor.tenant_id, input.project_id, actor.id, JSON.stringify(input), digest(JSON.stringify(input))],
+    "INSERT INTO import_previews(tenant_id,project_id,created_by,payload,digest,expires_at,target_estimate_id,target_revision) VALUES($1,$2,$3,$4,$5,now()+interval '1 hour',$6,$7) RETURNING id,digest,expires_at",
+    [
+      actor.tenant_id,
+      input.project_id,
+      actor.id,
+      JSON.stringify(input),
+      digest(JSON.stringify(input)),
+      target?.id ?? null,
+      target?.revision ?? null,
+    ],
   );
   // Qator jami = hisobiy miqdor × narx — saqlashdagi formula; frontend qo'shmaydi.
   const lines = input.lines.map((l: Row) => ({
@@ -672,7 +702,11 @@ export async function storeImportPreview(
   const total = money(lines.reduce((s: any, l: Row) => s.add(l.total), dec('0')));
   return { row, lines, total };
 }
-/** Previewdan smeta: digest mos, muddati o'tmagan; qayta chaqirilsa o'sha smeta qaytadi (idempotent). */
+/**
+ * Previewdan smeta: digest mos, muddati o'tmagan; qayta chaqirilsa o'sha smeta qaytadi (idempotent). D35: preview
+ * mavjud smetaga tayyorlangan bo'lsa — uning yangi reviziyasi (reja almashadi, fakt `lineage_id` bo'yicha qoladi);
+ * smeta shu orada o'zgargan yoki arxivlangan bo'lsa yozilmaydi.
+ */
 export async function commitImportPreview(db: Db, actor: Row, id: string, expected: string) {
   const preview = await one(
     db,
@@ -684,7 +718,17 @@ export async function commitImportPreview(db: Db, actor: Row, id: string, expect
   invariant(expected === preview.digest, 'PREVIEW_CHANGED');
   if (preview.committed_estimate_id) return { id: preview.committed_estimate_id };
   invariant(new Date(preview.expires_at).getTime() > Date.now(), 'PREVIEW_EXPIRED', 410);
-  const estimate = await writeEstimate(db, actor, preview.payload);
+  let existing: Row | undefined;
+  if (preview.target_estimate_id) {
+    existing = (
+      await db.query(
+        'SELECT * FROM estimates WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE',
+        [actor.tenant_id, preview.target_estimate_id],
+      )
+    ).rows[0];
+    invariant(existing?.revision === preview.target_revision, 'IMPORT_TARGET_CHANGED');
+  }
+  const estimate = await writeEstimate(db, actor, preview.payload, existing);
   await db.query('UPDATE import_previews SET committed_estimate_id=$2 WHERE id=$1', [
     id,
     estimate.id,
