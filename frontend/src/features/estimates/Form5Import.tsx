@@ -7,6 +7,7 @@ import { formatMoney } from '@/lib/format';
 import { normalizeNumber, PERCENT, trimZeros, type SuppliedBy } from './model';
 import { Alert, Badge, Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+import type { EstimateSummary } from './model';
 
 export type Form5Sheet = {
   sheet: string;
@@ -59,6 +60,8 @@ type SheetPreview = {
   digest: string;
   sheet: string;
   name: string;
+  /** D42: mavjud smetaning yangi reviziyasi bo'lsa — o'sha smeta */
+  target: { id: string; name: string; revision: number } | null;
   lines: number;
   /** Jamlar serverda (decimal); frontend qo'shmaydi */
   total: string;
@@ -115,12 +118,18 @@ export function Form5Import({
   projectId,
   file,
   sheets,
+  targets,
+  initialTarget,
   onBack,
   onClose,
 }: {
   projectId: string;
   file: { name: string; base64: string };
   sheets: Form5Sheet[];
+  /** D42: varaq yuklanishi mumkin bo'lgan mavjud smetalar (reviziya huquqi bo'lmasa bo'sh) */
+  targets: EstimateSummary[];
+  /** 1-qadamda tanlangan smeta — yagona varaqqa oldindan qo'yiladi */
+  initialTarget: string;
   onBack: () => void;
   onClose: () => void;
 }) {
@@ -131,8 +140,13 @@ export function Form5Import({
   const selectable = sheets.filter((s) => s.form5 && !s.too_large);
   const [step, setStep] = useState<2 | 3>(2);
   // varaq → smeta nomi; ro'yxatda bo'lsa tanlangan
+  const initial = selectable.length === 1 ? targets.find((x) => x.id === initialTarget) : undefined;
   const [picked, setPicked] = useState<Record<string, string>>(() =>
-    Object.fromEntries(selectable.map((s) => [s.sheet, s.sheet.trim()])),
+    Object.fromEntries(selectable.map((s) => [s.sheet, initial?.name ?? s.sheet.trim()])),
+  );
+  // D42: varaq → mavjud smeta (yangi reviziya); bo'lmasa yangi smeta. Bir smetaga bitta varaq.
+  const [sheetTargets, setSheetTargets] = useState<Record<string, string>>(() =>
+    initial ? { [selectable[0]!.sheet]: initial.id } : {},
   );
   const [previews, setPreviews] = useState<SheetPreview[]>([]);
   const [controls, setControls] = useState<Record<string, Controls>>({});
@@ -153,6 +167,7 @@ export function Form5Import({
             return {
               sheet,
               name: name.trim(),
+              ...(sheetTargets[sheet] ? { estimate_id: sheetTargets[sheet] } : {}),
               ...(withControls && c
                 ? {
                     settings: {
@@ -200,6 +215,8 @@ export function Form5Import({
       }),
     onSuccess: async (r) => {
       await queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      await queryClient.invalidateQueries({ queryKey: ['estimate'] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-overview', projectId] });
       toast.success(t('est.f5_done', { n: r.estimates.length }));
       onClose();
       if (r.estimates.length === 1) navigate(`/app/estimates/${r.estimates[0]!.id}`);
@@ -287,7 +304,14 @@ export function Form5Import({
               >
                 {t('est.f5_select_all')}
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setPicked({})}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setPicked({});
+                  setSheetTargets({});
+                }}
+              >
                 {t('est.f5_select_none')}
               </Button>
             </div>
@@ -306,14 +330,20 @@ export function Form5Import({
                         type="checkbox"
                         checked={on}
                         disabled={!usable}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setPicked((p) => {
                             const next = { ...p };
                             if (e.target.checked) next[s.sheet] = s.sheet.trim();
                             else delete next[s.sheet];
                             return next;
-                          })
-                        }
+                          });
+                          if (!e.target.checked)
+                            setSheetTargets((m) => {
+                              const next = { ...m };
+                              delete next[s.sheet];
+                              return next;
+                            });
+                        }}
                       />
                       {s.sheet}
                     </label>
@@ -327,6 +357,36 @@ export function Form5Import({
                             priced: s.priced,
                           })}
                         </span>
+                        {on && targets.length > 0 && (
+                          <Select
+                            aria-label={t('est.import_target')}
+                            value={sheetTargets[s.sheet] ?? ''}
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              setSheetTargets((m) => {
+                                const next = { ...m };
+                                if (id) next[s.sheet] = id;
+                                else delete next[s.sheet];
+                                return next;
+                              });
+                              const est = targets.find((x) => x.id === id);
+                              if (est) setPicked((p) => ({ ...p, [s.sheet]: est.name }));
+                            }}
+                          >
+                            <option value="">{t('est.import_target_new')}</option>
+                            {targets.map((x) => (
+                              <option
+                                key={x.id}
+                                value={x.id}
+                                disabled={Object.entries(sheetTargets).some(
+                                  ([sheet, id]) => id === x.id && sheet !== s.sheet,
+                                )}
+                              >
+                                {t('est.import_target_revision', { name: x.name, revision: x.revision })}
+                              </option>
+                            ))}
+                          </Select>
+                        )}
                         {on && (
                           <Input
                             aria-label={t('est.name')}
@@ -355,6 +415,9 @@ export function Form5Import({
                   <Badge>{t('est.f5_sheet_label', { sheet: p.sheet })}</Badge>
                 </div>
                 <Alert tone="success">{t('est.import_ok', { n: p.lines, total: money(p.total) })}</Alert>
+                {p.target && (
+                  <Alert tone="info">{t('est.import_revision_hint', { name: p.target.name })}</Alert>
+                )}
                 {p.excel_total && (
                   <p className="text-sm">
                     {t('est.f5_excel_compare', {

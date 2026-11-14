@@ -32,6 +32,7 @@ import { invariant } from './errors.js';
 import {
   writeEstimate,
   parseWorkbook,
+  importTarget,
   resolveImportNames,
   storeImportPreview,
   commitImportPreview,
@@ -565,11 +566,16 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           unit_id: text.optional(),
         })
         .optional(),
+      // D42: berilsa — shu smetaning yangi reviziyasi (reja almashadi, fakt qoladi); yo'q bo'lsa yangi smeta
+      estimate_id: uuid.optional(),
     }),
     bodyLimit: 16 * 1024 * 1024,
     idempotent: true,
     sensitive: true,
     handler: async ({ db, actor, body }) => {
+      const target = body.estimate_id
+        ? await importTarget(db, actor, body.project_id, body.estimate_id)
+        : undefined;
       const parsed = await parseWorkbook(body.file_base64, body.mapping);
       for (const line of parsed) {
         if (body.defaults?.kind && !line.kind) line.kind = body.defaults.kind;
@@ -588,10 +594,13 @@ export function operationRoutes(add: (r: Endpoint) => void) {
         actor,
         input,
         (n) => parsed[n]?._row ?? n + 2,
+        undefined,
+        target,
       );
       return {
         ...row,
         preview: { ...input, lines },
+        target: target ?? null,
         total,
         created: resolved.created,
         converted: resolved.converted,
@@ -601,7 +610,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/estimate-imports/:id/commit',
-    summary: 'Previewdan yangi smeta; eskisini yashirin almashtirmaydi',
+    summary:
+      'Previewdan yangi smeta yoki previewda tanlangan smetaning yangi reviziyasi (D42); boshqa smetani almashtirmaydi',
     permission: 'estimates.import',
     params: idParams,
     body: z.strictObject({ digest: z.string().length(64) }),

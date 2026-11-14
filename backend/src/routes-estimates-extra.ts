@@ -18,6 +18,7 @@ import {
 import { projectScope, allowed, permit } from './permissions.js';
 import { invariant } from './errors.js';
 import {
+  importTarget,
   inspectWorkbook,
   openWorkbook,
   resolveImportNames,
@@ -149,6 +150,8 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
             // S3: smeta sozlamalari (berilmasa — Excel jamlar blokidan taklif) va bosh pudratchi materiallarini kim beradi
             settings: priceSettings.optional(),
             gc_supplied_by: z.enum(['contractor', 'customer']).optional(),
+            // D42: berilsa — shu smetaning yangi reviziyasi; bir smetaga bitta varaq
+            estimate_id: uuid.optional(),
           }),
         )
         .min(1)
@@ -158,13 +161,19 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     sensitive: true,
     handler: async ({ db, actor, body }) => {
-      const workbook = await openWorkbook(body.file_base64, ESTIMATE_FILE_BYTES);
       const picks: {
         sheet: string;
         name: string;
         settings?: Record<string, unknown>;
         gc_supplied_by?: 'contractor' | 'customer';
+        estimate_id?: string;
       }[] = body.sheets;
+      const targetIds = picks.flatMap((p) => (p.estimate_id ? [p.estimate_id] : []));
+      invariant(new Set(targetIds).size === targetIds.length, 'DUPLICATE_TARGET', 400);
+      const targets = new Map<string, Row>();
+      for (const id of targetIds)
+        targets.set(id, await importTarget(db, actor, body.project_id, id));
+      const workbook = await openWorkbook(body.file_base64, ESTIMATE_FILE_BYTES);
       const parsed = picks.map((pick) => {
         const sheet = workbook.getWorksheet(pick.sheet);
         invariant(sheet, 'SHEET_NOT_FOUND', 400);
@@ -211,17 +220,20 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
           lines,
           settings: p.settings,
         };
+        const target = p.pick.estimate_id ? targets.get(p.pick.estimate_id) : undefined;
         const stored = await storeImportPreview(
           db,
           actor,
           input,
           (n) => p.lines[n]?._row ?? 0,
           p.pick.sheet,
+          target,
         );
         sheets.push({
           ...stored.row,
           sheet: p.pick.sheet,
           name: p.pick.name,
+          target: target ?? null,
           lines: input.lines.length,
           total: stored.total,
           direct_total: money(direct),
@@ -258,7 +270,7 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/estimate-imports/form5/commit',
     summary:
-      'Form 5 previewlari bitta amalda smeta bo‘ladi; biri xato bo‘lsa hech biri saqlanmaydi',
+      'Form 5 previewlari bitta amalda smeta (yoki tanlangan smetaning yangi reviziyasi, D42) bo‘ladi; biri xato bo‘lsa hech biri saqlanmaydi',
     permission: 'estimates.import',
     body: z.strictObject({
       items: z

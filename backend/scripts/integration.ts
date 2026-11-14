@@ -4340,6 +4340,93 @@ try {
     smetaPreview.preview.lines.reduce((sum: any, l: any) => sum.add(dec(l.quantity).mul(l.unit_price)), dec('0')).toFixed(2),
   );
   passed.push('Estimate import creates missing materials and zones (case-insensitive, once), reports the counts, and rolls back when a unit is unknown');
+  // ---- D42 (2026-11-10): Excel mavjud smetaning yangi reviziyasi — reja almashadi, fakt qoladi; omborda smeta rejasi,
+  // yangi materiallar 0 qoldiq bilan, kirim qilingan yoki qoldig'i bor material o'zgarmaydi
+  const projectR = await call('POST', '/v1/projects', { name: 'D35 reviziya obyekti' }, adminAgain);
+  const rMain = (await call('GET', `/v1/warehouses?project_id=${projectR.id}`, undefined, adminAgain)).items[0];
+  await call('POST', `/v1/employees/${warehouseManager.id}/assignments`, { project_id: projectR.id, warehouse_id: rMain.id }, adminAgain);
+  const d35Book = async (rows: (string | number)[][]) => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Smeta');
+    sheet.addRow(['Turi', 'Nomi', 'Material', 'Birlik', 'Miqdor', 'Narx']);
+    for (const r of rows) sheet.addRow(r);
+    return Buffer.from(await book.xlsx.writeBuffer()).toString('base64');
+  };
+  const d35Mapping = { kind: 'Turi', description: 'Nomi', material_name: 'Material', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx' };
+  const d35Preview = (file: string, extra: object = {}, expected = 200) =>
+    call('POST', '/v1/estimate-imports/preview', { project_id: projectR.id, name: 'D35 smeta', file_base64: file, mapping: d35Mapping, ...extra }, adminAgain, undefined, expected);
+  const d35v1 = await d35Preview(
+    await d35Book([
+      ['material', 'Sement', 'D35 Sement', 'kg', 100, 10],
+      ['material', 'Qum', 'D35 Qum', 'm3', 5, 50],
+      ['material', 'Gips', 'D35 Gips', 'kg', 4, 20],
+      ['ish', 'Suvoq', '', 'm2', 20, 30],
+    ]),
+  );
+  assert.equal(d35v1.target, null);
+  const rEstimate = await call('POST', `/v1/estimate-imports/${d35v1.id}/commit`, { digest: d35v1.digest }, adminAgain);
+  const rMat = async (name: string) => (await admin!.query('SELECT id FROM materials WHERE name=$1', [name])).rows[0].id;
+  const [sement, qum, gips] = [await rMat('D35 Sement'), await rMat('D35 Qum'), await rMat('D35 Gips')];
+  const rOverview = async () =>
+    (await call('GET', `/v1/stock/overview?project_id=${projectR.id}`, undefined, whP)).balances.filter((b: any) => b.material_name.startsWith('D35 '));
+  // smetadagi, hali kelmagan materiallar asosiy omborda 0 qoldiq va reja bilan
+  assert.deepEqual(
+    (await rOverview()).map((b: any) => [b.material_name, b.account_id, b.plan_quantity, b.received_quantity, b.quantity, b.over_plan]),
+    [
+      ['D35 Gips', rMain.account_id, '4.000000', '0.000000', '0.000000', false],
+      ['D35 Qum', rMain.account_id, '5.000000', '0.000000', '0.000000', false],
+      ['D35 Sement', rMain.account_id, '100.000000', '0.000000', '0.000000', false],
+    ],
+  );
+  const rReceipt = (material_id: string, quantity: string) =>
+    call('POST', '/v1/stock/commands', { project_id: projectR.id, kind: 'receipt', material_id, to_account_id: rMain.account_id, quantity, unit_cost: '10', reason: 'D35 kirim' }, whP);
+  await rReceipt(sement, '120');
+  await rReceipt(gips, '2');
+  const wrongReceipt = await rReceipt(sement, '7');
+  await call('POST', `/v1/stock/commands/${wrongReceipt.id}/reverse`, { reason: 'Noto‘g‘ri kirim' }, whP);
+  await call('POST', `/v1/materials/${sement}/aliases`, { name: 'D35 Sement M400' }, whP);
+  const d35v1Lines = (await admin!.query('SELECT material_id,lineage_id FROM estimate_lines WHERE estimate_id=$1', [rEstimate.id])).rows;
+  // v2: Sement muqobil nom bilan va kamaygan reja, Qum va Gips chiqarildi, yangi material qo'shildi
+  const d35v2File = await d35Book([
+    ['material', 'Sement', 'D35 Sement M400', 'kg', 80, 10],
+    ['material', 'Shag‘al', 'D35 Shag‘al', 't', 3, 90],
+    ['ish', 'Suvoq', '', 'm2', 30, 30],
+  ]);
+  const d35v2 = await d35Preview(d35v2File, { estimate_id: rEstimate.id });
+  assert.deepEqual(d35v2.target, { id: rEstimate.id, name: 'D35 smeta', revision: 1 });
+  assert.deepEqual(d35v2.created, { materials: 1, zones: 0 });
+  assert.equal(d35v2.preview.lines[0].material_id, sement);
+  // shu reviziyaga tayyorlangan ikkinchi preview — birinchisi yozilgach eskiradi
+  const d35stale = await d35Preview(d35v2File, { estimate_id: rEstimate.id });
+  const rRevised = await call('POST', `/v1/estimate-imports/${d35v2.id}/commit`, { digest: d35v2.digest }, adminAgain);
+  assert.deepEqual([rRevised.id, rRevised.revision], [rEstimate.id, 2]);
+  assert.deepEqual((await call('POST', `/v1/estimate-imports/${d35v2.id}/commit`, { digest: d35v2.digest }, adminAgain)).id, rEstimate.id);
+  assert.equal(
+    (await call('POST', `/v1/estimate-imports/${d35stale.id}/commit`, { digest: d35stale.digest }, adminAgain, undefined, 409)).error.code,
+    'IMPORT_TARGET_CHANGED',
+  );
+  assert.equal((await call('GET', `/v1/estimates?project_id=${projectR.id}`, undefined, adminAgain)).items.length, 1);
+  const d35v2Lines = (await admin!.query('SELECT material_id,lineage_id FROM estimate_lines WHERE estimate_id=$1 AND archived_at IS NULL', [rEstimate.id])).rows;
+  assert.equal(
+    d35v2Lines.find((l: any) => l.material_id === sement).lineage_id,
+    d35v1Lines.find((l: any) => l.material_id === sement).lineage_id,
+  );
+  const shagal = await rMat('D35 Shag‘al');
+  // reja almashdi; kirim qilingan Sement va Gips o'zgarmadi; kirimi yo'q Qum ombordan chiqdi; Sement rejadan oshgan
+  assert.deepEqual(
+    (await rOverview()).map((b: any) => [b.material_id, b.plan_quantity, b.received_quantity, b.quantity, b.over_plan]),
+    [
+      [gips, null, '2.000000', '2.000000', false],
+      [sement, '80.000000', '120.000000', '120.000000', true],
+      [shagal, '3.000000', '0.000000', '0.000000', false],
+    ],
+  );
+  assert(!(await rOverview()).some((b: any) => b.material_id === qum));
+  // boshqa obyekt smetasi yoki arxivlangan smeta — maqsad bo'lmaydi
+  await d35Preview(d35v2File, { estimate_id: qEstimate.id }, 404);
+  passed.push(
+    'D42: an Excel file uploaded into an existing estimate becomes its next revision (plan replaced, line identity and facts kept, alias names matched, stale previews rejected); the warehouse lists every estimate material with plan and received quantity, new ones at zero, received or stocked ones unchanged, over-plan receipts flagged',
+  );
   // Mijoz admini adminlikni topshira olmaydi (faqat platforma o'tkazadi); jadvalni xlsx qilish
   await call('POST', '/v1/company/ownership', { new_admin_id: foreman.id, previous_admin_role: 'manager', reason: 'Endi mumkin emas' }, adminAgain, undefined, 404);
   const tableXlsx = await call('POST', '/v1/exports/table', { filename: 'sinov jadval', sheet: 'Sinov', title: 'Sinov', headers: ['Nomi', 'Summa'], rows: [['A', '1000.50'], ['B', null]] }, adminAgain);
@@ -4671,6 +4758,23 @@ try {
   );
   const f5matrix = await call('GET', `/v1/projects/${projectQ.id}/floor-progress`, undefined, adminAgain);
   assert.deepEqual(f5matrix.floors.map((f: any) => f.name).sort(), ['1-qavat', '2-qavat']);
+  // D42: Form 5 varag'i mavjud smetaga yangi reviziya bo'lib tushadi; bitta smetaga ikki varaq — rad etiladi
+  const f5normsId = f5saved.estimates[1].id;
+  assert.equal(
+    (await call('POST', '/v1/estimate-imports/form5/preview', { project_id: projectQ.id, file_base64: form5File, sheets: [
+      { sheet: 'Локалка 1', name: 'A', estimate_id: f5normsId },
+      { sheet: 'Нормы', name: 'B', estimate_id: f5normsId },
+    ] }, adminAgain, undefined, 400)).error.code,
+    'DUPLICATE_TARGET',
+  );
+  const f5rev = await call('POST', '/v1/estimate-imports/form5/preview', { project_id: projectQ.id, file_base64: form5File, sheets: [
+    { sheet: 'Нормы', name: 'Form 5 normalar', estimate_id: f5normsId },
+  ] }, adminAgain);
+  assert.equal(f5rev.sheets[0].target.id, f5normsId);
+  const f5revSaved = await call('POST', '/v1/estimate-imports/form5/commit', { items: [{ id: f5rev.sheets[0].id, digest: f5rev.sheets[0].digest }] }, adminAgain);
+  assert.equal(f5revSaved.estimates[0].id, f5normsId);
+  assert.equal(await f5count(), 2);
+  assert.equal((await call('GET', `/v1/estimates/${f5normsId}`, undefined, adminAgain)).revision, 2);
   passed.push(
     'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, the Excel totals block compared row by row with the platform price chain; 21 % and VAT suggested as estimate settings — S3), row errors carry the sheet, and all sheets commit together or not at all (D29); a material whose quantity is «П» (taken from the project) is kept with quantity 0 and a warning (D35)',
   );

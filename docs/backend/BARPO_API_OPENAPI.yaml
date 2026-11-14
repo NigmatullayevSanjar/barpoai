@@ -4542,6 +4542,10 @@ paths:
                         enum:
                           - contractor
                           - customer
+                      estimate_id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
                     required:
                       - sheet
                       - name
@@ -4553,7 +4557,8 @@ paths:
               additionalProperties: false
   /v1/estimate-imports/form5/commit:
     post:
-      summary: Form 5 previewlari bitta amalda smeta bo‘ladi; biri xato bo‘lsa hech biri saqlanmaydi
+      summary: Form 5 previewlari bitta amalda smeta (yoki tanlangan smetaning yangi reviziyasi, D42) bo‘ladi; biri xato
+        bo‘lsa hech biri saqlanmaydi
       operationId: post_v1_estimate_imports_form5_commit
       security:
         - bearerAuth: []
@@ -9222,6 +9227,10 @@ paths:
                       minLength: 1
                       maxLength: 500
                   additionalProperties: false
+                estimate_id:
+                  type: string
+                  format: uuid
+                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
               required:
                 - project_id
                 - name
@@ -9230,7 +9239,7 @@ paths:
               additionalProperties: false
   /v1/estimate-imports/{id}/commit:
     post:
-      summary: Previewdan yangi smeta; eskisini yashirin almashtirmaydi
+      summary: Previewdan yangi smeta yoki previewda tanlangan smetaning yangi reviziyasi (D42); boshqa smetani almashtirmaydi
       operationId: post_v1_estimate_imports__id_commit
       security:
         - bearerAuth: []
