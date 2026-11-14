@@ -18,6 +18,7 @@ import { projectScope, accountScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { createStock } from './inventory.js';
 import { notify, projectRecipients } from './notify.js';
+import { customerMaterials, customerMaterialsWorkbook } from './customer-materials.js';
 import { quantity } from './money.js';
 
 /** Hisoblarni rol doirasiga qarab filtrlovchi umumiy shart. */
@@ -71,7 +72,69 @@ export async function stockOverview(db: Db, actor: Row, projectId: string) {
   );
   return { accounts, balances, pending: { ...pending, requests: requests.pending } };
 }
+/**
+ * S5: buyurtmachi materiallari hisoboti davri — berilmasa joriy oy (Toshkent); `to` kiradi. Ombor ko'rish huquqi
+ * (`stock.read`) va obyekt doirasi; summalar faqat narx huquqi bilan (sensitive / Excel'da ustun bo'sh).
+ */
+const customerQuery = z.strictObject({
+  project_id: uuid,
+  from: date.optional(),
+  to: date.optional(),
+});
+async function loadCustomerMaterials(db: Db, actor: Row, query: Row) {
+  await projectScope(db, actor, query.project_id);
+  const today = (await one(db, "SELECT (now() AT TIME ZONE 'Asia/Tashkent')::date::text d", []))
+    .d as string;
+  const to = query.to ?? today;
+  const from = query.from ?? `${to.slice(0, 7)}-01`;
+  invariant(from <= to, 'DATE_RANGE_INVALID', 400);
+  return customerMaterials(
+    db,
+    actor.tenant_id,
+    query.project_id,
+    from,
+    to,
+    await allowed(db, actor, 'estimates.read'),
+  );
+}
 export function stockExtraRoutes(add: (r: Endpoint) => void) {
+  add({
+    method: 'GET',
+    path: '/v1/stock/customer-materials',
+    summary:
+      'Buyurtmachi (bosh pudratchi) materiallari hisoboti (S5): smetada «buyurtmachi beradi» deb belgilangan materiallar bo‘yicha davr boshidagi qoldiq, berilgan, sarflangan, tuzatish, oxirgi qoldiq (ombor yozuvlari, Toshkent sanasi) va ish bo‘yicha normativ sarf bilan solishtiruv; summa faqat narx huquqi bilan',
+    permission: 'stock.read',
+    query: customerQuery,
+    sensitive: true,
+    handler: ({ db, actor, query }) => loadCustomerMaterials(db, actor, query),
+  });
+  add({
+    method: 'GET',
+    path: '/v1/stock/customer-materials/export',
+    summary:
+      'Buyurtmachi materiallari hisoboti Excel’da (rus tilida, egasining «отчёт» shakli): «Отчет» va «Нормативный расход» varaqlari; summa ustunlari narx huquqisiz bo‘sh; audit export.customer_materials',
+    permission: 'stock.read',
+    query: customerQuery,
+    handler: async ({ db, actor, query }) => {
+      const report = await loadCustomerMaterials(db, actor, query);
+      const project = await one(
+        db,
+        'SELECT name,address FROM projects WHERE tenant_id=$1 AND id=$2',
+        [actor.tenant_id, query.project_id],
+      );
+      const base64 = await customerMaterialsWorkbook(
+        report,
+        { project: project.name, project_address: project.address },
+        await allowed(db, actor, 'prices.read'),
+      );
+      await audit(db, actor, 'export.customer_materials', query.project_id, report.period);
+      return {
+        filename: `${`buyurtmachi-materiallari-${project.name}-${report.period.from}-${report.period.to}`.replace(/[^\w.-]+/g, '_')}.xlsx`,
+        mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        base64,
+      };
+    },
+  });
   add({
     method: 'GET',
     path: '/v1/stock/overview',
@@ -80,6 +143,28 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
     query: z.object({ project_id: uuid }),
     sensitive: true,
     handler: ({ db, actor, query }) => stockOverview(db, actor, query.project_id),
+  });
+  add({
+    method: 'GET',
+    path: '/v1/stock/estimate-lines',
+    summary:
+      'Jo‘natish va sarfda tanlash uchun obyektning joriy smetalaridagi shu materialning qatorlari (barcha arxivlanmagan smetalar); narxsiz, `estimates.read` talab qilinmaydi (brigadir, ombor mudiri)',
+    permission: 'stock.read',
+    query: z.object({ project_id: uuid, material_id: uuid }),
+    handler: async ({ db, actor, query }) => {
+      await projectScope(db, actor, query.project_id);
+      return {
+        items: (
+          await db.query(
+            `SELECT l.id,e.name estimate_name,l.description,l.unit_id,l.effective_quantity::text effective_quantity,z.name zone_name
+             FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
+             WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.material_id=$3 AND l.kind='material' AND l.archived_at IS NULL AND e.archived_at IS NULL
+             ORDER BY e.name,l.position,l.id`,
+            [actor.tenant_id, query.project_id, query.material_id],
+          )
+        ).rows,
+      };
+    },
   });
   add({
     method: 'GET',

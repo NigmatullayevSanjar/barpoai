@@ -34,6 +34,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { ExportButton } from '@/features/common/ExportButton';
+import { CustomerMaterialsTab } from './CustomerMaterialsTab';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
 import { normalizeNumber, useZones, type Material } from '@/features/estimates/model';
 import {
@@ -58,11 +59,20 @@ import {
   useStockMutation,
 } from './StockModals';
 
-type Tab = 'balances' | 'movements' | 'requests' | 'materials';
-const TABS: readonly Tab[] = ['balances', 'movements', 'requests', 'materials'];
+type Tab = 'balances' | 'movements' | 'requests' | 'materials' | 'customer';
+const TABS: readonly Tab[] = ['balances', 'movements', 'requests', 'materials', 'customer'];
 const isTab = (v: string | null): v is Tab => TABS.includes(v as Tab);
 /** Menyu bandi (?tab=…&kind=…&inventory=1) qaysi Figma bo'limini ochadi — sarlavha shu bo'yicha. */
-type Section = 'warehouses' | 'inventory' | 'movements' | 'transfers' | 'accept' | 'requests' | 'materials';
+type Section =
+  | 'balances'
+  | 'warehouses'
+  | 'inventory'
+  | 'movements'
+  | 'transfers'
+  | 'accept'
+  | 'requests'
+  | 'materials'
+  | 'customer';
 export function StockPage() {
   const { t } = useT();
   const { me, permissions } = useAuth();
@@ -81,12 +91,16 @@ export function StockPage() {
     n.delete('inventory');
     setParams(n, { replace: true });
   };
+  // Brigadir va ombor mudirida tablar yo'q: har bo'lim yon menyuning alohida bandi (permissions.ts roleNav).
+  const tabless = me?.role === 'brigadier' || me?.role === 'warehouse_manager';
   const section: Section | null = !tabParam
     ? null
     : tab === 'balances'
       ? inventory
         ? 'inventory'
-        : 'warehouses'
+        : tabless
+          ? 'balances'
+          : 'warehouses'
       : tab === 'movements'
         ? kindParam === 'transfer'
           ? me?.role === 'brigadier'
@@ -180,16 +194,19 @@ export function StockPage() {
           {errorMessage(t, (overview.error as ApiError).code, (overview.error as ApiError).status)}
         </Alert>
       )}
-      <Tabs<Tab>
-        value={tab}
-        onChange={setTab}
-        items={[
-          { key: 'balances', label: t('stock.tab.balances') },
-          { key: 'movements', label: t('stock.tab.movements') },
-          { key: 'requests', label: t('stock.tab.requests'), count: pending?.requests },
-          { key: 'materials', label: t('stock.tab.materials') },
-        ]}
-      />
+      {!tabless && (
+        <Tabs<Tab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            { key: 'balances', label: t('stock.tab.balances') },
+            { key: 'movements', label: t('stock.tab.movements') },
+            { key: 'requests', label: t('stock.tab.requests'), count: pending?.requests },
+            { key: 'materials', label: t('stock.tab.materials') },
+            { key: 'customer', label: t('stock.tab.customer') },
+          ]}
+        />
+      )}
       {tab === 'balances' && d && (
         <BalancesTab
           key={`${sel.projectId}:${inventory}`}
@@ -206,6 +223,9 @@ export function StockPage() {
         <RequestsTab key={sel.projectId} projectId={sel.projectId} accounts={d.accounts} />
       )}
       {tab === 'materials' && <MaterialsTab />}
+      {tab === 'customer' && sel.projectId && (
+        <CustomerMaterialsTab key={sel.projectId} projectId={sel.projectId} />
+      )}
       {modal && d && (
         <CommandModal
           kind={modal.kind}

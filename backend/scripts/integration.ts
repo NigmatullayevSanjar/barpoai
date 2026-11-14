@@ -5392,6 +5392,109 @@ try {
   passed.push(
     'S4: the completion act for a period (accepted reports by report date, corrections by their own date, Form 5 resources as norm × work share, normless materials from linked stock consumption with reversals, facts across revisions by lineage at current prices) feeds the S3 chain for the period, the year and since the start, with the contract percent; removed lines and unlinked consumption are warnings; foreman and brigadier are refused; the Excel file has F-2 and F-3 sheets with values and is audited',
   );
+  // ---- S5 (2026-11-08): buyurtmachi materiallari hisoboti — S4 dagi «S4 gazoblok» harakatlari (bugun): kirim 10 (0 narx),
+  // brigadirga 5, sarf 3 (bog'langan) + 1 (storno qilingan) + 1 (bog'lanmagan); qo'shimcha narxli kirim 2 × 1 000
+  await call('POST', '/v1/stock/commands', { project_id: projectQ.id, kind: 'receipt', material_id: s4Block.id, to_account_id: qWarehouse.account.id, quantity: '2', unit_cost: '1000', reason: 'Buyurtmachi materiali' }, whP);
+  const cmToday = new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);
+  const cmReport = (token = adminAgain, q = `&from=${cmToday}&to=${cmToday}`) =>
+    call('GET', `/v1/stock/customer-materials?project_id=${projectQ.id}${q}`, undefined, token);
+  const cm = await cmReport();
+  const cmBlock = cm.materials.find((m: any) => m.name === 'S4 gazoblok');
+  assert.deepEqual(
+    [cmBlock.opening, cmBlock.received, cmBlock.consumed, cmBlock.adjusted, cmBlock.closing, cmBlock.unlinked, cmBlock.works],
+    [
+      { quantity: '0.000000', value: '0.00' },
+      { quantity: '12.000000', value: '2000.00' },
+      { quantity: '4.000000', value: '0.00' },
+      { quantity: '0.000000', value: '0.00' },
+      { quantity: '8.000000', value: '2000.00' },
+      '1.000000',
+      ['Kladka'],
+    ],
+  );
+  // Normativ: reja 10 × bugungi bajarilgan ulush (tuzatish +5 / reja 100) = 0,5; haqiqiy (bog'langan, storno chiqarilgan) 3
+  assert.deepEqual(
+    cm.lines
+      .filter((l: any) => l.material_id === s4Block.id)
+      .map((l: any) => [l.estimate_name, l.work, l.description, l.normative, l.actual, l.deviation]),
+    [['S4 dalolatnoma', 'Kladka', 'Gazoblok', '0.500000', '3.000000', '2.500000']],
+  );
+  assert(cm.warnings.mixed.includes(material.name));
+  assert.deepEqual(cm.warnings.unlinked.find((u: any) => u.name === 'S4 gazoblok'), { name: 'S4 gazoblok', unit_id: 'pcs', quantity: '1.000000' });
+  // Keyingi kun davrida: bugungi harakatlar davr boshidagi qoldiqqa o'tadi
+  const cmTomorrow = new Date(Date.now() + 29 * 3600e3).toISOString().slice(0, 10);
+  const cmNext = await cmReport(adminAgain, `&from=${cmTomorrow}&to=${cmTomorrow}`);
+  assert.deepEqual(
+    [cmNext.materials.find((m: any) => m.name === 'S4 gazoblok').opening, cmNext.materials.find((m: any) => m.name === 'S4 gazoblok').received.quantity],
+    [{ quantity: '8.000000', value: '2000.00' }, '0.000000'],
+  );
+  // Narx huquqisiz (omborchi, prorab, brigadir) — faqat miqdor; noto'g'ri oraliq
+  // Omborchi smetaga kirmaydi: smeta ma'lumoti (ish bo'yicha qatorlar, ish nomlari, shartnoma) yo'q, faqat harakat
+  const cmWh = await cmReport(whP);
+  const cmWhBlock = cmWh.materials.find((m: any) => m.name === 'S4 gazoblok');
+  assert.deepEqual(
+    [cmWhBlock.received, cmWh.totals.received, cmWh.lines, cmWh.contracts, cmWhBlock.works, cmWhBlock.unlinked],
+    [{ quantity: '12.000000' }, {}, [], [], [], '1.000000'],
+  );
+  // Prorab smetani ko'radi: miqdor farqi (narx emas) ko'rinadi, summa yo'q
+  const cmFore = await cmReport(forePx);
+  assert.deepEqual(
+    [
+      cmFore.materials.find((m: any) => m.name === 'S4 gazoblok').closing.value,
+      cmFore.lines.find((l: any) => l.material_id === s4Block.id)?.deviation,
+    ],
+    [undefined, '2.500000'],
+  );
+  assert.equal(
+    (await call('GET', `/v1/stock/customer-materials?project_id=${projectQ.id}&from=2026-10-31&to=2026-10-01`, undefined, adminAgain, undefined, 400)).error.code,
+    'DATE_RANGE_INVALID',
+  );
+  // Excel: «Отчет» (11 ustun) va «Нормативный расход»; narx huquqisiz summa ustunlari bo'sh; audit
+  const cmFile = await call('GET', `/v1/stock/customer-materials/export?project_id=${projectQ.id}&from=${cmToday}&to=${cmToday}`, undefined, adminAgain);
+  const cmBook = new ExcelJS.Workbook();
+  await cmBook.xlsx.load(Buffer.from(cmFile.base64, 'base64') as any);
+  const cmRows = (book: ExcelJS.Workbook, name: string) => {
+    const out: unknown[][] = [];
+    book.getWorksheet(name)!.eachRow((row) =>
+      out.push(Array.from(row.values as unknown[]).slice(1).map((v) => (v === '' || v === undefined ? null : v))),
+    );
+    return out;
+  };
+  assert.deepEqual(
+    [
+      cmBook.worksheets.map((w) => w.name),
+      cmRows(cmBook, 'Отчет').find((r) => r[1] === 'S4 gazoblok'),
+      cmRows(cmBook, 'Нормативный расход').find((r) => r[2] === 'Gazoblok'),
+    ],
+    [
+      ['Отчет', 'Нормативный расход'],
+      ['Kladka', 'S4 gazoblok', 'шт', 0, 0, 12, 2000, 4, 0, 8, 2000],
+      ['S4 dalolatnoma', 'Kladka', 'Gazoblok', 'шт', 0.5, 3, 2.5],
+    ],
+  );
+  const cmWhFile = await call('GET', `/v1/stock/customer-materials/export?project_id=${projectQ.id}&from=${cmToday}&to=${cmToday}`, undefined, whP);
+  const cmWhBook = new ExcelJS.Workbook();
+  await cmWhBook.xlsx.load(Buffer.from(cmWhFile.base64, 'base64') as any);
+  assert.deepEqual(
+    cmRows(cmWhBook, 'Отчет').find((r) => r[1] === 'S4 gazoblok'),
+    // omborchi smetaga kirmaydi — ish nomi yo'q; summa ustunlari bo'sh
+    [null, 'S4 gazoblok', 'шт', 0, null, 12, null, 4, null, 8, null],
+  );
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='export.customer_materials' AND resource_id=$1", [projectQ.id])).rows[0].n,
+    2,
+  );
+  // Inventarizatsiya: ombordagi qoldiq 7 → 6 (tuzatish −1); oxirgi qoldiq = boshidagi + berilgan − sarflangan + tuzatish
+  await call('POST', `/v1/stock/accounts/${qWarehouse.account.id}/reconcile`, { material_id: s4Block.id, counted_quantity: '6', reason: 'Inventarizatsiya natijasi' }, whP);
+  const cmAdj = (await cmReport()).materials.find((m: any) => m.name === 'S4 gazoblok');
+  const cmFlow = (key: string) => dec(cmAdj.opening[key]).plus(cmAdj.received[key]).minus(cmAdj.consumed[key]).plus(cmAdj.adjusted[key]);
+  assert.deepEqual(
+    [cmAdj.adjusted.quantity, cmAdj.closing.quantity, cmFlow('quantity').toFixed(6), cmFlow('value').toFixed(2)],
+    ['-1.000000', '7.000000', '7.000000', cmAdj.closing.value],
+  );
+  passed.push(
+    'S5: the customer-supplied materials report (materials marked «customer supplies» in the project estimates) gives opening balance, received, consumed (reversals netted), inventory adjustments and closing balance from the stock ledger of all project accounts by Tashkent date, with ledger values only for prices.read; per estimate line it compares actual linked consumption with the normative one (plan × work done share); mixed supply and unlinked consumption are warnings; the Excel file has the owner’s «отчёт» columns and a normative sheet and is audited',
+  );
   // ---- Tarif tahriri: narx va limit o'zgaradi, chiqarilgan invoyslar summasi o'zgarmaydi, o'chirish taqiq
   const invoicesBefore = (
     await admin.query('SELECT id,amount::text FROM billing_invoices WHERE plan_version_id=$1 ORDER BY id', [plan.id])

@@ -670,6 +670,27 @@
 .stat-link:focus-visible {
   border-radius: var(--radius);
 }
+/* KPI kartasidagi bajarilish chizig'i (reja–fakt): to'liq kenglik, foiz o'ng tomonda. */
+.stat .stat-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.stat .stat-progress .progress {
+  flex: 1;
+  height: 6px;
+}
+.stat .stat-progress b {
+  min-width: 3.5em;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.stat .stat-progress b.is-danger {
+  color: var(--danger);
+}
 .stat.accent {
   background: var(--brand-700);
   border-color: var(--brand-700);

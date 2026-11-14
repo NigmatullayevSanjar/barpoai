@@ -131,6 +131,8 @@ export const workRu: Record<string, string> = {
   'reports.reviewed_by': 'Проверил',
   'reports.history': 'История',
   'reports.no_work_lines': 'В смете объекта нет строк работ; можно отправить отчёт без объёма.',
+  'reports.no_zone_work_lines':
+    'В этой зоне нет строк работ сметы; выберите другую зону или отправьте без объёма.',
   'error.PROGRESS_LINE_REQUIRED': 'Объём прогресса и строка сметы указываются вместе.',
   'error.MATERIAL_IS_NOT_WORK_PROGRESS': 'Строка материала не является прогрессом работ.',
   'error.RETURN_REASON_REQUIRED': 'Нужна причина возврата.',

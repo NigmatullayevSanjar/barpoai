@@ -67,13 +67,14 @@ export function computeAct(
     hasNormed.has(groupKey(l)!);
   const works = new Map<
     string,
-    { plan: ReturnType<typeof dec>; done: Record<ActRange, ReturnType<typeof dec>> }
+    { plan: ReturnType<typeof dec>; done: Record<ActRange, ReturnType<typeof dec>>; name: string }
   >();
   for (const l of lines.filter(isWork)) {
     const key = groupKey(l)!;
     const g = works.get(key) ?? {
       plan: dec('0'),
       done: { start: dec('0'), year: dec('0'), period: dec('0') },
+      name: l.description,
     };
     g.plan = g.plan.plus(l.effective_quantity);
     const p = progress.get(l.lineage_id) ?? zero();
@@ -150,8 +151,25 @@ export function computeAct(
               ? 'customer_materials'
               : 'contractor_materials';
     for (const r of actRanges) costs[r][bucket] = costs[r][bucket].plus(amount[r]);
+    // S5: material qatorida haqiqiy sarf (ombor) va normativ sarf (reja miqdori × ishning bajarilgan ulushi)
+    const share = (r: ActRange) =>
+      group && !group.plan.isZero()
+        ? quantity(dec(l.effective_quantity).mul(group.done[r]).div(group.plan))
+        : quantity(0);
+    const normative =
+      l.kind !== 'material' || !group
+        ? null
+        : (Object.fromEntries(actRanges.map((r) => [r, share(r)])) as Triple);
     out.push({
       ...l,
+      work: group?.name ?? null,
+      consumed:
+        l.kind === 'material'
+          ? (Object.fromEntries(
+              actRanges.map((r) => [r, quantity((consumption.get(l.lineage_id) ?? zero())[r])]),
+            ) as Triple)
+          : null,
+      normative,
       // F-2 «Норма на ед.»: ishning saqlangan birligiga (m2, …) — davr miqdori = norma × ish hajmi
       unit_norm:
         basis === 'norm' && group && !group.plan.isZero()
@@ -178,16 +196,16 @@ const sumTriple = (expr: string, date: string) => `
 /** Ombor sarfi: sarf buyrug'i yoki uning stornosi (`reversal`) qaysi smeta qatoriga tegishli. */
 const consumedLine = `CASE WHEN c.kind='reversal' THEN o.estimate_line_id ELSE c.estimate_line_id END`;
 
-/** Smetaning davr dalolatnomasi (F-2/F-3 ma'lumoti). `from`, `to` — sana (YYYY-MM-DD), `to` kiradi. */
-export async function estimateAct(
+/** Smeta qatorlari va davr faktlari (qabul qilingan hajm, ombor sarfi) — dalolatnoma (S4) va material hisoboti (S5) uchun. */
+export async function loadActInputs(
   db: Db,
   tenantId: string,
-  estimate: Row,
+  estimateId: string,
   from: string,
   to: string,
 ) {
   const year = `${to.slice(0, 4)}-01-01`;
-  const params = [tenantId, estimate.id, from, to, year];
+  const params = [tenantId, estimateId, from, to, year];
   const lines = (
     await db.query(
       `SELECT l.id,l.lineage_id,l.kind,l.description,l.unit_id,l.norm::text norm,l.effective_quantity::text effective_quantity,
@@ -195,7 +213,7 @@ export async function estimateAct(
          ${percentLineSql} is_percent
        FROM estimate_lines l WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL
        ORDER BY l.position,l.id`,
-      [tenantId, estimate.id],
+      [tenantId, estimateId],
     )
   ).rows as ActLineInput[];
   const progressRows = (
@@ -234,7 +252,32 @@ export async function estimateAct(
     new Map(
       rows.map((r) => [r.lineage_id as string, { start: r.start, year: r.year, period: r.period }]),
     );
-  const computed = computeAct(lines, toMap(progressRows), toMap(consumptionRows));
+  return {
+    year,
+    lines,
+    progressRows,
+    consumptionRows,
+    progress: toMap(progressRows),
+    consumption: toMap(consumptionRows),
+  };
+}
+
+/** Smetaning davr dalolatnomasi (F-2/F-3 ma'lumoti). `from`, `to` — sana (YYYY-MM-DD), `to` kiradi. */
+export async function estimateAct(
+  db: Db,
+  tenantId: string,
+  estimate: Row,
+  from: string,
+  to: string,
+) {
+  const { year, lines, progressRows, consumptionRows, progress, consumption } = await loadActInputs(
+    db,
+    tenantId,
+    estimate.id,
+    from,
+    to,
+  );
+  const computed = computeAct(lines, progress, consumption);
   const settings = settingsOf(estimate);
   const totals = Object.fromEntries(
     actRanges.map((r) => [r, priceChain(computed.costs[r], settings)]),
@@ -341,6 +384,10 @@ const units: Record<string, string> = {
   t: 'т',
   set: 'компл',
   l: 'л',
+  section: 'секция',
+  boiler: 'котел',
+  cycle: 'цикл',
+  end: 'конец',
 };
 const unitOf = (unit: string, kind: string) =>
   unit === 'hour' ? (kind === 'equipment' ? 'маш.-ч' : 'чел.-ч') : (units[unit] ?? unit);

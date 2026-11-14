@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, type ListResponse } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatQuantity, unitLabel } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select, Textarea } from '@/components/ui';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useToast } from '@/components/ui/Toast';
-import { useZones, type EstimateLine, type EstimateSummary, type Material } from '@/features/estimates/model';
+import { useZones, type Material } from '@/features/estimates/model';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
 import { normalizeNumber } from '@/features/estimates/model';
 import { stockKeys, type Balance, type StockAccount, type StockCommand, type CommandKind } from './model';
@@ -30,23 +30,28 @@ export function useStockMutation<T>(fn: (v: T) => Promise<unknown>, onDone?: () 
   });
 }
 
-/** Smeta qatorlarini (material turi) tanlash uchun joriy obyekt smetalari */
+type MaterialLine = {
+  id: string;
+  estimate_name: string;
+  description: string;
+  unit_id: string;
+  effective_quantity: string;
+  zone_name: string | null;
+};
+/**
+ * Tanlangan materialning obyektdagi barcha joriy smetalardagi qatorlari. Ombor ruxsati bilan o'qiladi —
+ * brigadir va ombor mudirida smeta sahifasi (estimates.read) yo'q.
+ */
 function useMaterialLines(projectId: string, materialId: string) {
-  const { can } = useAuth();
-  const estimates = useQuery({
-    queryKey: ['estimates', projectId],
-    queryFn: () => api<ListResponse<EstimateSummary>>(`/v1/estimates?project_id=${projectId}&limit=100`),
-    enabled: Boolean(projectId) && can('estimates'),
+  const query = useQuery({
+    queryKey: ['stock-estimate-lines', projectId, materialId],
+    queryFn: () =>
+      api<{ items: MaterialLine[] }>(
+        `/v1/stock/estimate-lines?project_id=${projectId}&material_id=${materialId}`,
+      ),
+    enabled: Boolean(projectId && materialId),
   });
-  const first = estimates.data?.items[0];
-  const detail = useQuery({
-    queryKey: ['estimate', first?.id],
-    queryFn: () => api<{ lines: EstimateLine[] }>(`/v1/estimates/${first!.id}`),
-    enabled: Boolean(first),
-  });
-  return (detail.data?.lines ?? []).filter(
-    (l) => l.kind === 'material' && (!materialId || l.material_id === materialId),
-  );
+  return query.data?.items ?? [];
 }
 
 type CommandModalProps = {
@@ -229,7 +234,13 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
               <option value="">—</option>
               {lines.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.description} ({formatQuantity(l.effective_quantity, l.unit_id)})
+                  {[
+                    `${l.description} (${formatQuantity(l.effective_quantity, l.unit_id)})`,
+                    l.zone_name,
+                    l.estimate_name,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </option>
               ))}
             </Select>

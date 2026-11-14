@@ -159,6 +159,7 @@ export const useRequests = (projectId: string, page: { offset: number; limit: nu
   });
 export const stockKeys = [
   'stock-overview',
+  'customer-materials',
   'stock-commands',
   'stock-requests',
   'stock-ledger',

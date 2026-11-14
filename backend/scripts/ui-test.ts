@@ -599,8 +599,10 @@ try {
   await brigadierPage.getByText('Parol yangilandi').waitFor();
   await login(brigadierPage, 'ui.brigadier', password + '3');
   await brigadierPage.locator('.sidebar').getByRole('link', { name: 'Bosh sahifa' }).waitFor();
-  await brigadierPage.goto(stockUrl);
-  await brigadierPage.getByRole('tab', { name: /Harakatlar/ }).click();
+  // Brigadirda ombor sahifasi tablarsiz: bo'limlar yon menyuning alohida bandlari ("Material qabul" va h.k.)
+  await brigadierPage.goto(stockUrl + '&tab=movements&kind=transfer');
+  await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().waitFor();
+  assert.equal(await brigadierPage.getByRole('tab').count(), 0, 'brigadier stock page has no tabs');
   await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().click();
   await brigadierPage
     .getByRole('dialog')
@@ -616,6 +618,13 @@ try {
     .getByRole('dialog')
     .getByLabel('Material', { exact: true })
     .selectOption({ index: 1 });
+  // Brigadirda estimates.read yo'q: smeta qatorlari ombor ruxsati bilan (/v1/stock/estimate-lines) keladi
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel('Smeta qatori')
+    .locator('option')
+    .nth(1)
+    .waitFor({ state: 'attached' });
   await brigadierPage
     .getByRole('dialog')
     .getByLabel(/^Miqdor/)
@@ -623,7 +632,9 @@ try {
   await brigadierPage.getByRole('dialog').getByLabel(/Sabab/).fill('Poydevor betoni uchun sarf');
   await brigadierPage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
   await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
-  checks.push('Brigadier accepts a transfer partially and submits a consumption proposal');
+  checks.push(
+    'Brigadier stock sections open without tabs; brigadier accepts a transfer partially and submits a consumption proposal; the estimate line select lists lines without estimates.read',
+  );
   // Sarf taklifini prorab tasdiqlaydi (stock.review); admin faqat ko'radi
   await foremanPage.goto(stockUrl);
   await foremanPage.getByRole('tab', { name: /Harakatlar/ }).click();
@@ -644,7 +655,7 @@ try {
   checks.push(
     'Consumption review posts expense 150 x 1200 and leaves warehouse 800 (100 still reserved) and custody 50',
   );
-  await brigadierPage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  await brigadierPage.goto(stockUrl + '&tab=requests');
   await brigadierPage.getByRole('button', { name: 'Material so‘rash' }).click();
   // V-B (D23): bitta talabnomada ikki qator; ombor mudiri qatorma-qator bajaradi yoki rad etadi
   const requestDialog = brigadierPage.getByRole('dialog');
@@ -658,8 +669,10 @@ try {
   await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
   await brigadierPage.getByText(/Tosh 001 — 5 kg/).waitFor();
   // Talabnomani faqat ombor mudiri bajaradi (2026-10-16)
-  await warehousePage.goto(stockUrl);
-  await warehousePage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  // Ombor mudirida ham tablar yo'q: "Talabnomalar" menyu bandi bilan bir xil manzil
+  await warehousePage.goto(stockUrl + '&tab=requests');
+  await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().waitFor();
+  assert.equal(await warehousePage.getByRole('tab').count(), 0, 'warehouse manager stock page has no tabs');
   // 1-qator (Sement) jo'natish bilan bajariladi — talabnoma hali kutilmoqda (2-qator ochiq)
   await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().click();
   await warehousePage
@@ -694,6 +707,23 @@ try {
   assert.equal(await foremanPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
   checks.push(
     'Two-line material request from the brigadier: the warehouse manager fulfils one line via a transfer and rejects the other line by line; the admin and the foreman only read requests (no request button)',
+  );
+  // S5: «Buyurtmachi materiallari» yorlig'i — davr boshqaruvi, bo'sh holat yoki jadval, Excel yuklab olish
+  await adminPage.goto(stockUrl);
+  await adminPage.getByRole('tab', { name: 'Buyurtmachi materiallari', exact: true }).click();
+  await adminPage.getByRole('button', { name: 'Sana oralig‘i', exact: true }).waitFor();
+  await adminPage
+    .getByText('Obyekt smetalarida buyurtmachi ta’minlaydigan material belgilanmagan.')
+    .or(adminPage.getByRole('columnheader', { name: 'Davr boshidagi qoldiq', exact: true }))
+    .waitFor();
+  const [customerDownload] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    // sahifa sarlavhasida ham «Excel» (qoldiqlar eksporti) bor — tabdagisi oxirgi
+    adminPage.getByRole('button', { name: 'Excel', exact: true }).last().click(),
+  ]);
+  assert.match(customerDownload.suggestedFilename(), /^buyurtmachi-materiallari-.*\.xlsx$/);
+  checks.push(
+    'Stock page customer-materials tab shows the period control and either the empty state or the report table, and downloads the Excel report',
   );
   // 5e. Moliya: kontragent, kassa, invoys (kirimga bog'langan), to'lov, to'lov so'rovi, ish haqi (stage 07)
   const dialog = () => adminPage.getByRole('dialog');

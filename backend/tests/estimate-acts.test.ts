@@ -115,6 +115,20 @@ test('act: Form 5 resources follow the work share, normless materials come from 
     [null, '0.624000', '2.125000', null, null, null, null],
   );
   assert.deepEqual(act.ignored, []);
+  // S5: material qatorida haqiqiy sarf va normativ sarf (reja × ishning bajarilgan ulushi), ish nomi
+  const m1 = act.lines.find((l) => l.id === 'M1')!;
+  assert.deepEqual(
+    [m1.work, m1.consumed, m1.normative],
+    [
+      'W',
+      { start: '12.000000', year: '12.000000', period: '5.000000' },
+      { start: '10.000000', year: '10.000000', period: '5.000000' },
+    ],
+  );
+  assert.deepEqual(
+    [act.lines.find((l) => l.id === 'E')!.normative, act.lines.find((l) => l.id === 'E')!.work],
+    [null, null],
+  );
   assert.deepEqual(act.costs.period, {
     labor: '936000.00',
     equipment: '200000.00',
