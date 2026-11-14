@@ -196,7 +196,6 @@ export const estimatesRu: Record<string, string> = {
   'est.f5_commit': 'Создать смет: {n}',
   'est.f5_done': 'Импортировано смет: {n}',
   'est.import_expired': 'Срок проверки истёк, проверьте заново.',
-  'est.unit_price_hidden': 'Цены скрыты для вашей роли',
   'error.IMPORT_NAMES_UNRESOLVED': 'Некоторые названия материалов или зон из Excel не найдены.',
   'error.UNIT_CONVERSION_REQUIRED': 'Единица строки не совпадает с единицей материала.',
   'error.MONTH_QUANTITY_MISMATCH': 'Сумма по месяцам не равна расчётному количеству.',

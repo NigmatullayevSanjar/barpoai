@@ -8,7 +8,6 @@ import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatMoney } from '@/lib/format';
 import { displayCurrency } from '@/lib/currency-store';
 import {
-  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -84,7 +83,6 @@ export function EstimatesPage() {
           projects={sel.projects}
         />
         <SearchInput value={list.search} onChange={list.setSearch} placeholder={t('est.search')} />
-        {!pricesVisible && <Badge tone="warning">{t('est.unit_price_hidden')}</Badge>}
         <span className="spacer" />
         {actions}
       </div>

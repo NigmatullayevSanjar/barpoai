@@ -210,7 +210,6 @@ export function EstimateDetailPage() {
       {headerEdit && (
         <HeaderModal estimate={d} pricesVisible={pricesVisible} onClose={() => setHeaderEdit(false)} />
       )}
-      {!pricesVisible && <Alert tone="warning">{t('est.unit_price_hidden')}</Alert>}
       <div className="toolbar blocks-toolbar">
         <SearchInput value={search} onChange={setSearch} placeholder={t('est.search_lines')} />
         <Select

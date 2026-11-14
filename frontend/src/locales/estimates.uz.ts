@@ -193,7 +193,6 @@ export const estimatesUz: Record<string, string> = {
   'est.f5_commit': '{n} ta smetani yaratish',
   'est.f5_done': '{n} ta smeta import qilindi',
   'est.import_expired': 'Tekshiruv muddati o‘tdi, qayta tekshiring.',
-  'est.unit_price_hidden': 'Narxlar sizning rolingiz uchun yashirin',
   'error.IMPORT_NAMES_UNRESOLVED': 'Exceldagi ayrim material yoki zona nomlari topilmadi.',
   'error.UNIT_CONVERSION_REQUIRED': 'Qator birligi material birligiga mos emas.',
   'error.MONTH_QUANTITY_MISMATCH': 'Oylar yig‘indisi hisobiy miqdorga teng emas.',
