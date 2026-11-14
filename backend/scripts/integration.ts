@@ -772,6 +772,7 @@ try {
     by_kind: [{ key: 'material', count: 1, total: '260.00', value: '0.00' }],
     by_category: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
     by_zone: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
+    by_section: [{ key: '', count: 1, total: '260.00', value: '0.00' }],
   });
   const estForeman = await call('GET', `/v1/estimates/${est.id}`, undefined, foreman.token);
   assert.equal(estForeman.totals.total, undefined);
@@ -887,8 +888,11 @@ try {
   assert(totalCol > 0 && adminSheet.headers.includes('Birlik narxi'));
   const descCol = adminSheet.headers.indexOf('Nomi') + 1;
   let exported = dec('0');
+  let afterJami = false;
   adminSheet.sheet.eachRow((row, i) => {
-    if (i === 1 || row.getCell(descCol).value === 'JAMI') return;
+    if (row.getCell(descCol).value === 'JAMI') afterJami = true;
+    // JAMI dan keyin — S3 smeta yakuni bloki (qator emas)
+    if (i === 1 || afterJami) return;
     exported = exported.plus(String(row.getCell(totalCol).value));
   });
   assert.equal(exported.toFixed(2), '0.60');
@@ -4336,6 +4340,93 @@ try {
     smetaPreview.preview.lines.reduce((sum: any, l: any) => sum.add(dec(l.quantity).mul(l.unit_price)), dec('0')).toFixed(2),
   );
   passed.push('Estimate import creates missing materials and zones (case-insensitive, once), reports the counts, and rolls back when a unit is unknown');
+  // ---- D42 (2026-11-10): Excel mavjud smetaning yangi reviziyasi — reja almashadi, fakt qoladi; omborda smeta rejasi,
+  // yangi materiallar 0 qoldiq bilan, kirim qilingan yoki qoldig'i bor material o'zgarmaydi
+  const projectR = await call('POST', '/v1/projects', { name: 'D35 reviziya obyekti' }, adminAgain);
+  const rMain = (await call('GET', `/v1/warehouses?project_id=${projectR.id}`, undefined, adminAgain)).items[0];
+  await call('POST', `/v1/employees/${warehouseManager.id}/assignments`, { project_id: projectR.id, warehouse_id: rMain.id }, adminAgain);
+  const d35Book = async (rows: (string | number)[][]) => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Smeta');
+    sheet.addRow(['Turi', 'Nomi', 'Material', 'Birlik', 'Miqdor', 'Narx']);
+    for (const r of rows) sheet.addRow(r);
+    return Buffer.from(await book.xlsx.writeBuffer()).toString('base64');
+  };
+  const d35Mapping = { kind: 'Turi', description: 'Nomi', material_name: 'Material', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Narx' };
+  const d35Preview = (file: string, extra: object = {}, expected = 200) =>
+    call('POST', '/v1/estimate-imports/preview', { project_id: projectR.id, name: 'D35 smeta', file_base64: file, mapping: d35Mapping, ...extra }, adminAgain, undefined, expected);
+  const d35v1 = await d35Preview(
+    await d35Book([
+      ['material', 'Sement', 'D35 Sement', 'kg', 100, 10],
+      ['material', 'Qum', 'D35 Qum', 'm3', 5, 50],
+      ['material', 'Gips', 'D35 Gips', 'kg', 4, 20],
+      ['ish', 'Suvoq', '', 'm2', 20, 30],
+    ]),
+  );
+  assert.equal(d35v1.target, null);
+  const rEstimate = await call('POST', `/v1/estimate-imports/${d35v1.id}/commit`, { digest: d35v1.digest }, adminAgain);
+  const rMat = async (name: string) => (await admin!.query('SELECT id FROM materials WHERE name=$1', [name])).rows[0].id;
+  const [sement, qum, gips] = [await rMat('D35 Sement'), await rMat('D35 Qum'), await rMat('D35 Gips')];
+  const rOverview = async () =>
+    (await call('GET', `/v1/stock/overview?project_id=${projectR.id}`, undefined, whP)).balances.filter((b: any) => b.material_name.startsWith('D35 '));
+  // smetadagi, hali kelmagan materiallar asosiy omborda 0 qoldiq va reja bilan
+  assert.deepEqual(
+    (await rOverview()).map((b: any) => [b.material_name, b.account_id, b.plan_quantity, b.received_quantity, b.quantity, b.over_plan]),
+    [
+      ['D35 Gips', rMain.account_id, '4.000000', '0.000000', '0.000000', false],
+      ['D35 Qum', rMain.account_id, '5.000000', '0.000000', '0.000000', false],
+      ['D35 Sement', rMain.account_id, '100.000000', '0.000000', '0.000000', false],
+    ],
+  );
+  const rReceipt = (material_id: string, quantity: string) =>
+    call('POST', '/v1/stock/commands', { project_id: projectR.id, kind: 'receipt', material_id, to_account_id: rMain.account_id, quantity, unit_cost: '10', reason: 'D35 kirim' }, whP);
+  await rReceipt(sement, '120');
+  await rReceipt(gips, '2');
+  const wrongReceipt = await rReceipt(sement, '7');
+  await call('POST', `/v1/stock/commands/${wrongReceipt.id}/reverse`, { reason: 'Noto‘g‘ri kirim' }, whP);
+  await call('POST', `/v1/materials/${sement}/aliases`, { name: 'D35 Sement M400' }, whP);
+  const d35v1Lines = (await admin!.query('SELECT material_id,lineage_id FROM estimate_lines WHERE estimate_id=$1', [rEstimate.id])).rows;
+  // v2: Sement muqobil nom bilan va kamaygan reja, Qum va Gips chiqarildi, yangi material qo'shildi
+  const d35v2File = await d35Book([
+    ['material', 'Sement', 'D35 Sement M400', 'kg', 80, 10],
+    ['material', 'Shag‘al', 'D35 Shag‘al', 't', 3, 90],
+    ['ish', 'Suvoq', '', 'm2', 30, 30],
+  ]);
+  const d35v2 = await d35Preview(d35v2File, { estimate_id: rEstimate.id });
+  assert.deepEqual(d35v2.target, { id: rEstimate.id, name: 'D35 smeta', revision: 1 });
+  assert.deepEqual(d35v2.created, { materials: 1, zones: 0 });
+  assert.equal(d35v2.preview.lines[0].material_id, sement);
+  // shu reviziyaga tayyorlangan ikkinchi preview — birinchisi yozilgach eskiradi
+  const d35stale = await d35Preview(d35v2File, { estimate_id: rEstimate.id });
+  const rRevised = await call('POST', `/v1/estimate-imports/${d35v2.id}/commit`, { digest: d35v2.digest }, adminAgain);
+  assert.deepEqual([rRevised.id, rRevised.revision], [rEstimate.id, 2]);
+  assert.deepEqual((await call('POST', `/v1/estimate-imports/${d35v2.id}/commit`, { digest: d35v2.digest }, adminAgain)).id, rEstimate.id);
+  assert.equal(
+    (await call('POST', `/v1/estimate-imports/${d35stale.id}/commit`, { digest: d35stale.digest }, adminAgain, undefined, 409)).error.code,
+    'IMPORT_TARGET_CHANGED',
+  );
+  assert.equal((await call('GET', `/v1/estimates?project_id=${projectR.id}`, undefined, adminAgain)).items.length, 1);
+  const d35v2Lines = (await admin!.query('SELECT material_id,lineage_id FROM estimate_lines WHERE estimate_id=$1 AND archived_at IS NULL', [rEstimate.id])).rows;
+  assert.equal(
+    d35v2Lines.find((l: any) => l.material_id === sement).lineage_id,
+    d35v1Lines.find((l: any) => l.material_id === sement).lineage_id,
+  );
+  const shagal = await rMat('D35 Shag‘al');
+  // reja almashdi; kirim qilingan Sement va Gips o'zgarmadi; kirimi yo'q Qum ombordan chiqdi; Sement rejadan oshgan
+  assert.deepEqual(
+    (await rOverview()).map((b: any) => [b.material_id, b.plan_quantity, b.received_quantity, b.quantity, b.over_plan]),
+    [
+      [gips, null, '2.000000', '2.000000', false],
+      [sement, '80.000000', '120.000000', '120.000000', true],
+      [shagal, '3.000000', '0.000000', '0.000000', false],
+    ],
+  );
+  assert(!(await rOverview()).some((b: any) => b.material_id === qum));
+  // boshqa obyekt smetasi yoki arxivlangan smeta — maqsad bo'lmaydi
+  await d35Preview(d35v2File, { estimate_id: qEstimate.id }, 404);
+  passed.push(
+    'D42: an Excel file uploaded into an existing estimate becomes its next revision (plan replaced, line identity and facts kept, alias names matched, stale previews rejected); the warehouse lists every estimate material with plan and received quantity, new ones at zero, received or stocked ones unchanged, over-plan receipts flagged',
+  );
   // Mijoz admini adminlikni topshira olmaydi (faqat platforma o'tkazadi); jadvalni xlsx qilish
   await call('POST', '/v1/company/ownership', { new_admin_id: foreman.id, previous_admin_role: 'manager', reason: 'Endi mumkin emas' }, adminAgain, undefined, 404);
   const tableXlsx = await call('POST', '/v1/exports/table', { filename: 'sinov jadval', sheet: 'Sinov', title: 'Sinov', headers: ['Nomi', 'Summa'], rows: [['A', '1000.50'], ['B', null]] }, adminAgain);
@@ -4541,29 +4632,29 @@ try {
       [
         ['Накладная', false, 0, 0, 0, 0],
         ['Локалка 1', true, 2, 7, 2, 8],
-        ['Нормы', true, 1, 2, 0, 0],
+        ['Нормы', true, 1, 2, 1, 0],
       ],
     ],
   );
-  const f5body = (addRows?: number[], file = form5File) => ({
+  const f5body = (pick: Record<string, unknown> = {}, file = form5File) => ({
     project_id: projectQ.id,
     file_base64: file,
     sheets: [
-      { sheet: 'Локалка 1', name: 'Form 5 lokalka', ...(addRows ? { add_rows: addRows } : {}) },
+      { sheet: 'Локалка 1', name: 'Form 5 lokalka', ...pick },
       { sheet: 'Нормы', name: 'Form 5 normalar' },
     ],
   });
   assert.equal(
-    (await call('POST', '/v1/estimate-imports/form5/preview', f5body([24]), adminAgain, undefined, 400)).error.code,
-    'EXCEL_ROW_NOT_ADDABLE',
+    (await call('POST', '/v1/estimate-imports/form5/preview', f5body({ settings: { markup_mode: 'vmq583' } }), adminAgain, undefined, 400)).error.code,
+    'VMQ583_PRESET',
   );
   const brokenFile = Buffer.from(await form5Workbook({ brokenFormula: true }).xlsx.writeBuffer()).toString('base64');
-  const f5broken = await call('POST', '/v1/estimate-imports/form5/preview', f5body(undefined, brokenFile), adminAgain, undefined, 400);
+  const f5broken = await call('POST', '/v1/estimate-imports/form5/preview', f5body({}, brokenFile), adminAgain, undefined, 400);
   assert.deepEqual(
     [f5broken.error.code, f5broken.error.details],
     ['IMPORT_ROWS_INVALID', [{ sheet: 'Локалка 1', row: 10, field: 'norm', message: 'formula' }]],
   );
-  const f5 = await call('POST', '/v1/estimate-imports/form5/preview', f5body([23]), adminAgain);
+  const f5 = await call('POST', '/v1/estimate-imports/form5/preview', f5body(), adminAgain);
   const [f5lok, f5norm] = f5.sheets;
   assert.deepEqual(
     [
@@ -4575,25 +4666,51 @@ try {
       f5lok.zones,
       f5lok.created,
       f5lok.converted,
-      f5lok.excel_rows.map((x: any) => [x.row, x.addable, x.added]),
-      [f5norm.lines, f5norm.total, f5norm.warnings.unpriced],
+      f5lok.excel_rows.map((x: any) => [x.row, x.key, x.platform_amount, x.difference]),
+      [f5norm.lines, f5norm.total, f5norm.warnings.unpriced, f5norm.warnings.project_quantity_count, f5norm.warnings.project_quantity.map((p: any) => p.row)],
     ],
     [
-      12,
-      '22188955.80',
+      11,
+      '18337980.00',
       '18337980.00',
       '18340000.00',
       '-2020.00',
       ['1-qavat', '2-qavat'],
       { materials: 4, zones: 2 },
       [{ row: 20, from: 'kg', to: 't' }],
+      // S3: Excel jamlari zanjir bilan qatorma-qator — 21 % va QQS platforma jamidan
       [
-        [22, false, false],
-        [23, true, true],
-        [24, false, false],
+        [22, 'direct_total', '18337980.00', '-2020.00'],
+        [23, 'other_costs', '3850975.80', '-424.20'],
+        [24, 'vat', '2662674.70', '-1193.30'],
       ],
-      [3, '0.00', 2],
+      [4, '0.00', 2, 1, [11]],
     ],
+  );
+  // S3: sozlama Excel jamlar blokidan taklif qilinadi (21 %, QQS 12 %); bosh pudratchi materiali — buyurtmachi qatori yo'q
+  assert.deepEqual(
+    [f5lok.suggested, f5lok.gc_materials, f5lok.gc_supplied_by, f5lok.price_summary.total],
+    [
+      {
+        markup_mode: 'free',
+        other_costs_percent: '21',
+        profit_percent: '0',
+        production_costs_percent: '0',
+        deduct_customer_materials: true,
+        vat_percent: '12',
+        gc_supplied_by: 'contractor',
+      },
+      2,
+      'contractor',
+      '24851630.50',
+    ],
+  );
+  // «Buyurtmachi beradi» tanlansa bosh pudratchi materiallari (13 000 000 + 150 000) chegiriladi
+  const f5customer = (await call('POST', '/v1/estimate-imports/form5/preview', f5body({ gc_supplied_by: 'customer' }), adminAgain))
+    .sheets[0].price_summary.lines;
+  assert.deepEqual(
+    f5customer.filter((l: any) => ['customer_materials', 'customer_deduction'].includes(l.key)).map((l: any) => l.amount),
+    ['13150000.00', '-13150000.00'],
   );
   // biri xato bo'lsa hech biri saqlanmaydi
   const f5count = async () =>
@@ -4612,9 +4729,25 @@ try {
   assert.equal(await f5count(), 2);
   assert.deepEqual((await call('POST', '/v1/estimate-imports/form5/commit', f5items, adminAgain)).estimates, f5saved.estimates);
   const f5est = await call('GET', `/v1/estimates/${f5saved.estimates[0].id}`, undefined, adminAgain);
+  // S3: 21 % qator emas — sozlama; qatorlar jami (plan) o'zgarmaydi, smeta narxi zanjirda
   assert.deepEqual(
-    [f5est.lines.length, f5est.totals.total, f5est.lines.at(-1).kind, f5est.lines.at(-1).description],
-    [12, '22188955.80', 'service', 'ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)'],
+    [
+      f5est.lines.length,
+      f5est.totals.total,
+      f5est.other_costs_percent,
+      f5est.vat_percent,
+      f5est.price_summary.lines.find((l: any) => l.key === 'other_costs').amount,
+      f5est.price_summary.total,
+    ],
+    [11, '18337980.00', '21.0000', '12.0000', '3850975.80', '24851630.50'],
+  );
+  // D35: «П» (miqdor loyihadan) material qatori 0 miqdor bilan saqlanadi, izohda belgi; asl kod resurs kodi maydonida (S2)
+  const f5normEst = await call('GET', `/v1/estimates/${f5saved.estimates[1].id}`, undefined, adminAgain);
+  assert.deepEqual(
+    f5normEst.lines
+      .filter((l: any) => l.kind === 'material')
+      .map((l: any) => [l.description, l.unit_id, l.quantity, l.resource_code, l.note, l.total]),
+    [['СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА', 'kg', '0.000000', 'П54889', 'П — miqdor loyihadan', '0.00']],
   );
   assert.deepEqual(
     (await admin.query("SELECT name,kind FROM zones WHERE project_id=$1 AND name LIKE '%-qavat' ORDER BY name", [projectQ.id])).rows,
@@ -4625,8 +4758,25 @@ try {
   );
   const f5matrix = await call('GET', `/v1/projects/${projectQ.id}/floor-progress`, undefined, adminAgain);
   assert.deepEqual(f5matrix.floors.map((f: any) => f.name).sort(), ['1-qavat', '2-qavat']);
+  // D42: Form 5 varag'i mavjud smetaga yangi reviziya bo'lib tushadi; bitta smetaga ikki varaq — rad etiladi
+  const f5normsId = f5saved.estimates[1].id;
+  assert.equal(
+    (await call('POST', '/v1/estimate-imports/form5/preview', { project_id: projectQ.id, file_base64: form5File, sheets: [
+      { sheet: 'Локалка 1', name: 'A', estimate_id: f5normsId },
+      { sheet: 'Нормы', name: 'B', estimate_id: f5normsId },
+    ] }, adminAgain, undefined, 400)).error.code,
+    'DUPLICATE_TARGET',
+  );
+  const f5rev = await call('POST', '/v1/estimate-imports/form5/preview', { project_id: projectQ.id, file_base64: form5File, sheets: [
+    { sheet: 'Нормы', name: 'Form 5 normalar', estimate_id: f5normsId },
+  ] }, adminAgain);
+  assert.equal(f5rev.sheets[0].target.id, f5normsId);
+  const f5revSaved = await call('POST', '/v1/estimate-imports/form5/commit', { items: [{ id: f5rev.sheets[0].id, digest: f5rev.sheets[0].digest }] }, adminAgain);
+  assert.equal(f5revSaved.estimates[0].id, f5normsId);
+  assert.equal(await f5count(), 2);
+  assert.equal((await call('GET', `/v1/estimates/${f5normsId}`, undefined, adminAgain)).revision, 2);
   passed.push(
-    'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, Excel total and the 21 % row from the platform total; VAT not addable), row errors carry the sheet, and all sheets commit together or not at all (D29)',
+    'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, the Excel totals block compared row by row with the platform price chain; 21 % and VAT suggested as estimate settings — S3), row errors carry the sheet, and all sheets commit together or not at all (D29); a material whose quantity is «П» (taken from the project) is kept with quantity 0 and a warning (D35)',
   );
   // ---- D32 (2026-11-05): Form 5 ish qatoriga akkord mehnat resurslaridan × obyekt foizi; resurs qatorlari stavkasiz;
   // qo'lda stavka ustun; narx reviziyada o'zgarsa yangi hisobotga yangi stavka, qabul qilingani qotirilgan
@@ -4731,6 +4881,723 @@ try {
   assert.ok(['l', 'section', 'boiler', 'cycle', 'end'].every((u) => catalogUnits.includes(u)), catalogUnits.join(','));
   passed.push(
     'Form 5 piece rate (D32): the work line rate comes from its labor resources × the project percent and follows a price revision, resource lines get no automatic rate, a typed rate wins, accepted rates stay frozen; a differing invoice name is offered the similar estimate material (not other sizes) and saved as its alias by the warehouse role only, then found by search; Л, СЕКЦИЯ, КОТЕЛ, ЦИКЛ, КОНЕЦ are platform units',
+  );
+  // ---- S2 (2026-11-07): qator kodlari va bo'lim, smeta sarlavhasi (D41), resurslar yig'masi
+  // Form 5: ish qatorida to'liq shifr (qo'shimchasi bilan), resursda kod, hamma qatorda bo'lim; izohda kod takrorlanmaydi
+  const f5kladka = f5est.lines.find((l: any) => l.description === 'КЛАДКА ПЕРЕГОРОДОК');
+  const f5labor = f5est.lines.find((l: any) => l.description === 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ' && l.zone_name === '1-qavat');
+  assert.deepEqual(
+    [f5kladka.norm_code, f5kladka.resource_code, f5kladka.section_name, f5labor.resource_code, f5labor.note, f5labor.section_name],
+    ['Е0804-003-01 ДОП. 12', null, 'Раздел 1. Кладка стен 1-этаж', '1', null, 'Раздел 1. Кладка стен 1-этаж'],
+  );
+  assert.deepEqual(
+    f5est.totals.by_section.map((g: any) => [g.key, g.count]).sort(),
+    [['Раздел 1. Кладка стен 1-этаж', 8], ['Раздел 2. Монтаж 2 этаж', 3]].sort(),
+  );
+  const fullCode = 'Е0804-003-01 ДОП. 11 ГОСАРХИТЕКТСТРОЙ РУЗ ПР. № 429 ОТ 15.12.17';
+  const s2Lines = [
+    { kind: 'labor', description: 'Kladka', unit_id: 'm2', quantity: '100', unit_price: '0', category: 'Е0804-003-01 Kladka', norm_code: fullCode, section_name: 'Раздел 1. Стены 1-этаж' },
+    { kind: 'labor', description: 'Ishchilar mehnati', unit_id: 'hour', quantity: '50', norm: '0.5', work_quantity: '100', unit_price: '30000', category: 'Е0804-003-01 Kladka', resource_code: '1', section_name: 'Раздел 1. Стены 1-этаж' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '200', norm: '2', work_quantity: '100', unit_price: '1500', category: 'Е0804-003-01 Kladka', resource_code: '19412', section_name: 'Раздел 1. Стены 1-этаж' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '40', unit_price: '1500', resource_code: '19412', section_name: 'Раздел 2. Пол' },
+    { kind: 'equipment', description: 'Kran', unit_id: 'hour', quantity: '3', unit_price: '200000', resource_code: '762', section_name: 'Раздел 2. Пол' },
+    { kind: 'service', description: 'Tashish', unit_id: 'pcs', quantity: '1', unit_price: '50000' },
+  ];
+  const s2Est = await call('POST', '/v1/estimates', { project_id: projectQ.id, name: 'S2 kodlar', lines: s2Lines }, adminAgain);
+  const s2Detail = await call('GET', `/v1/estimates/${s2Est.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    s2Detail.lines.map((l: any) => [l.norm_code, l.resource_code, l.section_name]),
+    s2Lines.map((l: any) => [l.norm_code ?? null, l.resource_code ?? null, l.section_name ?? null]),
+  );
+  assert.equal(s2Detail.totals.total, '2510000.00');
+  assert.deepEqual(
+    s2Detail.totals.by_section.map((g: any) => [g.key, g.count, g.total]),
+    [
+      ['Раздел 1. Стены 1-этаж', 3, '1800000.00'],
+      ['Раздел 2. Пол', 2, '660000.00'],
+      ['', 1, '50000.00'],
+    ],
+  );
+  // Resurslar yig'masi: ish pozitsiyasi (normasiz, narxsiz «Kladka») kirmaydi; bir material ikki bo'limda — bitta qator;
+  // yig'ma jami = smeta jami
+  const s2Res = await call('GET', `/v1/estimates/${s2Est.id}/resources`, undefined, adminAgain);
+  assert.deepEqual(
+    s2Res.items.map((r: any) => [r.kind, r.name, r.unit_id, r.resource_code, r.line_count, r.quantity, r.amount]),
+    [
+      ['labor', 'Ishchilar mehnati', 'hour', '1', 1, '50.000000', '1500000.00'],
+      ['equipment', 'Kran', 'hour', '762', 1, '3.000000', '600000.00'],
+      ['material', material.name, 'kg', '19412', 2, '240.000000', '360000.00'],
+      ['service', 'Tashish', 'pcs', null, 1, '1.000000', '50000.00'],
+    ],
+  );
+  assert.deepEqual(
+    [s2Res.by_kind.map((k: any) => [k.key, k.count, k.total]), s2Res.total, s2Res.revision],
+    [
+      [
+        ['labor', 1, '1500000.00'],
+        ['equipment', 1, '600000.00'],
+        ['material', 2, '360000.00'],
+        ['service', 1, '50000.00'],
+      ],
+      s2Detail.totals.total,
+      1,
+    ],
+  );
+  const s2ResFore = await call('GET', `/v1/estimates/${s2Est.id}/resources`, undefined, forePx);
+  assert.deepEqual(
+    [s2ResFore.items[2].quantity, s2ResFore.items[2].amount, s2ResFore.by_kind[0].total, s2ResFore.total],
+    ['240.000000', undefined, undefined, undefined],
+  );
+  // Sarlavha (D41): reviziya yaratmaydi, audit eski va yangi qiymat bilan; shartnoma summasi narx huquqisiz ko'rinmaydi
+  const header = {
+    basis: 'Ishchi chizmalar 12-AR',
+    price_level_date: '2026-10-01',
+    labor_rate_source: 'VMQ 583: MHTEKM 5 % / soat',
+    contract_number: 'PD-17',
+    contract_date: '2026-10-15',
+    contract_amount: '311671640.00',
+  };
+  const s2Header = await call('PATCH', `/v1/estimates/${s2Est.id}/header`, header, adminAgain);
+  assert.deepEqual(
+    [s2Header.revision, Object.fromEntries(Object.keys(header).map((k) => [k, s2Header[k]]))],
+    [1, header],
+  );
+  await call('PATCH', `/v1/estimates/${s2Est.id}/header`, { contract_amount: '-1' }, adminAgain, undefined, 400);
+  await call('PATCH', `/v1/estimates/${s2Est.id}/header`, { contract_number: 'X' }, forePx, undefined, 403);
+  const s2Fore = await call('GET', `/v1/estimates/${s2Est.id}`, undefined, forePx);
+  assert.deepEqual([s2Fore.contract_number, s2Fore.contract_amount], ['PD-17', undefined]);
+  const s2Cleared = await call('PATCH', `/v1/estimates/${s2Est.id}/header`, { basis: '', contract_number: null }, adminAgain);
+  assert.deepEqual(
+    [s2Cleared.basis, s2Cleared.contract_number, s2Cleared.contract_amount, s2Cleared.price_level_date],
+    [null, null, '311671640.00', '2026-10-01'],
+  );
+  assert.deepEqual(
+    (
+      await admin.query(
+        "SELECT details FROM audit_events WHERE action='estimates.header' AND resource_id=$1 ORDER BY created_at,id",
+        [s2Est.id],
+      )
+    ).rows.map((r) => r.details),
+    [
+      { before: Object.fromEntries(Object.keys(header).map((k) => [k, null])), after: header },
+      { before: { basis: header.basis, contract_number: 'PD-17' }, after: { basis: null, contract_number: null } },
+    ],
+  );
+  // Egasi qarori (2026-11-07): shartnoma summasi mijoz adminining auditida ko'rinadi, platforma auditida yo'q («o'zgardi» belgisi)
+  const tenantHeaderAudit = (await call('GET', '/v1/audit?action=estimates.header', undefined, adminAgain)).items.filter(
+    (a: any) => a.resource_id === s2Est.id,
+  );
+  assert.deepEqual(
+    tenantHeaderAudit.map((a: any) => a.details.after.contract_amount ?? null),
+    [null, '311671640.00'],
+  );
+  const platformHeaderAudit = (
+    await call('GET', `/v1/platform/audit?action=estimates.header&tenant_id=${t.id}`, undefined, ownerToken)
+  ).items.filter((a: any) => a.resource_id === s2Est.id);
+  assert.deepEqual(
+    platformHeaderAudit.map((a: any) => [
+      JSON.stringify(a.details).includes('311671640'),
+      a.details.contract_amount_changed ?? false,
+      a.details.after.contract_number ?? null,
+    ]),
+    [
+      [false, false, null],
+      [false, true, 'PD-17'],
+    ],
+  );
+  // Reviziya kodlarni va sarlavhani saqlaydi (snapshot ham); bo'lim o'zgarsa ham lineage o'sha (moslash kaliti o'zgarmagan)
+  const s2Revised = await call(
+    'PATCH',
+    `/v1/estimates/${s2Est.id}`,
+    { project_id: projectQ.id, name: 'S2 kodlar', version: 1, lines: s2Lines.map((l) =>
+        l.description === 'Kran' ? { ...l, quantity: '4' } : l.resource_code === '1' ? { ...l, section_name: 'Раздел 3. Пол' } : l,
+      ) },
+    adminAgain,
+  );
+  const s2After = await call('GET', `/v1/estimates/${s2Revised.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    [s2After.revision, s2After.lines[0].norm_code, s2After.lines[4].section_name, s2After.contract_amount, s2After.price_level_date],
+    [2, fullCode, 'Раздел 2. Пол', '311671640.00', '2026-10-01'],
+  );
+  assert.deepEqual(
+    s2After.lines.map((l: any) => l.lineage_id),
+    s2Detail.lines.map((l: any) => l.lineage_id),
+  );
+  const s2Snapshot = await call('GET', `/v1/estimates/${s2Est.id}/revisions/2`, undefined, adminAgain);
+  assert.deepEqual(
+    [
+      s2Snapshot.lines[0].norm_code,
+      s2Snapshot.lines[1].resource_code,
+      s2Snapshot.lines[1].section_name,
+      s2Snapshot.contract_number,
+      s2Snapshot.contract_amount,
+    ],
+    [fullCode, '1', 'Раздел 3. Пол', null, '311671640.00'],
+  );
+  const s2SnapshotFore = await call('GET', `/v1/estimates/${s2Est.id}/revisions/2`, undefined, forePx);
+  assert.deepEqual([s2SnapshotFore.contract_amount, s2SnapshotFore.lines[1].total], [undefined, undefined]);
+  // Ish pozitsiyasi ostida faqat mashina yoki faqat «П» material bo'lsa ham u yig'maga kirmaydi
+  const s2Works = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectQ.id,
+      name: 'S2 ish pozitsiyalari',
+      lines: [
+        { kind: 'labor', description: 'Qazish', unit_id: 'm3', quantity: '10', unit_price: '0', category: 'Е0101-001-01 Qazish' },
+        { kind: 'equipment', description: 'Ekskavator', unit_id: 'hour', quantity: '5', norm: '0.5', work_quantity: '10', unit_price: '100000', category: 'Е0101-001-01 Qazish', resource_code: '1199' },
+        { kind: 'labor', description: 'Pol quyish', unit_id: 'm2', quantity: '20', unit_price: '0', category: 'Е1101-065-01 Pol' },
+        { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '0', unit_price: '0', category: 'Е1101-065-01 Pol', resource_code: 'П1', note: 'П — miqdor loyihadan' },
+        { kind: 'labor', description: 'Qo‘lda ish', unit_id: 'm2', quantity: '3', unit_price: '0' },
+      ],
+    },
+    adminAgain,
+  );
+  const s2WorksRes = await call('GET', `/v1/estimates/${s2Works.id}/resources`, undefined, adminAgain);
+  assert.deepEqual(
+    [s2WorksRes.items.map((r: any) => [r.kind, r.name, r.quantity]), s2WorksRes.total],
+    [
+      [
+        ['labor', 'Qo‘lda ish', '3.000000'],
+        ['equipment', 'Ekskavator', '5.000000'],
+        ['material', material.name, '0.000000'],
+      ],
+      '500000.00',
+    ],
+  );
+  // Qator qidiruvi norma kodi va bo'lim bo'yicha
+  const s2Search = async (q: string) =>
+    (await call('GET', `/v1/estimate-lines?project_id=${projectQ.id}&q=${encodeURIComponent(q)}`, undefined, adminAgain)).items.map(
+      (l: any) => l.description,
+    );
+  assert.deepEqual(await s2Search('ГОСАРХИТЕКТ'), ['Kladka']);
+  assert.deepEqual((await s2Search('Раздел 2. Пол')).sort(), ['Kran', 'Sement']);
+  // Eksport: yangi ustunlar va «Resurslar yig'masi» varag'i; eksport → import kodlarni saqlaydi
+  const s2File = await call('GET', `/v1/estimates/${s2Est.id}/export`, undefined, adminAgain);
+  const s2Book = new ExcelJS.Workbook();
+  await s2Book.xlsx.load(Buffer.from(s2File.base64, 'base64') as any);
+  const s2Sheet = s2Book.getWorksheet('Smeta')!;
+  const s2Sum = s2Book.getWorksheet('Resurslar yig‘masi')!;
+  assert.deepEqual(
+    [
+      (s2Sheet.getRow(1).values as unknown[]).slice(1, 7),
+      s2Sum.rowCount,
+      (s2Sum.getRow(4).values as unknown[]).slice(1),
+      s2Sum.getRow(6).getCell(6).value,
+    ],
+    [
+      ['№', 'Turi', 'Bo‘lim', 'Norma kodi', 'Resurs kodi', 'Kategoriya'],
+      6,
+      ['material', '19412', material.name, 'kg', 240, 360000],
+      2710000,
+    ],
+  );
+  const s2Fore2 = await call('GET', `/v1/estimates/${s2Est.id}/export`, undefined, forePx);
+  const s2ForeBook = new ExcelJS.Workbook();
+  await s2ForeBook.xlsx.load(Buffer.from(s2Fore2.base64, 'base64') as any);
+  assert.deepEqual(
+    (s2ForeBook.getWorksheet('Resurslar yig‘masi')!.getRow(1).values as unknown[]).slice(1),
+    ['Turi', 'Resurs kodi', 'Nomi', 'Birlik', 'Miqdor'],
+  );
+  const s2Back = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'S2 qayta',
+      file_base64: s2File.base64,
+      mapping: { kind: 'Turi', section_name: 'Bo‘lim', norm_code: 'Norma kodi', resource_code: 'Resurs kodi', category: 'Kategoriya', description: 'Nomi', material_name: 'Material', unit_id: 'Birlik', quantity: 'Miqdor', norm: 'Norma', work_quantity: 'Ish hajmi', unit_price: 'Birlik narxi' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual(
+    [s2Back.total, s2Back.preview.lines.map((l: any) => [l.norm_code ?? null, l.resource_code ?? null, l.section_name ?? null])],
+    [s2After.totals.total, s2After.lines.map((l: any) => [l.norm_code, l.resource_code, l.section_name])],
+  );
+  passed.push(
+    'S2: estimate lines keep the full norm code, the resource code and the section (Form 5 and manual lines, through revisions, snapshots, search and the Excel export → import round trip); the estimate header (basis, price level date, labor rate source, contract number, date and amount — D41) is edited without a new revision, audited with old and new values, and the contract amount is hidden without prices.read; the resource summary groups labor, machines, materials and services, leaves Form 5 work positions out and adds up to the estimate total, also as an export sheet',
+  );
+  // ---- S3 (2026-11-07): smeta narxi zanjiri (D36–D39), «kim beradi», sozlamalar, eski 21 % qatorlari
+  // Nazorat misoli (docs/SMETA_TUZATISH_PROMPTLARI.md 2-bo'lim): ish haqi 1 000 000, mashinalar 200 000, pudratchi
+  // materiallari 500 000, buyurtmachi materiallari 300 000 — «Erkin» 21 % + QQS 12 % = 2 374 400,00; «VMQ 583» = 2 564 800,00
+  const planOf = async () => (await call('GET', `/v1/projects/${projectQ.id}`, undefined, adminAgain)).finance.plan_total;
+  const planBefore = await planOf();
+  const s3Lines = [
+    { kind: 'labor', description: 'Ish', unit_id: 'm2', quantity: '100', unit_price: '10000' },
+    { kind: 'equipment', description: 'Kran', unit_id: 'hour', quantity: '2', unit_price: '100000' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '500', unit_price: '1000' },
+    { kind: 'material', description: 'Sement (buyurtmachi)', material_id: material.id, unit_id: 'kg', quantity: '300', unit_price: '1000', supplied_by: 'customer' },
+  ];
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/estimates',
+        { project_id: projectQ.id, name: 'S3 xato', lines: [{ ...s3Lines[0], supplied_by: 'customer' }] },
+        adminAgain,
+        undefined,
+        400,
+      )
+    ).error.code,
+    'SUPPLIED_BY_MATERIAL_ONLY',
+  );
+  const s3 = await call('POST', '/v1/estimates', { project_id: projectQ.id, name: 'S3 nazorat', lines: s3Lines }, adminAgain);
+  const s3Summary = async (token = adminAgain) => (await call('GET', `/v1/estimates/${s3.id}`, undefined, token)).price_summary;
+  const chain = (summary: any) => Object.fromEntries(summary.lines.map((l: any) => [l.key, l.amount]));
+  // Standart: foizlar 0, QQS yo'q, buyurtmachi materiallari chegiriladi
+  const s3Default = await s3Summary();
+  assert.deepEqual(
+    [s3Default.lines.map((l: any) => l.key).at(-1), chain(s3Default).customer_materials, s3Default.total],
+    ['total_without_vat', '300000.00', '1700000.00'],
+  );
+  await call('PATCH', `/v1/estimates/${s3.id}/header`, { other_costs_percent: '21', vat_percent: '12' }, adminAgain);
+  assert.deepEqual(chain(await s3Summary()), {
+    labor: '1000000.00',
+    equipment: '200000.00',
+    contractor_materials: '500000.00',
+    customer_materials: '300000.00',
+    services: '0.00',
+    direct_total: '2000000.00',
+    other_costs: '420000.00',
+    production_costs: '0.00',
+    total: '2420000.00',
+    customer_deduction: '-300000.00',
+    total_without_vat: '2120000.00',
+    vat: '254400.00',
+    total_with_vat: '2374400.00',
+  });
+  assert.equal(
+    (await call('PATCH', `/v1/estimates/${s3.id}/header`, { markup_mode: 'vmq583' }, adminAgain, undefined, 400)).error.code,
+    'VMQ583_PRESET',
+  );
+  const s3Vmq = await call(
+    'PATCH',
+    `/v1/estimates/${s3.id}/header`,
+    { markup_mode: 'vmq583', other_costs_percent: '20', profit_percent: '7', production_costs_percent: '2.5' },
+    adminAgain,
+  );
+  const vmqChain = chain(await s3Summary());
+  assert.deepEqual(
+    [s3Vmq.revision, vmqChain.other_costs, vmqChain.production_costs, vmqChain.total_without_vat, vmqChain.vat, (await s3Summary()).total],
+    [1, '540000.00', '50000.00', '2290000.00', '274800.00', '2564800.00'],
+  );
+  // D38: plan_total (moliya kartasi) — qatorlar jami, buyurtmachi materiallari bilan, foiz va QQSsiz
+  assert.equal(dec(await planOf()).minus(planBefore).toFixed(2), '2000000.00');
+  // Narx redaksiyasi: prorab zanjirni va foizlarni ko'rmaydi (rejim ko'rinadi); brigadir va omborchi smetaga kirmaydi
+  const s3Fore = await call('GET', `/v1/estimates/${s3.id}`, undefined, forePx);
+  assert.deepEqual(
+    [s3Fore.price_summary, s3Fore.other_costs_percent, s3Fore.vat_percent, s3Fore.markup_mode, s3Fore.lines[3].supplied_by],
+    [undefined, undefined, undefined, 'vmq583', 'customer'],
+  );
+  await call('GET', `/v1/estimates/${s3.id}`, undefined, brigadierAgain2, undefined, 403);
+  await call('GET', `/v1/estimates/${s3.id}`, undefined, whP, undefined, 403);
+  // Reviziya snapshot'i sozlamalarni ham saqlaydi
+  await call('PATCH', `/v1/estimates/${s3.id}`, { project_id: projectQ.id, name: 'S3 nazorat', version: 1, lines: s3Lines }, adminAgain);
+  const s3Snap = await call('GET', `/v1/estimates/${s3.id}/revisions/2`, undefined, adminAgain);
+  assert.deepEqual(
+    [s3Snap.markup_mode, s3Snap.profit_percent, s3Snap.lines[3].supplied_by],
+    ['vmq583', '7.0000', 'customer'],
+  );
+  assert.equal((await call('GET', `/v1/estimates/${s3.id}/revisions/2`, undefined, forePx)).profit_percent, undefined);
+  // Eksport: «Kim beradi» ustuni va JAMI dan keyin smeta yakuni bloki; importda blok o'tkaziladi, «Kim beradi» o'qiladi
+  const s3File = await call('GET', `/v1/estimates/${s3.id}/export`, undefined, adminAgain);
+  const s3Book = new ExcelJS.Workbook();
+  await s3Book.xlsx.load(Buffer.from(s3File.base64, 'base64') as any);
+  const s3Sheet = s3Book.getWorksheet('Smeta')!;
+  const s3Head = (s3Sheet.getRow(1).values as any[]).map((v) => String(v ?? ''));
+  const s3Rows: unknown[][] = [];
+  s3Sheet.eachRow((row, i) => {
+    const cell = (header: string) => {
+      const v = row.getCell(s3Head.indexOf(header)).value;
+      return v === '' || v === undefined ? null : v;
+    };
+    if (i > 1) s3Rows.push([cell('Nomi'), cell('Kim beradi'), cell('Izoh'), cell('Jami')]);
+  });
+  assert.deepEqual(s3Rows.slice(2, 5), [
+    ['Sement', 'pudratchi', null, 500000],
+    ['Sement (buyurtmachi)', 'buyurtmachi', null, 300000],
+    ['JAMI', null, null, 2000000],
+  ]);
+  assert.deepEqual(s3Rows.slice(-4), [
+    ['Buyurtmachi materiallari qaytarilishi / Возврат материалов заказчика', null, null, -300000],
+    ['QQSsiz jami / Итого без НДС', null, null, 2290000],
+    ['QQS / НДС', null, '12 %', 274800],
+    ['QQS bilan jami / Итого с НДС', null, null, 2564800],
+  ]);
+  const s3ForeFile = await call('GET', `/v1/estimates/${s3.id}/export`, undefined, forePx);
+  const s3ForeBook = new ExcelJS.Workbook();
+  await s3ForeBook.xlsx.load(Buffer.from(s3ForeFile.base64, 'base64') as any);
+  let s3ForeBlock = false;
+  s3ForeBook.getWorksheet('Smeta')!.eachRow((row) => {
+    if ((row.values as unknown[]).some((v) => typeof v === 'string' && v.startsWith('QQS'))) s3ForeBlock = true;
+  });
+  assert.equal(s3ForeBlock, false);
+  const s3Back = await call(
+    'POST',
+    '/v1/estimate-imports/preview',
+    {
+      project_id: projectQ.id,
+      name: 'S3 qayta',
+      file_base64: s3File.base64,
+      mapping: { kind: 'Turi', description: 'Nomi', material_name: 'Material', unit_id: 'Birlik', quantity: 'Miqdor', unit_price: 'Birlik narxi', supplied_by: 'Kim beradi' },
+    },
+    adminAgain,
+  );
+  assert.deepEqual(
+    [s3Back.total, s3Back.preview.lines.map((l: any) => l.supplied_by ?? null)],
+    ['2000000.00', [null, null, 'contractor', 'customer']],
+  );
+  // Eski D29 foizli «xizmat» qatori: zanjirga kirmaydi, ogohlantiriladi; bir amal bilan yangi reviziyada sozlamaga o'tadi
+  const s3Old = await call(
+    'POST',
+    '/v1/estimates',
+    {
+      project_id: projectQ.id,
+      name: 'S3 eski 21 %',
+      lines: [
+        { kind: 'labor', description: 'Ish', unit_id: 'm2', quantity: '200', unit_price: '10000' },
+        { kind: 'service', description: 'ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)', unit_id: 'set', quantity: '1', unit_price: '420000' },
+      ],
+    },
+    adminAgain,
+  );
+  const s3OldDetail = await call('GET', `/v1/estimates/${s3Old.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    [
+      s3OldDetail.price_summary.percent_lines.map((l: any) => [l.description, l.percent, l.total]),
+      chain(s3OldDetail.price_summary).services,
+      chain(s3OldDetail.price_summary).direct_total,
+      s3OldDetail.price_summary.converted_other_costs_percent,
+    ],
+    [[['ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)', '21', '420000.00']], '0.00', '2000000.00', '21'],
+  );
+  // O'tkazish qatorni olib tashlaydi: qatorlar jami (plan_total) qator summasicha kamayadi (D39), smeta narxi saqlanadi
+  const planBeforeConvert = await planOf();
+  await call('POST', `/v1/estimates/${s3Old.id}/percent-lines/convert`, { version: 1 }, forePx, undefined, 403);
+  const converted = await call('POST', `/v1/estimates/${s3Old.id}/percent-lines/convert`, { version: 1 }, adminAgain);
+  assert.equal(dec(await planOf()).minus(planBeforeConvert).toFixed(2), '-420000.00');
+  const s3OldAfter = await call('GET', `/v1/estimates/${s3Old.id}`, undefined, adminAgain);
+  assert.deepEqual(
+    [
+      converted,
+      s3OldAfter.lines.map((l: any) => [l.description, l.lineage_id]),
+      s3OldAfter.price_summary.percent_lines,
+      chain(s3OldAfter.price_summary).other_costs,
+      s3OldAfter.price_summary.total,
+    ],
+    [
+      { id: s3Old.id, revision: 2, other_costs_percent: '21' },
+      [['Ish', s3OldDetail.lines[0].lineage_id]],
+      [],
+      '420000.00',
+      '2420000.00',
+    ],
+  );
+  assert.equal(
+    (await call('POST', `/v1/estimates/${s3Old.id}/percent-lines/convert`, { version: 2 }, adminAgain, undefined, 400)).error.code,
+    'NO_PERCENT_LINES',
+  );
+  passed.push(
+    'S3: the estimate price chain (labor, machines, contractor and customer materials, services → direct costs, other costs with profit, production costs, customer materials deduction, optional VAT) matches the control example to the tiyin in both «free» (2 374 400.00) and «VMQ 583» (2 564 800.00) modes; the VMQ 583 preset is checked; settings change without a revision and stay in snapshots; plan_total is unchanged; the chain and percents are hidden without prices.read; the export ends with the totals block and «Kim beradi» round-trips; an old D29 percent line is left out of the chain and moves into the settings in one new revision',
+  );
+  // ---- S4 (2026-11-07): dalolatnoma F-2 / F-3 (D40, D41) — davr bo'yicha qabul qilingan hajm, Form 5 resurslari
+  // norma × ish ulushi, normasiz material — ombor sarfi (storno bilan), reviziyalar bo'ylab lineage, S3 zanjiri, shartnoma %
+  const s4Block = await call('POST', '/v1/materials', { name: 'S4 gazoblok', unit_id: 'pcs' }, whP);
+  const s4Lines = [
+    { kind: 'labor', description: 'Kladka', unit_id: 'm2', quantity: '100', unit_price: '0', category: 'Е0804-003-01 Kladka', norm_code: 'Е0804-003-01', section_name: 'Раздел 1. Стены' },
+    { kind: 'labor', description: 'Ishchilar', unit_id: 'hour', quantity: '50', norm: '0.5', work_quantity: '100', unit_price: '30000', category: 'Е0804-003-01 Kladka', resource_code: '1', section_name: 'Раздел 1. Стены' },
+    { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '200', norm: '2', work_quantity: '100', unit_price: '1500', category: 'Е0804-003-01 Kladka', resource_code: '19412', section_name: 'Раздел 1. Стены' },
+    { kind: 'material', description: 'Gazoblok', material_id: s4Block.id, unit_id: 'pcs', quantity: '10', unit_price: '100', supplied_by: 'customer', category: 'Е0804-003-01 Kladka', section_name: 'Раздел 1. Стены' },
+    { kind: 'equipment', description: 'Kran', unit_id: 'hour', quantity: '10', unit_price: '200000' },
+  ];
+  const s4 = await call('POST', '/v1/estimates', { project_id: projectQ.id, name: 'S4 dalolatnoma', lines: s4Lines }, adminAgain);
+  await call(
+    'PATCH',
+    `/v1/estimates/${s4.id}/header`,
+    { other_costs_percent: '21', vat_percent: '12', contract_number: 'SP-4', contract_date: '2026-09-01', contract_amount: '10000000' },
+    adminAgain,
+  );
+  const s4Report = async (lineId: string, qty: string, day: string) => {
+    const r = await call(
+      'POST',
+      '/v1/reports',
+      { project_id: projectQ.id, kind: 'daily', report_date: day, content: 'S4 dalolatnoma', estimate_line_id: lineId, progress_quantity: qty },
+      brigadierAgain2,
+    );
+    await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
+    return (await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)).progress;
+  };
+  // 2025-yil fakti: «qurilish boshidan» ga kiradi, «yil boshidan» ga emas
+  await s4Report(s4.lines[0].id, '10', '2025-12-20');
+  await s4Report(s4.lines[0].id, '40', '2026-09-20');
+  // Reviziyadan oldingi texnika fakti — joriy (yangi) narxda hisoblanadi
+  await s4Report(s4.lines[4].id, '1', '2026-09-25');
+  // Reviziya: Kran narxi 250 000 — fakt lineage bo'yicha yangi qatorga o'tadi, narx joriy reviziyadan
+  const s4Rev = await call(
+    'PATCH',
+    `/v1/estimates/${s4.id}`,
+    { project_id: projectQ.id, name: 'S4 dalolatnoma', version: 1, lines: s4Lines.map((l) => (l.description === 'Kran' ? { ...l, unit_price: '250000' } : l)) },
+    adminAgain,
+  );
+  const s4Oct = await s4Report(s4Rev.lines[0].id, '30', '2026-10-05');
+  await s4Report(s4Rev.lines[4].id, '2', '2026-10-06');
+  // Qabul qilinmagan hisobot dalolatnomaga kirmaydi
+  await call(
+    'POST',
+    '/v1/reports',
+    { project_id: projectQ.id, kind: 'daily', report_date: '2026-10-10', content: 'Qabul qilinmagan', estimate_line_id: s4Rev.lines[0].id, progress_quantity: '99' },
+    brigadierAgain2,
+  );
+  // UTC+5 chegarasi: 31.10 19:30 UTC — Toshkentda 1-noyabr; oktyabr dalolatnomasiga kirmaydi
+  await admin.query(
+    "INSERT INTO progress_corrections(tenant_id,progress_entry_id,quantity_delta,reason,created_by,created_at) VALUES($1,$2,'3','Chegara sinovi',$3,'2026-10-31T19:30:00Z')",
+    [t.id, s4Oct.id, auth.user.id],
+  );
+  // Tuzatish (bugun kiritilgan) oktyabr dalolatnomasiga kirmaydi — kiritilgan sana davriga tushadi
+  await call('POST', `/v1/progress-entries/${s4Oct.id}/corrections`, { quantity_delta: '5', reason: 'Qayta o‘lchash' }, adminAgain);
+  // Ombor sarfi (bugun): bog'langan 3 + bog'langan 1 (storno qilinadi) + bog'lanmagan 1
+  await call('POST', '/v1/stock/commands', { project_id: projectQ.id, kind: 'opening', material_id: s4Block.id, to_account_id: qWarehouse.account.id, quantity: '10', unit_cost: '0', reason: 'Buyurtmachi materiali' }, whP);
+  const s4Transfer = await call(
+    'POST',
+    '/v1/stock/commands',
+    { project_id: projectQ.id, kind: 'transfer', material_id: s4Block.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '5', reason: 'Brigadirga' },
+    whP,
+  );
+  await call('POST', `/v1/stock/commands/${s4Transfer.id}/actions`, { version: 1, action: 'accept', quantity: '5' }, brigP);
+  const s4Consume = async (qty: string, lineId?: string) => {
+    const c = await call(
+      'POST',
+      '/v1/stock/commands',
+      { project_id: projectQ.id, kind: 'consumption', material_id: s4Block.id, from_account_id: qCustody.id, quantity: qty, ...(lineId ? { estimate_line_id: lineId } : {}), reason: 'S4 sarf' },
+      brigP,
+    );
+    await call('POST', `/v1/stock/commands/${c.id}/actions`, { version: 1, action: 'review' }, foreP);
+    return c;
+  };
+  await s4Consume('3', s4Rev.lines[3].id);
+  const s4Wrong = await s4Consume('1', s4Rev.lines[3].id);
+  await call('POST', `/v1/stock/commands/${s4Wrong.id}/reverse`, { reason: 'Sarf xato kiritilgan' }, whP);
+  await s4Consume('1');
+  const s4Act = (q: string, token = adminAgain, status?: number) =>
+    call('GET', `/v1/estimates/${s4.id}/acts${q}`, undefined, token, undefined, status);
+  const actOct = await s4Act('?from=2026-10-01&to=2026-10-31');
+  const actPick = (a: any, range: string) =>
+    a.lines.map((l: any) => [l.description, l.basis, l.quantity[range], l.amount[range]]);
+  assert.deepEqual(actPick(actOct, 'period'), [
+    ['Kladka', 'work', '30.000000', '0.00'],
+    ['Ishchilar', 'norm', '15.000000', '450000.00'],
+    ['Sement', 'norm', '60.000000', '90000.00'],
+    ['Kran', 'progress', '2.000000', '500000.00'],
+  ]);
+  assert.deepEqual(actPick(actOct, 'start').map((l: any[]) => l[2]), ['80.000000', '40.000000', '160.000000', '3.000000']);
+  assert.deepEqual(actPick(actOct, 'year').map((l: any[]) => l[2]), ['70.000000', '35.000000', '140.000000', '3.000000']);
+  const actTotal = (a: any, range: string, key: string) =>
+    a.totals[range].lines.find((l: any) => l.key === key)?.amount;
+  assert.deepEqual(
+    [
+      actOct.period,
+      actTotal(actOct, 'period', 'direct_total'),
+      actTotal(actOct, 'period', 'other_costs'),
+      actTotal(actOct, 'period', 'total_with_vat'),
+      actTotal(actOct, 'start', 'total_with_vat'),
+      actOct.totals.year.total,
+      actOct.contract,
+      actOct.warnings,
+    ],
+    [
+      { from: '2026-10-01', to: '2026-10-31', year_from: '2026-01-01' },
+      '1040000.00',
+      '218400.00',
+      '1409408.00',
+      '2967888.00',
+      '2723952.00',
+      {
+        number: 'SP-4',
+        date: '2026-09-01',
+        amount: '10000000.00',
+        amount_without_vat: '8928571.43',
+        vat: '1071428.57',
+        percent: { start: '29.68', year: '27.24', period: '14.09' },
+      },
+      { removed_lines: [], unlinked_consumption: [], ignored_progress: [] },
+    ],
+  );
+  // Keng davr: tuzatish (+5) va ombor sarfi (3, storno chiqarilgan) kiradi; bog'lanmagan sarf — ogohlantirish
+  // (davr bitta yil ichida bo'ladi — joriy yil: bugungi sarf va tuzatishlar kiradi, «qurilish boshidan» — hammasi)
+  const actYear = new Date().getFullYear();
+  const actWide = await s4Act(`?from=${actYear}-01-01&to=${actYear}-12-31`);
+  assert.deepEqual(
+    [
+      actWide.lines.find((l: any) => l.description === 'Kladka').quantity.start,
+      actWide.lines.find((l: any) => l.description === 'Gazoblok')?.basis,
+      actWide.lines.find((l: any) => l.description === 'Gazoblok')?.quantity.start,
+      actTotal(actWide, 'start', 'customer_materials'),
+      actTotal(actWide, 'start', 'customer_deduction'),
+      actWide.warnings.unlinked_consumption,
+    ],
+    ['88.000000', 'consumption', '3.000000', '300.00', '-300.00', [{ name: 'S4 gazoblok', unit_id: 'pcs', quantity: '1.000000' }]],
+  );
+  // Excel: F-2 va F-3 varaqlari, qiymatlar (formula emas), audit
+  const actFile = await call('GET', `/v1/estimates/${s4.id}/acts/export?from=2026-10-01&to=2026-10-31`, undefined, adminAgain);
+  const actBook = new ExcelJS.Workbook();
+  await actBook.xlsx.load(Buffer.from(actFile.base64, 'base64') as any);
+  const actRowsOf = (name: string) => {
+    const out: unknown[][] = [];
+    actBook.getWorksheet(name)!.eachRow((row) =>
+      out.push(Array.from(row.values as unknown[]).slice(1).map((v) => (v === '' || v === undefined ? null : v))),
+    );
+    return out;
+  };
+  const actF2 = actRowsOf('F-2');
+  const actF3 = actRowsOf('F-3');
+  assert.deepEqual(
+    [
+      actBook.worksheets.map((w) => w.name),
+      actF2.find((r) => r[2] === 'Ishchilar'),
+      actF2.find((r) => r[2] === 'Итого с НДС')?.[7],
+      actF3.find((r) => r[1] === 'ВСЕГО СМР')?.slice(5, 7),
+      actF3.find((r) => r[1] === 'Итого с НДС')?.slice(5, 16),
+    ],
+    [
+      ['F-2', 'F-3'],
+      ['1.1', '1', 'Ishchilar', 'чел.-ч', 0.5, 15, 30000, 450000],
+      1409408,
+      [8928571.43, null],
+      [10000000, null, null, 29.68, 2967888, null, 27.24, 2723952, null, 14.09, 1409408],
+    ],
+  );
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='export.estimate_act' AND resource_id=$1", [s4.id])).rows[0].n,
+    1,
+  );
+  // Joriy reviziyadan olib tashlangan qator fakti — ogohlantirish, summaga kirmaydi
+  await call(
+    'PATCH',
+    `/v1/estimates/${s4.id}`,
+    { project_id: projectQ.id, name: 'S4 dalolatnoma', version: 2, lines: s4Lines.filter((l) => l.description !== 'Kran') },
+    adminAgain,
+  );
+  const actOctAfter = await s4Act('?from=2026-10-01&to=2026-10-31');
+  assert.deepEqual(
+    [actOctAfter.warnings.removed_lines, actTotal(actOctAfter, 'period', 'equipment'), actTotal(actOctAfter, 'period', 'direct_total')],
+    [
+      [{ description: 'Kran', unit_id: 'hour', quantity: { start: '3.000000', year: '3.000000', period: '2.000000' } }],
+      '0.00',
+      '540000.00',
+    ],
+  );
+  // Standart davr — joriy oy; noto'g'ri oraliq; huquq (prorab, brigadir — yo'q)
+  const actCurrent = await s4Act('');
+  assert(actCurrent.period.from.endsWith('-01') && actCurrent.period.from <= actCurrent.period.to);
+  assert.equal((await s4Act('?from=2026-10-31&to=2026-10-01', adminAgain, 400)).error.code, 'DATE_RANGE_INVALID');
+  assert.equal((await s4Act('?from=2025-12-01&to=2026-01-31', adminAgain, 400)).error.code, 'ACT_PERIOD_CROSSES_YEAR');
+  await s4Act('?from=2026-10-01&to=2026-10-31', forePx, 403);
+  await s4Act('?from=2026-10-01&to=2026-10-31', brigadierAgain2, 403);
+  passed.push(
+    'S4: the completion act for a period (accepted reports by report date, corrections by their own date, Form 5 resources as norm × work share, normless materials from linked stock consumption with reversals, facts across revisions by lineage at current prices) feeds the S3 chain for the period, the year and since the start, with the contract percent; removed lines and unlinked consumption are warnings; foreman and brigadier are refused; the Excel file has F-2 and F-3 sheets with values and is audited',
+  );
+  // ---- S5 (2026-11-08): buyurtmachi materiallari hisoboti — S4 dagi «S4 gazoblok» harakatlari (bugun): kirim 10 (0 narx),
+  // brigadirga 5, sarf 3 (bog'langan) + 1 (storno qilingan) + 1 (bog'lanmagan); qo'shimcha narxli kirim 2 × 1 000
+  await call('POST', '/v1/stock/commands', { project_id: projectQ.id, kind: 'receipt', material_id: s4Block.id, to_account_id: qWarehouse.account.id, quantity: '2', unit_cost: '1000', reason: 'Buyurtmachi materiali' }, whP);
+  const cmToday = new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);
+  const cmReport = (token = adminAgain, q = `&from=${cmToday}&to=${cmToday}`) =>
+    call('GET', `/v1/stock/customer-materials?project_id=${projectQ.id}${q}`, undefined, token);
+  const cm = await cmReport();
+  const cmBlock = cm.materials.find((m: any) => m.name === 'S4 gazoblok');
+  assert.deepEqual(
+    [cmBlock.opening, cmBlock.received, cmBlock.consumed, cmBlock.adjusted, cmBlock.closing, cmBlock.unlinked, cmBlock.works],
+    [
+      { quantity: '0.000000', value: '0.00' },
+      { quantity: '12.000000', value: '2000.00' },
+      { quantity: '4.000000', value: '0.00' },
+      { quantity: '0.000000', value: '0.00' },
+      { quantity: '8.000000', value: '2000.00' },
+      '1.000000',
+      ['Kladka'],
+    ],
+  );
+  // Normativ: reja 10 × bugungi bajarilgan ulush (tuzatish +5 / reja 100) = 0,5; haqiqiy (bog'langan, storno chiqarilgan) 3
+  assert.deepEqual(
+    cm.lines
+      .filter((l: any) => l.material_id === s4Block.id)
+      .map((l: any) => [l.estimate_name, l.work, l.description, l.normative, l.actual, l.deviation]),
+    [['S4 dalolatnoma', 'Kladka', 'Gazoblok', '0.500000', '3.000000', '2.500000']],
+  );
+  assert(cm.warnings.mixed.includes(material.name));
+  assert.deepEqual(cm.warnings.unlinked.find((u: any) => u.name === 'S4 gazoblok'), { name: 'S4 gazoblok', unit_id: 'pcs', quantity: '1.000000' });
+  // Keyingi kun davrida: bugungi harakatlar davr boshidagi qoldiqqa o'tadi
+  const cmTomorrow = new Date(Date.now() + 29 * 3600e3).toISOString().slice(0, 10);
+  const cmNext = await cmReport(adminAgain, `&from=${cmTomorrow}&to=${cmTomorrow}`);
+  assert.deepEqual(
+    [cmNext.materials.find((m: any) => m.name === 'S4 gazoblok').opening, cmNext.materials.find((m: any) => m.name === 'S4 gazoblok').received.quantity],
+    [{ quantity: '8.000000', value: '2000.00' }, '0.000000'],
+  );
+  // Narx huquqisiz (omborchi, prorab, brigadir) — faqat miqdor; noto'g'ri oraliq
+  // Omborchi smetaga kirmaydi: smeta ma'lumoti (ish bo'yicha qatorlar, ish nomlari, shartnoma) yo'q, faqat harakat
+  const cmWh = await cmReport(whP);
+  const cmWhBlock = cmWh.materials.find((m: any) => m.name === 'S4 gazoblok');
+  assert.deepEqual(
+    [cmWhBlock.received, cmWh.totals.received, cmWh.lines, cmWh.contracts, cmWhBlock.works, cmWhBlock.unlinked],
+    [{ quantity: '12.000000' }, {}, [], [], [], '1.000000'],
+  );
+  // Prorab smetani ko'radi: miqdor farqi (narx emas) ko'rinadi, summa yo'q
+  const cmFore = await cmReport(forePx);
+  assert.deepEqual(
+    [
+      cmFore.materials.find((m: any) => m.name === 'S4 gazoblok').closing.value,
+      cmFore.lines.find((l: any) => l.material_id === s4Block.id)?.deviation,
+    ],
+    [undefined, '2.500000'],
+  );
+  assert.equal(
+    (await call('GET', `/v1/stock/customer-materials?project_id=${projectQ.id}&from=2026-10-31&to=2026-10-01`, undefined, adminAgain, undefined, 400)).error.code,
+    'DATE_RANGE_INVALID',
+  );
+  // Excel: «Отчет» (11 ustun) va «Нормативный расход»; narx huquqisiz summa ustunlari bo'sh; audit
+  const cmFile = await call('GET', `/v1/stock/customer-materials/export?project_id=${projectQ.id}&from=${cmToday}&to=${cmToday}`, undefined, adminAgain);
+  const cmBook = new ExcelJS.Workbook();
+  await cmBook.xlsx.load(Buffer.from(cmFile.base64, 'base64') as any);
+  const cmRows = (book: ExcelJS.Workbook, name: string) => {
+    const out: unknown[][] = [];
+    book.getWorksheet(name)!.eachRow((row) =>
+      out.push(Array.from(row.values as unknown[]).slice(1).map((v) => (v === '' || v === undefined ? null : v))),
+    );
+    return out;
+  };
+  assert.deepEqual(
+    [
+      cmBook.worksheets.map((w) => w.name),
+      cmRows(cmBook, 'Отчет').find((r) => r[1] === 'S4 gazoblok'),
+      cmRows(cmBook, 'Нормативный расход').find((r) => r[2] === 'Gazoblok'),
+    ],
+    [
+      ['Отчет', 'Нормативный расход'],
+      ['Kladka', 'S4 gazoblok', 'шт', 0, 0, 12, 2000, 4, 0, 8, 2000],
+      ['S4 dalolatnoma', 'Kladka', 'Gazoblok', 'шт', 0.5, 3, 2.5],
+    ],
+  );
+  const cmWhFile = await call('GET', `/v1/stock/customer-materials/export?project_id=${projectQ.id}&from=${cmToday}&to=${cmToday}`, undefined, whP);
+  const cmWhBook = new ExcelJS.Workbook();
+  await cmWhBook.xlsx.load(Buffer.from(cmWhFile.base64, 'base64') as any);
+  assert.deepEqual(
+    cmRows(cmWhBook, 'Отчет').find((r) => r[1] === 'S4 gazoblok'),
+    // omborchi smetaga kirmaydi — ish nomi yo'q; summa ustunlari bo'sh
+    [null, 'S4 gazoblok', 'шт', 0, null, 12, null, 4, null, 8, null],
+  );
+  assert.equal(
+    (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action='export.customer_materials' AND resource_id=$1", [projectQ.id])).rows[0].n,
+    2,
+  );
+  // Inventarizatsiya: ombordagi qoldiq 7 → 6 (tuzatish −1); oxirgi qoldiq = boshidagi + berilgan − sarflangan + tuzatish
+  await call('POST', `/v1/stock/accounts/${qWarehouse.account.id}/reconcile`, { material_id: s4Block.id, counted_quantity: '6', reason: 'Inventarizatsiya natijasi' }, whP);
+  const cmAdj = (await cmReport()).materials.find((m: any) => m.name === 'S4 gazoblok');
+  const cmFlow = (key: string) => dec(cmAdj.opening[key]).plus(cmAdj.received[key]).minus(cmAdj.consumed[key]).plus(cmAdj.adjusted[key]);
+  assert.deepEqual(
+    [cmAdj.adjusted.quantity, cmAdj.closing.quantity, cmFlow('quantity').toFixed(6), cmFlow('value').toFixed(2)],
+    ['-1.000000', '7.000000', '7.000000', cmAdj.closing.value],
+  );
+  passed.push(
+    'S5: the customer-supplied materials report (materials marked «customer supplies» in the project estimates) gives opening balance, received, consumed (reversals netted), inventory adjustments and closing balance from the stock ledger of all project accounts by Tashkent date, with ledger values only for prices.read; per estimate line it compares actual linked consumption with the normative one (plan × work done share); mixed supply and unlinked consumption are warnings; the Excel file has the owner’s «отчёт» columns and a normative sheet and is audited',
   );
   // ---- Tarif tahriri: narx va limit o'zgaradi, chiqarilgan invoyslar summasi o'zgarmaydi, o'chirish taqiq
   const invoicesBefore = (

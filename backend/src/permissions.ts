@@ -426,6 +426,20 @@ export function redactPrices(value: any): any {
             'price',
             'monthly_price',
             'fact_value',
+            // S2, D41: smeta sarlavhasidagi pudrat shartnomasi summasi
+            'contract_amount',
+            // S3 (D36–D39): smeta narxi zanjiri va uning foizlari (prorab va boshqa narxsiz rollar ko'rmaydi)
+            'price_summary',
+            'other_costs_percent',
+            'profit_percent',
+            'production_costs_percent',
+            'vat_percent',
+            // Form 5 preview (D29/S3): platforma jami, Excel jami va qatorma-qator solishtiruv
+            'direct_total',
+            'excel_total',
+            'excel_difference',
+            'platform_amount',
+            'difference',
             // Narx varaqasi (Bosqich 4)
             'cost',
             'cost_m2',

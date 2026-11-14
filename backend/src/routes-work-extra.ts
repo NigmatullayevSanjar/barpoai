@@ -234,7 +234,7 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
       return {
         items: (
           await db.query(
-            `SELECT l.id,l.description,l.unit_id,l.effective_quantity::text,l.category,z.name zone_name,e.name estimate_name,
+            `SELECT l.id,l.description,l.unit_id,l.effective_quantity::text,l.category,l.zone_id,z.name zone_name,e.name estimate_name,
                     (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) fact_quantity
              FROM estimate_lines l JOIN estimates e ON e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
              WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.kind<>'material' AND l.archived_at IS NULL AND e.archived_at IS NULL ORDER BY e.name,l.position,l.id`,

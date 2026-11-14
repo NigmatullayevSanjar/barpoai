@@ -1077,6 +1077,67 @@ ALTER TABLE tenants
 
 ```
 
+## 031_estimate_codes_header.sql
+
+```sql
+-- S2 (2026-11-07): smeta qatorining kodlari va bo'limi, smeta sarlavhasi (D41).
+-- norm_code — ish qatorining to'liq norma shifri (Form 5 B ustuni, «ДОП. … ПР. № 429» qo'shimchasi bilan);
+-- resource_code — resurs yoki material kodi (1, 3, 1234, П54889, pcpc…); section_name — «Раздел …» qatorining to'liq matni.
+-- category ma'nosi o'zgarmaydi: reviziya moslash (D26/D27), qavat matritsasi (D28) va akkord guruhi (D32) unga tayanadi.
+-- Sarlavha: asos (chizmalar), narx darajasi sanasi, ish haqi stavkasi manbai va pudrat shartnomasi (summasi QQS bilan).
+-- Faqat ADD COLUMN: eski qatorlar to'ldirilmaydi (egasi qarori, 2026-11-07) — qayta import to'liq ma'lumot beradi.
+ALTER TABLE estimate_lines
+  ADD COLUMN norm_code text,
+  ADD COLUMN resource_code text,
+  ADD COLUMN section_name text;
+ALTER TABLE estimates
+  ADD COLUMN basis text,
+  ADD COLUMN price_level_date date,
+  ADD COLUMN labor_rate_source text,
+  ADD COLUMN contract_number text,
+  ADD COLUMN contract_date date,
+  ADD COLUMN contract_amount numeric(20,2) CHECK (contract_amount >= 0);
+
+```
+
+## 031_import_target.sql
+
+```sql
+-- D42 (2026-11-10, egasi qarori): Excel yoki Form 5 fayli mavjud smetaning yangi reviziyasi sifatida yuklanadi —
+-- reja yangi fayldan, fakt (kirim, sarf, bajarilgan hajm) ish identifikatori (lineage_id) bo'yicha saqlanadi.
+-- Preview qaysi smetaga va uning qaysi reviziyasiga tayyorlanganini eslab qoladi; commit paytida smeta shu orada
+-- o'zgargan bo'lsa yozilmaydi.
+ALTER TABLE import_previews
+ ADD COLUMN target_estimate_id uuid,
+ ADD COLUMN target_revision integer,
+ ADD CONSTRAINT import_previews_target_fk FOREIGN KEY(tenant_id,target_estimate_id) REFERENCES estimates(tenant_id,id),
+ ADD CONSTRAINT import_previews_target_pair CHECK((target_estimate_id IS NULL)=(target_revision IS NULL));
+
+```
+
+## 032_estimate_price_chain.sql
+
+```sql
+-- S3 (2026-11-07): smetaning yakuniy qismi — foizli zanjir (D36–D39).
+-- supplied_by — material qatorini kim beradi: pudratchi (standart) yoki buyurtmachi (bosh pudratchi). Buyurtmachi
+-- materiallari boshqa xarajatlar bazasiga kiradi va jami oxirida chegiriladi (VMQ 583, 12-band; D37).
+-- Smeta sozlamalari: markup_mode («free» — foizlar qo'lda, «vmq583» — 20 % + 7 % foyda, ishlab chiqarish 2,5 % yoki 5 %),
+-- boshqa xarajatlar, foyda va ishlab chiqarish xarajatlari foizi, buyurtmachi materiallarini chegirish, ixtiyoriy QQS
+-- (null — QQS yo'q, D36). plan_total va qator jamlari o'zgarmaydi (D38): zanjir alohida «smeta narxi».
+-- Faqat ADD COLUMN ... DEFAULT: ma'lumotli bazada UPDATE ishlatilmaydi.
+ALTER TABLE estimate_lines
+  ADD COLUMN supplied_by text NOT NULL DEFAULT 'contractor' CHECK (supplied_by IN ('contractor', 'customer')),
+  ADD CONSTRAINT estimate_lines_supplied_by_material CHECK (supplied_by = 'contractor' OR kind = 'material');
+ALTER TABLE estimates
+  ADD COLUMN markup_mode text NOT NULL DEFAULT 'free' CHECK (markup_mode IN ('free', 'vmq583')),
+  ADD COLUMN other_costs_percent numeric(7,4) NOT NULL DEFAULT 0 CHECK (other_costs_percent BETWEEN 0 AND 100),
+  ADD COLUMN profit_percent numeric(7,4) NOT NULL DEFAULT 0 CHECK (profit_percent BETWEEN 0 AND 100),
+  ADD COLUMN production_costs_percent numeric(7,4) NOT NULL DEFAULT 0 CHECK (production_costs_percent BETWEEN 0 AND 100),
+  ADD COLUMN deduct_customer_materials boolean NOT NULL DEFAULT true,
+  ADD COLUMN vat_percent numeric(7,4) CHECK (vat_percent BETWEEN 0 AND 100);
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

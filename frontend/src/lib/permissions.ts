@@ -196,11 +196,14 @@ export const roleNav: Partial<Record<Role, NavGroup[]>> = {
     nav.employees,
   ),
   // Figma brigadir: "Material qabul" (jo'natmalarni qabul qilish) va "Material talabnomasi" — ombor sahifasining bo'limlari.
+  // Qoldiqlar va Materiallar ham alohida band: brigadirda ombor sahifasi tablarsiz, har band o'z bo'limini ochadi.
   brigadier: flat(
     nav.dashboard,
     nav.tasks,
     item('stock', 'Boxes', 'nav.material_accept', '/app/stock?tab=movements&kind=transfer'),
     item('stock', 'FileInput', 'nav.material_request', '/app/stock?tab=requests'),
+    item('stock', 'BarChart3', 'stock.tab.balances', '/app/stock?tab=balances'),
+    item('stock', 'Package', 'nav.materials_catalog', '/app/stock?tab=materials'),
     nav.reports,
   ),
   // Figma ombor mudiri: kirim/chiqim, omborlar (qoldiqlar), talabnomalar, transferlar, inventarizatsiya, materiallar.
@@ -213,6 +216,7 @@ export const roleNav: Partial<Record<Role, NavGroup[]>> = {
     item('stock', 'GitCompare', 'nav.transfers', '/app/stock?tab=movements&kind=transfer'),
     item('stock', 'ClipboardList', 'nav.inventory', '/app/stock?tab=balances&inventory=1'),
     item('stock', 'Package', 'nav.materials_catalog', '/app/stock?tab=materials'),
+    item('stock', 'ScrollText', 'stock.tab.customer', '/app/stock?tab=customer'),
   ),
   financier: flat(
     nav.dashboard,
@@ -228,6 +232,8 @@ export const roleNav: Partial<Record<Role, NavGroup[]>> = {
     nav.dashboard,
     nav.accounting_documents,
     nav.invoices,
+    // Dalolatnoma (F-2/F-3) smeta kartasidan ochiladi; buxgalterda estimates.read va prices.read bor.
+    nav.estimates,
     nav.bank_cash,
     nav.counterparties,
     nav.payroll,

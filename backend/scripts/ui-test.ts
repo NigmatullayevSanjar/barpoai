@@ -419,7 +419,7 @@ try {
   checks.push(
     'Estimate created in the grid editor with labor and material lines; totals match decimal arithmetic',
   );
-  await adminPage.getByRole('button', { name: 'Tahrirlash' }).click();
+  await adminPage.getByRole('button', { name: 'Tahrirlash', exact: true }).click();
   await adminPage.getByRole('heading', { name: /yangi reviziya/ }).waitFor();
   await adminPage
     .locator('table.grid-editor tbody tr')
@@ -514,6 +514,14 @@ try {
   assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish', exact: true }).count(), 0);
   checks.push('Tenant admin sees the stock page without any action buttons (read-only warehouse and materials)');
   await warehousePage.goto(stockUrl);
+  // D42: smetadagi, hali kelmagan material qoldiqlarda reja bilan va «Kirim yo'q» holatida
+  await warehousePage.getByRole('columnheader', { name: 'Reja (smeta)' }).waitFor();
+  await warehousePage
+    .getByRole('row')
+    .filter({ hasText: 'Sement M500' })
+    .getByText('Kirim yo‘q', { exact: true })
+    .waitFor();
+  checks.push('Warehouse balances list an estimate material before any receipt with its plan and the “no receipt” state (D42)');
   await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
   await pickOption(warehousePage.getByRole('dialog'), 'Material', 'Tosh 118', /Tosh 118/);
   assert.equal(
@@ -599,8 +607,10 @@ try {
   await brigadierPage.getByText('Parol yangilandi').waitFor();
   await login(brigadierPage, 'ui.brigadier', password + '3');
   await brigadierPage.locator('.sidebar').getByRole('link', { name: 'Bosh sahifa' }).waitFor();
-  await brigadierPage.goto(stockUrl);
-  await brigadierPage.getByRole('tab', { name: /Harakatlar/ }).click();
+  // Brigadirda ombor sahifasi tablarsiz: bo'limlar yon menyuning alohida bandlari ("Material qabul" va h.k.)
+  await brigadierPage.goto(stockUrl + '&tab=movements&kind=transfer');
+  await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().waitFor();
+  assert.equal(await brigadierPage.getByRole('tab').count(), 0, 'brigadier stock page has no tabs');
   await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().click();
   await brigadierPage
     .getByRole('dialog')
@@ -616,6 +626,13 @@ try {
     .getByRole('dialog')
     .getByLabel('Material', { exact: true })
     .selectOption({ index: 1 });
+  // Brigadirda estimates.read yo'q: smeta qatorlari ombor ruxsati bilan (/v1/stock/estimate-lines) keladi
+  await brigadierPage
+    .getByRole('dialog')
+    .getByLabel('Smeta qatori')
+    .locator('option')
+    .nth(1)
+    .waitFor({ state: 'attached' });
   await brigadierPage
     .getByRole('dialog')
     .getByLabel(/^Miqdor/)
@@ -623,7 +640,9 @@ try {
   await brigadierPage.getByRole('dialog').getByLabel(/Sabab/).fill('Poydevor betoni uchun sarf');
   await brigadierPage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
   await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
-  checks.push('Brigadier accepts a transfer partially and submits a consumption proposal');
+  checks.push(
+    'Brigadier stock sections open without tabs; brigadier accepts a transfer partially and submits a consumption proposal; the estimate line select lists lines without estimates.read',
+  );
   // Sarf taklifini prorab tasdiqlaydi (stock.review); admin faqat ko'radi
   await foremanPage.goto(stockUrl);
   await foremanPage.getByRole('tab', { name: /Harakatlar/ }).click();
@@ -644,7 +663,7 @@ try {
   checks.push(
     'Consumption review posts expense 150 x 1200 and leaves warehouse 800 (100 still reserved) and custody 50',
   );
-  await brigadierPage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  await brigadierPage.goto(stockUrl + '&tab=requests');
   await brigadierPage.getByRole('button', { name: 'Material so‘rash' }).click();
   // V-B (D23): bitta talabnomada ikki qator; ombor mudiri qatorma-qator bajaradi yoki rad etadi
   const requestDialog = brigadierPage.getByRole('dialog');
@@ -658,8 +677,10 @@ try {
   await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
   await brigadierPage.getByText(/Tosh 001 — 5 kg/).waitFor();
   // Talabnomani faqat ombor mudiri bajaradi (2026-10-16)
-  await warehousePage.goto(stockUrl);
-  await warehousePage.getByRole('tab', { name: /So‘rovlar/ }).click();
+  // Ombor mudirida ham tablar yo'q: "Talabnomalar" menyu bandi bilan bir xil manzil
+  await warehousePage.goto(stockUrl + '&tab=requests');
+  await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().waitFor();
+  assert.equal(await warehousePage.getByRole('tab').count(), 0, 'warehouse manager stock page has no tabs');
   // 1-qator (Sement) jo'natish bilan bajariladi — talabnoma hali kutilmoqda (2-qator ochiq)
   await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().click();
   await warehousePage
@@ -694,6 +715,23 @@ try {
   assert.equal(await foremanPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
   checks.push(
     'Two-line material request from the brigadier: the warehouse manager fulfils one line via a transfer and rejects the other line by line; the admin and the foreman only read requests (no request button)',
+  );
+  // S5: «Buyurtmachi materiallari» yorlig'i — davr boshqaruvi, bo'sh holat yoki jadval, Excel yuklab olish
+  await adminPage.goto(stockUrl);
+  await adminPage.getByRole('tab', { name: 'Buyurtmachi materiallari', exact: true }).click();
+  await adminPage.getByRole('button', { name: 'Sana oralig‘i', exact: true }).waitFor();
+  await adminPage
+    .getByText('Obyekt smetalarida buyurtmachi ta’minlaydigan material belgilanmagan.')
+    .or(adminPage.getByRole('columnheader', { name: 'Davr boshidagi qoldiq', exact: true }))
+    .waitFor();
+  const [customerDownload] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    // sahifa sarlavhasida ham «Excel» (qoldiqlar eksporti) bor — tabdagisi oxirgi
+    adminPage.getByRole('button', { name: 'Excel', exact: true }).last().click(),
+  ]);
+  assert.match(customerDownload.suggestedFilename(), /^buyurtmachi-materiallari-.*\.xlsx$/);
+  checks.push(
+    'Stock page customer-materials tab shows the period control and either the empty state or the report table, and downloads the Excel report',
   );
   // 5e. Moliya: kontragent, kassa, invoys (kirimga bog'langan), to'lov, to'lov so'rovi, ish haqi (stage 07)
   const dialog = () => adminPage.getByRole('dialog');
@@ -1598,7 +1636,7 @@ try {
   await mockCtx.close();
   checks.push('Malformed (non-UUID) detail ids render the not-found view without a retry button');
 
-  // 7c. D29: Form 5 fayli — varaqlar ro'yxati, tekshiruv, 21 % qatorini qo'shish, smeta saqlanadi
+  // 7c. D29: Form 5 fayli — varaqlar ro'yxati, tekshiruv (Excel jamlari zanjir bilan solishtiriladi), smeta saqlanadi
   const form5Path = resolve(tmpdir(), 'barpo-ui-form5-' + process.pid + '.xlsx');
   await form5Workbook().xlsx.writeFile(form5Path);
   await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
@@ -1612,15 +1650,109 @@ try {
   await f5dialog.getByText(/Tekshiruv o‘tdi: 11 ta qator/).waitFor();
   await f5dialog.getByText(/Excel «ВСЕГО ЗАТРАТ»: 18\s340\s000/).waitFor();
   await f5dialog.getByText(/norma × ish hajmiga teng emas/).waitFor();
-  assert.equal(await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).count(), 1);
-  await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).click();
-  await f5dialog.getByText(/Tekshiruv o‘tdi: 12 ta qator/).waitFor();
+  // S3: qo'shish tugmasi yo'q; 21 % platforma summasi taqqoslash jadvalida, smeta narxi zanjirdan (QQS bilan)
+  assert.equal(await f5dialog.getByRole('button', { name: 'Smetaga qo‘shish' }).count(), 0);
+  await f5dialog.getByRole('cell').filter({ hasText: /^3\s850\s975,8\s/ }).waitFor();
+  await f5dialog.getByText(/Smeta narxi:\s*24\s851\s630,5/).waitFor();
   await f5dialog.getByRole('button', { name: '1 ta smetani yaratish' }).click();
   await adminPage.getByRole('status').filter({ hasText: '1 ta smeta import qilindi' }).waitFor();
-  await adminPage.getByText('ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)').waitFor();
+  await adminPage.getByText('КЛАДКА ПЕРЕГОРОДОК').first().waitFor();
+  assert.equal(await adminPage.getByText('ПРОЧИЕ ЗАТРАТЫ СУБПОДРЯДЧИКА (21 %)').count(), 0);
   checks.push(
-    'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview shows the Excel total and warnings, the 21 % row is added from the platform total, and the estimate is saved',
+    'Form 5 import: the workbook is recognised, non-Form-5 sheets cannot be picked, the preview compares the Excel totals block with the platform price chain (21 % row from the platform total) and shows the estimate price, and the estimate is saved without a percent service line (S3)',
   );
+  // S2: shifr ustuni, bo'lim filtri, resurslar yig'masi, sarlavha (shartnoma) tahriri — yangi smeta sahifasida
+  await adminPage.getByRole('columnheader', { name: 'Shifr', exact: true }).waitFor();
+  await adminPage.getByRole('cell', { name: 'Е0804-003-01 ДОП. 12', exact: true }).waitFor();
+  await adminPage.getByText('УСТАНОВКА КАРКАСА').first().waitFor();
+  const sectionFilter = adminPage.getByLabel('Bo‘lim', { exact: true });
+  await sectionFilter.selectOption({ label: 'Раздел 1. Кладка стен 1-этаж' });
+  await adminPage.getByText('УСТАНОВКА КАРКАСА').first().waitFor({ state: 'hidden' });
+  await adminPage.getByText('КЛАДКА ПЕРЕГОРОДОК').first().waitFor();
+  await sectionFilter.selectOption('all');
+  await adminPage.getByText('УСТАНОВКА КАРКАСА').first().waitFor();
+  await adminPage.getByRole('tab', { name: 'Resurslar yig‘masi' }).click();
+  await adminPage.getByRole('heading', { name: 'Mehnat (kishi-soat)', exact: true }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Mashinalar (mashina-soat)', exact: true }).waitFor();
+  await adminPage.getByRole('heading', { name: 'Materiallar', exact: true }).waitFor();
+  await adminPage.getByText('КРАНЫ НА АВТОМОБИЛЬНОМ ХОДУ').waitFor();
+  await adminPage.getByText(/Form 5 ish pozitsiyalari/).waitFor();
+  checks.push(
+    'Estimate detail shows the norm code column, filters lines by section, and lists the resource summary by kind (S2)',
+  );
+  await adminPage.getByRole('button', { name: 'Sarlavhani tahrirlash' }).click();
+  const headerDialog = adminPage.getByRole('dialog');
+  await headerDialog.getByLabel('Shartnoma raqami').fill('PD-17');
+  const contractAmount = headerDialog.getByLabel(/Shartnoma summasi/);
+  await contractAmount.fill('311671640');
+  assert.match(await contractAmount.inputValue(), /^311\s671\s640$/);
+  await headerDialog.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await headerDialog.waitFor({ state: 'hidden' });
+  const headerFacts = adminPage.locator('dl.block-facts');
+  await headerFacts.getByText('PD-17', { exact: true }).waitFor();
+  await headerFacts.getByText(/311\s671\s640/).waitFor();
+  await headerFacts.getByText('Reviziya 1', { exact: true }).waitFor();
+  checks.push('Estimate header (contract number and amount) is saved from the modal and shown on the info card without a new revision (S2)');
+  // S3: «Smeta yakuni» — zanjir serverdan (Form 5 dan taklif qilingan 21 % + QQS 12 %); sozlamada VMQ 583 ga o'tkazilsa yangilanadi
+  // «Smeta yakuni» qatorlar tabida (yuqorida «Resurslar yig‘masi» tabi ochilgan edi)
+  await adminPage.getByRole('tab', { name: /^Qatorlar/ }).click();
+  const priceChain = adminPage.locator('section.est-chain');
+  await priceChain.getByText('Smeta yakuni', { exact: true }).waitFor();
+  await priceChain.getByText('Erkin', { exact: true }).waitFor();
+  await priceChain
+    .locator('dl > div', { hasText: 'QQS bilan jami' })
+    .getByText(/24\s851\s630,5/)
+    .waitFor();
+  await priceChain.getByRole('button', { name: 'Sozlamalar', exact: true }).click();
+  const priceDialog = adminPage.getByRole('dialog');
+  await priceDialog.getByLabel('Hisoblash rejimi').selectOption('vmq583');
+  await priceDialog.getByLabel('Boshqa xarajatlar, %').fill('20');
+  await priceDialog.getByRole('button', { name: 'Saqlash', exact: true }).click();
+  await priceDialog.waitFor({ state: 'hidden' });
+  await priceChain.getByText('VMQ 583', { exact: true }).waitFor();
+  await priceChain.getByText('27 %', { exact: true }).waitFor();
+  await priceChain.getByText('2,5 %', { exact: true }).waitFor();
+  await priceChain
+    .locator('dl > div', { hasText: 'QQS bilan jami' })
+    .getByText(/26\s597\s406,19/)
+    .waitFor();
+  await adminPage.locator('dl.block-facts').getByText('Reviziya 1', { exact: true }).waitFor();
+  checks.push(
+    'Estimate detail shows the price chain card from the server (Form 5 settings, 24 851 630,5 with VAT); switching to VMQ 583 in the settings modal updates it to 26 597 406,19 without a new revision (S3)',
+  );
+  // S4: dalolatnoma (F-2/F-3) — bu smetada qabul qilingan hajm yo'q: joriy oy uchun bo'sh holat, Excel baribir yuklanadi
+  await adminPage.getByRole('button', { name: 'Dalolatnoma (F-2/F-3)', exact: true }).click();
+  const actDialog = adminPage.getByRole('dialog');
+  await actDialog.getByRole('heading', { name: 'Bajarilgan ishlar dalolatnomasi (F-2, F-3)' }).waitFor();
+  await actDialog.getByText('Tanlangan davrda qabul qilingan ish yo‘q.', { exact: true }).waitFor();
+  await actDialog.getByText('Yil boshidan', { exact: true }).waitFor();
+  await actDialog.getByRole('button', { name: 'Sana oralig‘i', exact: true }).click();
+  await actDialog.getByText('Boshlanish sanasi', { exact: true }).waitFor();
+  await actDialog.getByText('Tanlangan davrda qabul qilingan ish yo‘q.', { exact: true }).waitFor();
+  await actDialog.getByRole('button', { name: 'Oy bo‘yicha', exact: true }).click();
+  await actDialog.getByText('Oy', { exact: true }).waitFor();
+  const [actDownload] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    actDialog.getByRole('button', { name: 'Excel (F-2, F-3)', exact: true }).click(),
+  ]);
+  assert.match(actDownload.suggestedFilename(), /^akt-.*\.xlsx$/);
+  await actDialog.getByRole('button', { name: 'Yopish', exact: true }).click();
+  await actDialog.waitFor({ state: 'hidden' });
+  checks.push(
+    'Estimate detail opens the monthly completion act dialog (F-2/F-3): current month shows the empty state with the three range totals, the period toggles between month and date range, and the Excel export downloads an akt-*.xlsx file (S4)',
+  );
+  // D35: «Нормы» varag'idagi «П» (miqdor loyihadan) material — tekshiruvda qator raqami bilan ogohlantirish; smeta yaratilmaydi
+  await adminPage.goto(webURL + '/app/estimates?project=' + projectUrl.split('/').pop());
+  await adminPage.getByRole('button', { name: 'Excel import' }).first().click();
+  const f5again = adminPage.getByRole('dialog');
+  await f5again.locator('input[type=file]').setInputFiles(form5Path);
+  await f5again.getByText(/Form 5 \(ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ\) deb tanildi/).waitFor();
+  await f5again.getByRole('checkbox', { name: 'Локалка 1', exact: true }).uncheck();
+  await f5again.getByRole('button', { name: 'Tekshirish' }).click();
+  await f5again.getByText(/Miqdori loyihadan olinadigan \(«П»\) 1 ta material 0 miqdor bilan qo‘shildi.*СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА: 11/).waitFor();
+  await adminPage.keyboard.press('Escape');
+  await f5again.waitFor({ state: 'hidden' });
+  checks.push('Form 5 import: a material whose quantity is «П» (from the project) is listed in the preview warnings with its Excel row (D35)');
 
   // 8. Chiqish cookie'ni tozalaydi
   await managerPage.getByRole('button', { name: /Sinov menejeri/ }).click();

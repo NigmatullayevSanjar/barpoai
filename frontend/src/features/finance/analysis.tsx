@@ -159,26 +159,28 @@ export function PlanActualPage() {
             </table>
           </section>
           <div className="grid-4">
-            {d.by_kind.map((k) => (
-              <div key={k.kind} className="card stat">
-                <div className="stat-label">{t(`est.kind.${k.kind}`)}</div>
-                <div className="stat-value" style={{ fontSize: 'var(--fs-xl)' }}>
-                  {money(k.fact_value)}
+            {d.by_kind.map((k) => {
+              const p = pct(num(k.fact_value), num(k.plan_value));
+              const over = num(k.fact_value) > num(k.plan_value);
+              return (
+                <div key={k.kind} className="card stat">
+                  <div className="stat-label">{t(`est.kind.${k.kind}`)}</div>
+                  <div className="stat-value" style={{ fontSize: 'var(--fs-xl)' }}>
+                    {money(k.fact_value)}
+                  </div>
+                  {/* Fakt / reja: karta kengligidagi chiziq, foiz o'ngda; rejadan oshsa qizil */}
+                  <div className="stat-progress">
+                    <span className={`progress ${over ? 'bad' : 'ok'}`}>
+                      <span style={{ width: `${Math.min(100, p ?? 0)}%` }} />
+                    </span>
+                    <b className={over ? 'is-danger' : undefined}>{p === null ? '—' : `${p}%`}</b>
+                  </div>
+                  <div className="stat-sub">
+                    {t('fin.pa.plan')}: {money(k.plan_value)}
+                  </div>
                 </div>
-                <div className="stat-sub">
-                  {t('fin.pa.plan')}: {money(k.plan_value)} ·{' '}
-                  {pct(num(k.fact_value), num(k.plan_value)) ?? '—'}%
-                </div>
-                <span
-                  className={`progress ${num(k.fact_value) > num(k.plan_value) ? 'bad' : 'ok'}`}
-                  style={{ marginTop: 8 }}
-                >
-                  <span
-                    style={{ width: `${Math.min(100, pct(num(k.fact_value), num(k.plan_value)) ?? 0)}%` }}
-                  />
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <section className="card">
             <div className="card-header">

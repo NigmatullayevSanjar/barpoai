@@ -34,6 +34,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { ExportButton } from '@/features/common/ExportButton';
+import { CustomerMaterialsTab } from './CustomerMaterialsTab';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
 import { normalizeNumber, useZones, type Material } from '@/features/estimates/model';
 import {
@@ -58,11 +59,20 @@ import {
   useStockMutation,
 } from './StockModals';
 
-type Tab = 'balances' | 'movements' | 'requests' | 'materials';
-const TABS: readonly Tab[] = ['balances', 'movements', 'requests', 'materials'];
+type Tab = 'balances' | 'movements' | 'requests' | 'materials' | 'customer';
+const TABS: readonly Tab[] = ['balances', 'movements', 'requests', 'materials', 'customer'];
 const isTab = (v: string | null): v is Tab => TABS.includes(v as Tab);
 /** Menyu bandi (?tab=…&kind=…&inventory=1) qaysi Figma bo'limini ochadi — sarlavha shu bo'yicha. */
-type Section = 'warehouses' | 'inventory' | 'movements' | 'transfers' | 'accept' | 'requests' | 'materials';
+type Section =
+  | 'balances'
+  | 'warehouses'
+  | 'inventory'
+  | 'movements'
+  | 'transfers'
+  | 'accept'
+  | 'requests'
+  | 'materials'
+  | 'customer';
 export function StockPage() {
   const { t } = useT();
   const { me, permissions } = useAuth();
@@ -81,12 +91,16 @@ export function StockPage() {
     n.delete('inventory');
     setParams(n, { replace: true });
   };
+  // Brigadir va ombor mudirida tablar yo'q: har bo'lim yon menyuning alohida bandi (permissions.ts roleNav).
+  const tabless = me?.role === 'brigadier' || me?.role === 'warehouse_manager';
   const section: Section | null = !tabParam
     ? null
     : tab === 'balances'
       ? inventory
         ? 'inventory'
-        : 'warehouses'
+        : tabless
+          ? 'balances'
+          : 'warehouses'
       : tab === 'movements'
         ? kindParam === 'transfer'
           ? me?.role === 'brigadier'
@@ -180,16 +194,19 @@ export function StockPage() {
           {errorMessage(t, (overview.error as ApiError).code, (overview.error as ApiError).status)}
         </Alert>
       )}
-      <Tabs<Tab>
-        value={tab}
-        onChange={setTab}
-        items={[
-          { key: 'balances', label: t('stock.tab.balances') },
-          { key: 'movements', label: t('stock.tab.movements') },
-          { key: 'requests', label: t('stock.tab.requests'), count: pending?.requests },
-          { key: 'materials', label: t('stock.tab.materials') },
-        ]}
-      />
+      {!tabless && (
+        <Tabs<Tab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            { key: 'balances', label: t('stock.tab.balances') },
+            { key: 'movements', label: t('stock.tab.movements') },
+            { key: 'requests', label: t('stock.tab.requests'), count: pending?.requests },
+            { key: 'materials', label: t('stock.tab.materials') },
+            { key: 'customer', label: t('stock.tab.customer') },
+          ]}
+        />
+      )}
       {tab === 'balances' && d && (
         <BalancesTab
           key={`${sel.projectId}:${inventory}`}
@@ -206,6 +223,9 @@ export function StockPage() {
         <RequestsTab key={sel.projectId} projectId={sel.projectId} accounts={d.accounts} />
       )}
       {tab === 'materials' && <MaterialsTab />}
+      {tab === 'customer' && sel.projectId && (
+        <CustomerMaterialsTab key={sel.projectId} projectId={sel.projectId} />
+      )}
       {modal && d && (
         <CommandModal
           kind={modal.kind}
@@ -220,8 +240,15 @@ export function StockPage() {
   );
 }
 
-const stateOf = (b: Balance): 'out' | 'low' | 'enough' =>
-  Number(b.available) <= 0 ? 'out' : b.low ? 'low' : 'enough';
+// D42: smetadagi, hali kirim qilinmagan material — «Kirim yo'q» (Tugagan emas)
+const stateOf = (b: Balance): 'none' | 'out' | 'low' | 'enough' =>
+  Number(b.available) <= 0
+    ? Number(b.quantity) === 0 && Number(b.received_quantity) === 0
+      ? 'none'
+      : 'out'
+    : b.low
+      ? 'low'
+      : 'enough';
 function BalancesTab({
   d,
   projectId,
@@ -254,6 +281,37 @@ function BalancesTab({
   );
   const accountOf = (id: string) => d.accounts.find((a) => a.id === id);
   const pricesVisible = d.balances.some((b) => b.value !== undefined);
+  const planVisible = d.balances.some((b) => b.plan_quantity !== null);
+  const planColumns: Column<Balance>[] = planVisible
+    ? [
+        {
+          key: 'plan',
+          header: t('stock.plan'),
+          align: 'right',
+          sortValue: (r) => Number(r.plan_quantity ?? -1),
+          render: (r) =>
+            r.plan_quantity === null ? (
+              <span className="muted">—</span>
+            ) : (
+              <span className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                {r.over_plan && <Badge tone="warning">{t('stock.over_plan')}</Badge>}
+                {formatQuantity(r.plan_quantity)}
+              </span>
+            ),
+        },
+        {
+          key: 'received',
+          header: t('stock.received'),
+          align: 'right',
+          render: (r) =>
+            accountOf(r.account_id)?.kind === 'warehouse' ? (
+              formatQuantity(r.received_quantity)
+            ) : (
+              <span className="muted">—</span>
+            ),
+        },
+      ]
+    : [];
   const columns: Column<Balance>[] = [
     {
       key: 'material',
@@ -282,6 +340,7 @@ function BalancesTab({
         );
       },
     },
+    ...planColumns,
     {
       key: 'quantity',
       header: t('stock.quantity'),
@@ -312,7 +371,7 @@ function BalancesTab({
       render: (r) => {
         const s = stateOf(r);
         return (
-          <span className={`status-text-${s === 'enough' ? 'active' : s === 'low' ? 'inactive' : 'danger'}`}>
+          <span className={`status-text-${s === 'enough' ? 'active' : s === 'low' ? 'inactive' : s === 'none' ? 'muted' : 'danger'}`}>
             {t(`stock.state.${s}`)}
           </span>
         );

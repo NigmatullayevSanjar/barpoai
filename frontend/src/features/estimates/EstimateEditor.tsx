@@ -272,6 +272,16 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                           }
                         />
                         {e.material_id && <span className="cell-error">{e.material_id}</span>}
+                        <Select
+                          size="sm"
+                          value={l.supplied_by}
+                          aria-label={t('est.supplied_by')}
+                          title={t('est.supplied_by')}
+                          onChange={(ev) => update(l.key, { supplied_by: ev.target.value as LineDraft['supplied_by'] })}
+                        >
+                          <option value="contractor">{t('est.supplied_by.contractor')}</option>
+                          <option value="customer">{t('est.supplied_by.customer')}</option>
+                        </Select>
                       </>
                     ) : (
                       <span className="muted">—</span>

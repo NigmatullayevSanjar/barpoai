@@ -33,9 +33,15 @@ export function notificationTarget(n: Pick<Target, 'kind' | 'project_id'>): stri
   if (n.kind === 'support.request') return '/admin/support';
   const page = pageFor(n.kind);
   if (!page) return null;
-  return n.project_id && projectScoped.includes(page)
-    ? `${pageRoutes[page]}?project=${encodeURIComponent(n.project_id)}`
-    : pageRoutes[page];
+  const params = new URLSearchParams();
+  if (n.project_id && projectScoped.includes(page)) params.set('project', n.project_id);
+  // Jo'natish, sarf va qaytarish tasdiq kutadi — ombor sahifasining «Harakatlar» tabida.
+  if (['stock.transfer', 'stock.consumption', 'stock.return'].includes(n.kind))
+    params.set('tab', 'movements');
+  // Jo'natma faqat brigadirga keladi: uning "Material qabul" bo'limi (menyu bandi bilan bir xil manzil).
+  if (n.kind === 'stock.transfer') params.set('kind', 'transfer');
+  const query = params.toString();
+  return query ? `${pageRoutes[page]}?${query}` : pageRoutes[page];
 }
 
 /** Bildirishnomani bosish: tegishli sahifaga o'tadi va o'qilmagan bo'lsa o'qilgan deb belgilaydi. */

@@ -27,6 +27,17 @@ export function correctionKind(row: { tenant_id: string | null; action: string; 
   if (row.action === 'report.accepted') return 'progress';
   return null;
 }
+/**
+ * S2 (egasi qarori, 2026-11-07): pudrat shartnomasi summasi — mijozning tijorat ma'lumoti. Smeta sarlavhasi auditida
+ * u mijoz adminiga ko'rinadi, platforma auditida esa olib tashlanadi; o'zgargani `contract_amount_changed` bilan qoladi.
+ */
+export function platformAuditDetails(row: { action: string; details: any }) {
+  const d = row.details;
+  if (row.action !== 'estimates.header' || !d?.after || !('contract_amount' in d.after)) return d;
+  const { contract_amount: _before, ...before } = d.before ?? {};
+  const { contract_amount: _after, ...after } = d.after;
+  return { ...d, before, after, contract_amount_changed: true };
+}
 /** Platforma egasi va texnik xodimlar uchun o'qish/ko'rish endpointlari (frontend kartalari uchun). */
 export function platformExtraRoutes(add: (r: Endpoint) => void) {
   add({
@@ -220,7 +231,7 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/audit',
     summary:
-      'Umumiy audit (D21): platforma va barcha kompaniyalardagi hamma rollar harakatlari — scope (platform/tenants), tenant_id, role, actor_id, action prefiksi, sana filtrlari; correction — shu yozuvdan bajariladigan tuzatish turi',
+      'Umumiy audit (D21): platforma va barcha kompaniyalardagi hamma rollar harakatlari — scope (platform/tenants), tenant_id, role, actor_id, action prefiksi, sana filtrlari; correction — shu yozuvdan bajariladigan tuzatish turi; smeta sarlavhasidagi shartnoma summasi ko‘rsatilmaydi (contract_amount_changed)',
     platform: readers,
     platformPermission: 'audit.read',
     query: pageQuery.extend({
@@ -254,7 +265,7 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
            WHERE ${where} ORDER BY a.created_at DESC,a.id LIMIT $8 OFFSET $9`,
           [...params, query.limit, query.offset],
         )
-      ).rows.map((row) => ({ ...row, correction: correctionKind(row) }));
+      ).rows.map((row) => ({ ...row, details: platformAuditDetails(row), correction: correctionKind(row) }));
       const total = await one(
         db,
         `SELECT count(*)::int total FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE ${where}`,

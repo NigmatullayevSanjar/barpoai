@@ -7,6 +7,7 @@ import { type Row } from './db.js';
  * D29: Form 5 — «ЛОКАЛЬНАЯ РЕСУРСНАЯ ВЕДОМОСТЬ» varag'i (loyiha: docs/FORM5_IMPORT_LOYIHA.md).
  * Ish qatori (A butun son, B norma kodi) → «ish» qatori; uning tagidagi resurslar (A «13.1») → norma × ish hajmi;
  * bosh pudratchi materiali (A bo'sh, miqdor bor) → material qatori; «Раздел … N этаж» → qavat zonasi;
+ * S2: ish qatorida to'liq norma shifri (`norm_code`), qolganlarida resurs kodi (`resource_code`), hammasida bo'lim nomi;
  * «ВСЕГО ЗАТРАТ» dan keyingi jamlar bloki o'qilmaydi, faqat «Excel jami» sifatida qaytadi.
  * Formula katagidan Excel saqlagan oxirgi natija olinadi; natijasi yo'q formula — qator xatosi.
  */
@@ -108,6 +109,9 @@ function layout(sheet: Sheet) {
   return null;
 }
 type RowError = { row: number; field: string; message: string };
+/** «П» — normada sarfi berilmagan, loyiha (ishchi chizmalar) bo'yicha olinadigan material (ShNK 4.02.70-05, 1.9-band). */
+const isProjectQuantity = (v: unknown) => typeof v === 'string' && v.trim().toUpperCase() === 'П';
+const PROJECT_QUANTITY_NOTE = 'П — miqdor loyihadan';
 /** Varaqni platforma import qatorlariga aylantiradi (`_row` — Excel qatori); Form 5 bo'lmasa null. */
 export function parseForm5(sheet: Sheet) {
   const found = layout(sheet);
@@ -121,11 +125,23 @@ export function parseForm5(sheet: Sheet) {
   const mismatch: { row: number; excel: string; platform: string }[] = [];
   const missingUnit: number[] = [];
   const skipped: number[] = [];
+  // S3, D37: bosh pudratchi material qatorlari (A bo'sh, miqdori bor) — «kim beradi» tanlovi shularga tegadi
+  const gcRows: number[] = [];
+  const projectQty: {
+    row: number;
+    code: string | null;
+    name: string;
+    unit: string | null;
+    category: string | null;
+    zone: string | null;
+  }[] = [];
   const prices = new Map<string, { code: string | null; name: string; prices: Set<string> }>();
   let unpriced = 0;
   let work: { code: string; name: string; qty: Decimal; category: string } | null = null;
   let skipping = false;
   let zone: string | null = null;
+  // S2: oxirgi «Раздел …» qatorining to'liq matni — keyingi barcha qatorlarga
+  let section: string | null = null;
   let end = sheet.rowCount + 1;
   const unitOf = (raw: string) => {
     const u = form5Unit(raw);
@@ -159,8 +175,11 @@ export function parseForm5(sheet: Sheet) {
     const code = text(B);
     if (!a && /^раздел/i.test(name)) {
       zone = form5Floor(name);
+      section = name.trim().slice(0, 300);
       continue;
     }
+    const sectionField = section ? { section_name: section } : {};
+    const resourceCode = code?.trim() ? { resource_code: code.trim().slice(0, 60) } : {};
     if (/^\d+$/.test(a) && code) {
       const qty = num(F) ?? num(E);
       // Hajmi «--» yoki bo'sh — ishlatilmagan variant: resurslari bilan o'tkaziladi (ogohlantirish);
@@ -181,6 +200,8 @@ export function parseForm5(sheet: Sheet) {
         _row: r,
         kind: 'labor',
         category: work.category,
+        norm_code: code.trim().slice(0, 200),
+        ...sectionField,
         description: name.slice(0, 500),
         ...(zone ? { zone_name: zone } : {}),
         unit_id: u.unit,
@@ -197,7 +218,8 @@ export function parseForm5(sheet: Sheet) {
       : /МАШ/i.test(raw ?? '')
         ? 'equipment'
         : 'material';
-    const note = [code, u && !u.known ? raw : null].filter(Boolean).join(' · ') || undefined;
+    // Kod endi `resource_code` da; izohda faqat platformada yo'q asl birlik
+    const note = u && !u.known ? raw! : undefined;
     if (/^\d+\.\d+$/.test(a)) {
       const norm = num(E);
       if (!work && skipping) continue;
@@ -225,6 +247,8 @@ export function parseForm5(sheet: Sheet) {
         _row: r,
         kind,
         category: work.category,
+        ...resourceCode,
+        ...sectionField,
         description: name.slice(0, 500),
         ...(kind === 'material' ? { material_name: name.slice(0, 500) } : {}),
         ...(zone ? { zone_name: zone } : {}),
@@ -237,14 +261,52 @@ export function parseForm5(sheet: Sheet) {
       });
       continue;
     }
+    if (!a && !num(F) && (isProjectQuantity(E) || isProjectQuantity(F))) {
+      // D35 (ShNK 4.02.70-05, 1.9-band): «П» — sarfi loyihadan (ishchi chizmalardan) olinadigan material.
+      // Miqdor 0 bilan saqlanadi va keyin muharrirda kiritiladi (F da miqdor bo'lsa — oddiy material qatori);
+      // u normaning qismi, shuning uchun hajmi yo'q ish ostida resurslari bilan birga o'tkaziladi.
+      if (!work && skipping) continue;
+      counts.materials++;
+      if (!raw) missingUnit.push(r);
+      projectQty.push({
+        row: r,
+        code,
+        name,
+        unit: raw,
+        category: work?.category ?? null,
+        zone,
+      });
+      const g = at(r, 7);
+      const gPrice = num(g);
+      lines.push({
+        _row: r,
+        kind: 'material',
+        category: work?.category ?? null,
+        ...resourceCode,
+        ...sectionField,
+        description: name.slice(0, 500),
+        material_name: name.slice(0, 500),
+        ...(zone ? { zone_name: zone } : {}),
+        ...(u ? { unit_id: u.unit } : {}),
+        quantity: quantity(0),
+        // Narx faqat G da musbat son (yoki natijasiz formula — xato) bo'lsa; aks holda 0, narxsizlar soniga kirmaydi
+        unit_price:
+          g === NO_RESULT || (gPrice && !gPrice.isZero()) ? priceOf(r, code, name) : '0.00',
+        note: [note, PROJECT_QUANTITY_NOTE].filter(Boolean).join(' · '),
+      });
+      continue;
+    }
     if (!a && (num(F) ?? num(E))) {
       // Bosh pudratchi materiali: raqamsiz qator, miqdor to'g'ridan-to'g'ri. Birligi yo'q bo'lsa — material birligi.
       counts.materials++;
+      gcRows.push(r);
       if (!raw) missingUnit.push(r);
       lines.push({
         _row: r,
         kind: 'material',
         category: work?.category ?? null,
+        ...resourceCode,
+        ...sectionField,
         description: name.slice(0, 500),
         material_name: name.slice(0, 500),
         ...(zone ? { zone_name: zone } : {}),
@@ -263,6 +325,7 @@ export function parseForm5(sheet: Sheet) {
     percent: string | null;
     amount: string | null;
     addable: boolean;
+    key: string | null;
   }[] = [];
   for (let r = end; r <= sheet.rowCount && totals.length < 30; r++) {
     const label = text(at(r, 3));
@@ -277,14 +340,16 @@ export function parseForm5(sheet: Sheet) {
       rate: share,
       percent: share ? dec(share).mul(100).toFixed() : null,
       amount: amount ? money(amount) : null,
-      // Ulushli qatorni (masalan, «прочие затраты» 21 %) smetaga xizmat qatori qilib qo'shish mumkin; QQS — yo'q.
+      // Ulushli qator (masalan, «прочие затраты» 21 %), QQS emas — S3 da «boshqa xarajatlar» foizi sifatida taklif qilinadi
       addable: !!share && !/НДС|QQS|VAT/i.test(label),
+      key: excelKey(label),
     });
   }
   return {
     lines,
     errors,
     counts,
+    gcRows,
     excel: {
       total: totals[0]?.row === end ? totals[0].amount : null,
       rows: totals,
@@ -303,8 +368,46 @@ export function parseForm5(sheet: Sheet) {
         }),
       missing_unit: missingUnit.slice(0, 50),
       skipped_works: skipped.slice(0, 50),
+      project_quantity: projectQty.slice(0, 50),
+      project_quantity_count: projectQty.length,
     },
   };
+}
+/**
+ * S3: Excel jamlar bloki qatorining smeta narxi zanjiridagi kaliti (egasining `локалка` yorliqlari bo'yicha);
+ * tanilmasa null. Tartib muhim: «ИТОГО С НДС» — QQSdan, «ИТОГО С УЧЕТОМ ПРОЧИХ» — «ИТОГО» dan oldin.
+ */
+const latinLookalikes: Record<string, string> = {
+  A: 'А',
+  B: 'В',
+  C: 'С',
+  E: 'Е',
+  H: 'Н',
+  K: 'К',
+  M: 'М',
+  O: 'О',
+  P: 'Р',
+  T: 'Т',
+  X: 'Х',
+};
+export function excelKey(label: string) {
+  // Egasining fayllarida yorliqlar qo'lda yozilgan: «С У ЧЕТОМ» (so'z ichida probel), «C НДС» (lotin C),
+  // «ГЕНПОДРДЧИКА» (harf tushgan) — probelsiz va kirill harflari bilan solishtiriladi
+  const raw = label.toUpperCase().replace(/\s+/g, '');
+  const l = raw.replace(/[ABCEHKMOPTX]/g, (c) => latinLookalikes[c]!);
+  if (/QQS|VAT/.test(raw)) return 'vat';
+  if (/ВОЗВРАТ/.test(l)) return 'customer_deduction';
+  if (/СНДС/.test(l)) return 'total_with_vat';
+  if (/НДС/.test(l)) return 'vat';
+  if (/СУЧ[ЕЁ]ТОМ/.test(l)) return 'total_without_vat';
+  if (/ПРОЧИЕ|НАКЛАДН/.test(l)) return 'other_costs';
+  if (/ЗАРПЛАТ|ОПЛАТАТРУДА|ЗАТРАТЫТРУДА/.test(l)) return 'labor';
+  if (/МАШИН|МЕХАНИЗМ/.test(l)) return 'equipment';
+  if (/МАТЕРИАЛ.*(ГЕНПОДР|ЗАКАЗЧ)/.test(l)) return 'customer_materials';
+  if (/МАТЕРИАЛ/.test(l)) return 'contractor_materials';
+  if (/ВСЕГОЗАТРАТ|ПРЯМЫХ/.test(l)) return 'direct_total';
+  if (/^ИТОГО/.test(l)) return 'total';
+  return null;
 }
 /** Inspeksiya uchun varaq qisqachasi; `too_large` varaq tanlanmaydi (chegara smeta importi bilan bir xil). */
 export function form5Summary(sheet: Sheet, maxRows: number, maxColumns: number) {

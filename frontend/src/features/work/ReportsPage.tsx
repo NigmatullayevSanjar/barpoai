@@ -30,6 +30,7 @@ type WorkLine = {
   description: string;
   unit_id: string;
   effective_quantity: string;
+  zone_id: string | null;
   zone_name: string | null;
   estimate_name: string;
   fact_quantity: string;
@@ -242,6 +243,18 @@ function ReportModal({
     forecast_end: '',
   });
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  // Zona tanlansa — shu zona va uning ichidagi zonalar (qavat → xonadonlar) ishlari hamda zonasiz umumiy ishlar
+  // (Form 5 smetalarida qatorlarda zona yo'q; qavat × ish jadvali shunga tayanadi). Boshqa zonaniki yashiriladi.
+  const zoneIds = new Set(form.zone_id ? [form.zone_id] : []);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const z of zones.data?.items ?? [])
+      if (z.parent_id && zoneIds.has(z.parent_id) && !zoneIds.has(z.id)) {
+        zoneIds.add(z.id);
+        grew = true;
+      }
+  }
+  const zoneLines = form.zone_id ? lines.filter((l) => !l.zone_id || zoneIds.has(l.zone_id)) : lines;
   const line = lines.find((l) => l.id === form.estimate_line_id);
   const save = useWorkMutation(
     () =>
@@ -308,7 +321,11 @@ function ReportModal({
               wrapClassName="span-2"
               label={t('stock.zone')}
               value={form.zone_id}
-              onChange={(e) => set('zone_id', e.target.value)}
+              onChange={(e) => {
+                const zone_id = e.target.value;
+                // Tanlangan smeta qatori boshqa zonaniki bo'lib qolmasin
+                setForm((f) => ({ ...f, zone_id, estimate_line_id: '', progress_quantity: '' }));
+              }}
             >
               <option value="">—</option>
               {(zones.data?.items ?? []).map((z) => (
@@ -333,12 +350,18 @@ function ReportModal({
             <Select
               wrapClassName="span-2"
               label={t('reports.progress_line')}
-              hint={loaded && lines.length === 0 ? t('reports.no_work_lines') : t('reports.progress_hint')}
+              hint={
+                loaded && lines.length === 0
+                  ? t('reports.no_work_lines')
+                  : loaded && zoneLines.length === 0
+                    ? t('reports.no_zone_work_lines')
+                    : t('reports.progress_hint')
+              }
               value={form.estimate_line_id}
               onChange={(e) => set('estimate_line_id', e.target.value)}
             >
               <option value="">—</option>
-              {lines.map((l) => (
+              {zoneLines.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.description} · {t('reports.plan')}: {formatQuantity(l.effective_quantity, l.unit_id)}
                   {l.zone_name ? ` · ${l.zone_name}` : ''}

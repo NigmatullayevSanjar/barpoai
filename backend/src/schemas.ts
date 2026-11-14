@@ -40,17 +40,48 @@ export const estimateLine = z.strictObject({
   loss_percent: qty.optional(),
   category: z.string().trim().max(120).nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
+  // S2: to'liq norma shifri (ish qatori), resurs/material kodi va bo'lim («Раздел …») — category o'zgarmaydi
+  norm_code: z.string().trim().max(200).nullable().optional(),
+  resource_code: z.string().trim().max(60).nullable().optional(),
+  section_name: z.string().trim().max(300).nullable().optional(),
+  // S3, D37: materialni kim beradi — pudratchi (standart) yoki buyurtmachi; faqat material qatorida «customer»
+  supplied_by: z.enum(['contractor', 'customer']).optional(),
   position: z.number().int().min(0).max(100000).optional(),
   months: z
     .array(z.strictObject({ month: date, quantity: qty }))
     .max(120)
     .optional(),
 });
+/** S3 (D36–D39): foiz 0…100, 4 kasrgacha. */
+const percent = z.string().regex(/^(100(\.0{1,4})?|[1-9]?\d(\.\d{1,4})?)$/);
+/** S3: smeta sozlamalari (smeta narxi zanjiri); berilmagan maydon o'zgarmaydi. */
+export const priceSettings = z.strictObject({
+  markup_mode: z.enum(['free', 'vmq583']).optional(),
+  other_costs_percent: percent.optional(),
+  profit_percent: percent.optional(),
+  production_costs_percent: percent.optional(),
+  deduct_customer_materials: z.boolean().optional(),
+  // null — QQS yo'q (D36)
+  vat_percent: percent.nullable().optional(),
+});
 export const estimateInput = z.strictObject({
   project_id: uuid,
   name: text,
   // D30: smeta 20 000 qatorgacha (estimates.ts ESTIMATE_MAX_LINES bilan bir xil)
   lines: z.array(estimateLine).min(1).max(20000),
+  // S3: yaratishda (masalan, Form 5 importi taklifi) yoki reviziyada smeta sozlamalari
+  settings: priceSettings.optional(),
+});
+/** S2, D41: smeta sarlavhasi — reviziya yaratmaydi; berilmagan maydon o'zgarmaydi, null tozalaydi. */
+export const estimateHeader = z.strictObject({
+  basis: z.string().trim().max(1000).nullable().optional(),
+  price_level_date: date.nullable().optional(),
+  labor_rate_source: z.string().trim().max(500).nullable().optional(),
+  contract_number: z.string().trim().max(100).nullable().optional(),
+  contract_date: date.nullable().optional(),
+  contract_amount: amount.nullable().optional(),
+  // S3: smeta sozlamalari ham shu yerda — reviziyasiz, audit bilan
+  ...priceSettings.shape,
 });
 export const stockInput = z.strictObject({
   project_id: uuid,

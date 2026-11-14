@@ -18,7 +18,9 @@ import { projectScope, accountScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { createStock } from './inventory.js';
 import { notify, projectRecipients } from './notify.js';
+import { customerMaterials, customerMaterialsWorkbook } from './customer-materials.js';
 import { quantity } from './money.js';
+import { MAIN_WAREHOUSE_NAME } from './routes-company.js';
 
 /** Hisoblarni rol doirasiga qarab filtrlovchi umumiy shart. */
 const accountFilter = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
@@ -45,14 +47,49 @@ export async function stockOverview(db: Db, actor: Row, projectId: string) {
       [actor.tenant_id, projectId, actor.role, actor.id],
     )
   ).rows;
+  // D42: smeta rejasi ko'rinadigan asosiy omborda (bo'lmasa birinchi ko'rinadigan omborda) ko'rsatiladi
+  const warehouses = accounts.filter((a) => a.kind === 'warehouse');
+  const planAccount =
+    (warehouses.find((a) => a.name === MAIN_WAREHOUSE_NAME) ?? warehouses[0])?.id ?? null;
+  /**
+   * D42: qatorlar — qoldig'i, rezervi yoki minimumi bor, kirim qilingan (kirim/boshlang'ich qoldiq, storno ayirilgan)
+   * yoki obyektning joriy smetalarida bor material; smetadagi, hali omborga kelmagan material 0 qoldiq bilan.
+   * `plan_quantity` — joriy smetalardagi material qatorlari hisobiy miqdori (faqat reja omborining qatorida);
+   * `received_quantity` — shu hisobga kirim; `over_plan` — obyekt bo'yicha kirim rejadan oshgan. Reja smeta bilan
+   * o'zgaradi, kirim va qoldiq (fakt) o'zgarmaydi.
+   */
   const balances = accounts.length
     ? (
         await db.query(
-          `SELECT b.account_id,b.material_id,m.name material_name,m.unit_id,b.quantity::text quantity,b.reserved::text reserved,(b.quantity-b.reserved)::text available,
-                  b.value::text value,b.minimum_quantity::text minimum_quantity,(b.quantity-b.reserved<b.minimum_quantity AND b.minimum_quantity>0) low
-           FROM stock_balances b JOIN materials m ON m.id=b.material_id
-           WHERE b.tenant_id=$1 AND b.account_id=ANY($2::uuid[]) AND (b.quantity>0 OR b.reserved>0 OR b.minimum_quantity>0) ORDER BY m.name`,
-          [actor.tenant_id, accounts.map((a) => a.id)],
+          `WITH plan AS (
+             SELECT l.material_id,sum(l.effective_quantity) quantity
+             FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id
+             WHERE l.tenant_id=$1 AND l.project_id=$3 AND l.kind='material' AND l.archived_at IS NULL AND e.archived_at IS NULL
+             GROUP BY l.material_id
+           ), received AS (
+             SELECT s.account_id,s.material_id,sum(s.quantity_delta) quantity
+             FROM stock_ledger s JOIN stock_commands c ON c.tenant_id=s.tenant_id AND c.id=s.command_id
+               LEFT JOIN stock_commands o ON o.tenant_id=c.tenant_id AND o.id=c.reverses_id
+             WHERE s.tenant_id=$1 AND c.project_id=$3 AND (c.kind IN ('opening','receipt') OR o.kind IN ('opening','receipt'))
+             GROUP BY s.account_id,s.material_id
+           ), rows AS (
+             SELECT b.account_id,b.material_id,b.quantity,b.reserved,b.value,b.minimum_quantity
+             FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id=ANY($2::uuid[])
+             UNION ALL
+             SELECT $4::uuid,p.material_id,0,0,0,0 FROM plan p
+             WHERE $4::uuid IS NOT NULL AND NOT EXISTS(SELECT 1 FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id=$4::uuid AND b.material_id=p.material_id)
+           )
+           SELECT x.account_id,x.material_id,m.name material_name,m.unit_id,x.quantity::numeric(24,6)::text quantity,x.reserved::numeric(24,6)::text reserved,
+                  (x.quantity-x.reserved)::numeric(24,6)::text available,x.value::numeric(20,2)::text value,x.minimum_quantity::numeric(24,6)::text minimum_quantity,
+                  (x.quantity-x.reserved<x.minimum_quantity AND x.minimum_quantity>0) low,
+                  p.quantity::numeric(24,6)::text plan_quantity,coalesce(r.quantity,0)::numeric(24,6)::text received_quantity,
+                  (p.quantity IS NOT NULL AND (SELECT coalesce(sum(t.quantity),0) FROM received t WHERE t.material_id=x.material_id)>p.quantity) over_plan
+           FROM rows x JOIN materials m ON m.tenant_id=$1 AND m.id=x.material_id
+             LEFT JOIN plan p ON x.account_id=$4::uuid AND p.material_id=x.material_id
+             LEFT JOIN received r ON r.account_id=x.account_id AND r.material_id=x.material_id
+           WHERE x.quantity>0 OR x.reserved>0 OR x.minimum_quantity>0 OR p.material_id IS NOT NULL OR r.quantity>0
+           ORDER BY m.name`,
+          [actor.tenant_id, accounts.map((a) => a.id), projectId, planAccount],
         )
       ).rows
     : [];
@@ -71,7 +108,69 @@ export async function stockOverview(db: Db, actor: Row, projectId: string) {
   );
   return { accounts, balances, pending: { ...pending, requests: requests.pending } };
 }
+/**
+ * S5: buyurtmachi materiallari hisoboti davri — berilmasa joriy oy (Toshkent); `to` kiradi. Ombor ko'rish huquqi
+ * (`stock.read`) va obyekt doirasi; summalar faqat narx huquqi bilan (sensitive / Excel'da ustun bo'sh).
+ */
+const customerQuery = z.strictObject({
+  project_id: uuid,
+  from: date.optional(),
+  to: date.optional(),
+});
+async function loadCustomerMaterials(db: Db, actor: Row, query: Row) {
+  await projectScope(db, actor, query.project_id);
+  const today = (await one(db, "SELECT (now() AT TIME ZONE 'Asia/Tashkent')::date::text d", []))
+    .d as string;
+  const to = query.to ?? today;
+  const from = query.from ?? `${to.slice(0, 7)}-01`;
+  invariant(from <= to, 'DATE_RANGE_INVALID', 400);
+  return customerMaterials(
+    db,
+    actor.tenant_id,
+    query.project_id,
+    from,
+    to,
+    await allowed(db, actor, 'estimates.read'),
+  );
+}
 export function stockExtraRoutes(add: (r: Endpoint) => void) {
+  add({
+    method: 'GET',
+    path: '/v1/stock/customer-materials',
+    summary:
+      'Buyurtmachi (bosh pudratchi) materiallari hisoboti (S5): smetada «buyurtmachi beradi» deb belgilangan materiallar bo‘yicha davr boshidagi qoldiq, berilgan, sarflangan, tuzatish, oxirgi qoldiq (ombor yozuvlari, Toshkent sanasi) va ish bo‘yicha normativ sarf bilan solishtiruv; summa faqat narx huquqi bilan',
+    permission: 'stock.read',
+    query: customerQuery,
+    sensitive: true,
+    handler: ({ db, actor, query }) => loadCustomerMaterials(db, actor, query),
+  });
+  add({
+    method: 'GET',
+    path: '/v1/stock/customer-materials/export',
+    summary:
+      'Buyurtmachi materiallari hisoboti Excel’da (rus tilida, egasining «отчёт» shakli): «Отчет» va «Нормативный расход» varaqlari; summa ustunlari narx huquqisiz bo‘sh; audit export.customer_materials',
+    permission: 'stock.read',
+    query: customerQuery,
+    handler: async ({ db, actor, query }) => {
+      const report = await loadCustomerMaterials(db, actor, query);
+      const project = await one(
+        db,
+        'SELECT name,address FROM projects WHERE tenant_id=$1 AND id=$2',
+        [actor.tenant_id, query.project_id],
+      );
+      const base64 = await customerMaterialsWorkbook(
+        report,
+        { project: project.name, project_address: project.address },
+        await allowed(db, actor, 'prices.read'),
+      );
+      await audit(db, actor, 'export.customer_materials', query.project_id, report.period);
+      return {
+        filename: `${`buyurtmachi-materiallari-${project.name}-${report.period.from}-${report.period.to}`.replace(/[^\w.-]+/g, '_')}.xlsx`,
+        mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        base64,
+      };
+    },
+  });
   add({
     method: 'GET',
     path: '/v1/stock/overview',
@@ -80,6 +179,28 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
     query: z.object({ project_id: uuid }),
     sensitive: true,
     handler: ({ db, actor, query }) => stockOverview(db, actor, query.project_id),
+  });
+  add({
+    method: 'GET',
+    path: '/v1/stock/estimate-lines',
+    summary:
+      'Jo‘natish va sarfda tanlash uchun obyektning joriy smetalaridagi shu materialning qatorlari (barcha arxivlanmagan smetalar); narxsiz, `estimates.read` talab qilinmaydi (brigadir, ombor mudiri)',
+    permission: 'stock.read',
+    query: z.object({ project_id: uuid, material_id: uuid }),
+    handler: async ({ db, actor, query }) => {
+      await projectScope(db, actor, query.project_id);
+      return {
+        items: (
+          await db.query(
+            `SELECT l.id,e.name estimate_name,l.description,l.unit_id,l.effective_quantity::text effective_quantity,z.name zone_name
+             FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id LEFT JOIN zones z ON z.id=l.zone_id
+             WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.material_id=$3 AND l.kind='material' AND l.archived_at IS NULL AND e.archived_at IS NULL
+             ORDER BY e.name,l.position,l.id`,
+            [actor.tenant_id, query.project_id, query.material_id],
+          )
+        ).rows,
+      };
+    },
   });
   add({
     method: 'GET',

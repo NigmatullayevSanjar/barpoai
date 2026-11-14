@@ -209,10 +209,14 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
   const local = parseForm5(book.getWorksheet('Локалка 1')!)!;
   assert.deepEqual(local.errors, []);
   assert.deepEqual(local.counts, { works: 2, resources: 7, materials: 2, priced: 8 });
+  // S3, D37: «kim beradi» tanlovi faqat bosh pudratchi material qatorlariga (A bo'sh, miqdori bor)
+  assert.deepEqual(local.gcRows, [15, 16]);
   assert.deepEqual(local.lines[0], {
     _row: 9,
     kind: 'labor',
     category: 'Е0804-003-01 КЛАДКА ПЕРЕГОРОДОК',
+    norm_code: 'Е0804-003-01 ДОП. 12',
+    section_name: 'Раздел 1. Кладка стен 1-этаж',
     description: 'КЛАДКА ПЕРЕГОРОДОК',
     zone_name: '1-qavat',
     unit_id: 'm2',
@@ -236,6 +240,32 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
       [20, 'material', 'kg', '1.200000', '2-qavat'],
     ],
   );
+  // S2: ish qatorida to'liq norma shifri (qo'shimchasi bilan), qolganlarida resurs kodi; bo'lim — oxirgi «Раздел …»;
+  // izohda kod takrorlanmaydi (faqat ko'paytmali yoki platformada yo'q asl birlik)
+  const s1 = 'Раздел 1. Кладка стен 1-этаж';
+  const s2 = 'Раздел 2. Монтаж 2 этаж';
+  assert.deepEqual(
+    local.lines.map((l) => [
+      l._row,
+      l.norm_code ?? null,
+      l.resource_code ?? null,
+      l.section_name ?? null,
+      l.note ?? null,
+    ]),
+    [
+      [9, 'Е0804-003-01 ДОП. 12', null, s1, '100 М2'],
+      [10, null, '1', s1, null],
+      [11, null, '762', s1, null],
+      [12, null, '19412', s1, null],
+      [13, null, '923565', s1, null],
+      [14, null, '9219', s1, null],
+      [15, null, 'pcpc0281970', s1, null],
+      [16, null, 'pcpc0315941', s1, null],
+      [18, 'Е0501-061-01', null, s2, null],
+      [19, null, '1', s2, null],
+      [20, null, '35310', s2, null],
+    ],
+  );
   const total = local.lines.reduce(
     (s, l) => s.add(money(dec(plannedQuantity(l as any)).mul(l.unit_price))),
     dec('0'),
@@ -256,6 +286,8 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
     ],
     missing_unit: [16],
     skipped_works: [21],
+    project_quantity: [],
+    project_quantity_count: 0,
   });
   assert.deepEqual(local.excel, {
     total: '18340000.00',
@@ -267,6 +299,7 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
         percent: null,
         amount: '18340000.00',
         addable: false,
+        key: 'direct_total',
       },
       {
         row: 23,
@@ -275,8 +308,17 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
         percent: '21',
         amount: '3851400.00',
         addable: true,
+        key: 'other_costs',
       },
-      { row: 24, label: 'НДС', rate: '0.12', percent: '12', amount: '2663868.00', addable: false },
+      {
+        row: 24,
+        label: 'НДС',
+        rate: '0.12',
+        percent: '12',
+        amount: '2663868.00',
+        addable: false,
+        key: 'vat',
+      },
     ],
   });
   const norms = parseForm5(book.getWorksheet('Нормы')!)!;
@@ -287,7 +329,110 @@ test('Form 5 sheet: works, resources by norm, sections as floors, warnings and E
       norms.lines[1]!.unit_price,
       norms.warnings.unpriced,
     ],
-    [3, '1000.000000', '0.00', 2],
+    [4, '1000.000000', '0.00', 2],
+  );
+  // D35: «П» — miqdor loyihadan: material qatori 0 miqdor bilan, ishning kategoriyasida; narxsizlar soniga kirmaydi
+  assert.deepEqual(norms.lines[3], {
+    _row: 11,
+    kind: 'material',
+    category: 'Е0101-001-01 РАЗРАБОТКА ГРУНТА',
+    resource_code: 'П54889',
+    description: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
+    material_name: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
+    unit_id: 'kg',
+    quantity: '0.000000',
+    unit_price: '0.00',
+    note: 'П — miqdor loyihadan',
+  });
+  assert.deepEqual(norms.counts, { works: 1, resources: 2, materials: 1, priced: 0 });
+  assert.deepEqual(
+    [norms.warnings.project_quantity, norms.warnings.project_quantity_count],
+    [
+      [
+        {
+          row: 11,
+          code: 'П54889',
+          name: 'СМЕСЬ БЕТОННАЯ НАЛИВНОГО ТИПА',
+          unit: 'кг',
+          category: 'Е0101-001-01 РАЗРАБОТКА ГРУНТА',
+          zone: null,
+        },
+      ],
+      1,
+    ],
+  );
+  // D35 chekka holatlari: E va F ikkalasi «П», kichik «п», narxli varaqda G bo'sh / 0 / narx bor, F da miqdor bor,
+  // hajmi «--» ish ostidagi «П» (resurslari bilan birga o'tkaziladi)
+  const edge = new ExcelJS.Workbook();
+  const es = edge.addWorksheet('П holatlari');
+  es.getRow(5).values = [
+    'N п.п.',
+    'Шифр номера нормативов и коды ресурсов',
+    'Наименование работ и затрат',
+    'Единица измерения',
+    'Количество',
+    'Количество',
+    'Стоимость',
+    'Стоимость',
+  ];
+  es.getRow(6).values = [1, 2, 3, 4, 5, 6, 7, 8];
+  const edgeRows: [number, unknown[]][] = [
+    [7, [null, null, 'Раздел 1. Полы 1-этаж']],
+    [8, [1, 'Е1101-065-01', 'НАЛИВНЫЕ ПОЛЫ', '100М2 ПОЛА', 1, 1]],
+    [9, ['1.1', 1, 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', 'ЧЕЛ.-Ч', 10, 10, 30000]],
+    [10, [null, 'П1', 'СМЕСЬ А', 'кг', 'П', 'П']],
+    [11, [null, 'П2', 'СМЕСЬ Б', 'кг', 'п', null, 0]],
+    [12, [null, 'С3', 'ПЛЕНКА', 'м2', 'П', null, 2500]],
+    [13, [null, 'С4', 'ГРУНТОВКА', 'кг', 'П', 12, 4000]],
+    [14, [2, 'Е1101-066-01', 'СТЯЖКА', '100М2', '--', '--']],
+    [15, ['2.1', 1, 'ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', 'ЧЕЛ.-Ч', 5, null, 30000]],
+    [16, [null, 'П5', 'СМЕСЬ В', 'кг', 'П']],
+  ];
+  for (const [r, values] of edgeRows) es.getRow(r).values = values as ExcelJS.CellValue[];
+  const edgeBook = new ExcelJS.Workbook();
+  await edgeBook.xlsx.load((await edge.xlsx.writeBuffer()) as any);
+  const ep = parseForm5(edgeBook.getWorksheet('П holatlari')!)!;
+  assert.deepEqual(ep.errors, []);
+  assert.deepEqual(
+    ep.lines.map((l) => [
+      l._row,
+      l.kind,
+      l.quantity,
+      l.unit_price,
+      l.category,
+      l.zone_name ?? null,
+      l.norm_code ?? l.resource_code,
+    ]),
+    [
+      [8, 'labor', '100.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'Е1101-065-01'],
+      [9, 'labor', '10.000000', '30000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', '1'],
+      [10, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'П1'],
+      [11, 'material', '0.000000', '0.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'П2'],
+      [12, 'material', '0.000000', '2500.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'С3'],
+      // F da miqdor bor — oddiy material qatori (bosh pudratchi materiali kabi), miqdor F dan
+      [13, 'material', '12.000000', '4000.00', 'Е1101-065-01 НАЛИВНЫЕ ПОЛЫ', '1-qavat', 'С4'],
+    ],
+  );
+  assert.ok(ep.lines.every((l) => l.section_name === 'Раздел 1. Полы 1-этаж'));
+  assert.deepEqual(
+    [
+      ep.warnings.project_quantity.map((p) => [p.row, p.zone]),
+      ep.warnings.project_quantity_count,
+      ep.warnings.unpriced,
+      ep.warnings.skipped_works,
+      ep.counts,
+    ],
+    [
+      [
+        [10, '1-qavat'],
+        [11, '1-qavat'],
+        [12, '1-qavat'],
+      ],
+      3,
+      0,
+      [14],
+      { works: 1, resources: 1, materials: 4, priced: 3 },
+    ],
   );
   // natijasiz formula — qator xatosi
   const broken = new ExcelJS.Workbook();

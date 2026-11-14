@@ -21,6 +21,12 @@ export type Balance = {
   value?: string;
   minimum_quantity: string;
   low: boolean;
+  /** D42: joriy smetalar rejasi (faqat reja omborining qatorida, aks holda null) */
+  plan_quantity: string | null;
+  /** Shu hisobga kirim (kirim va boshlang'ich qoldiq, storno ayirilgan) */
+  received_quantity: string;
+  /** Obyekt bo'yicha kirim rejadan oshgan */
+  over_plan: boolean;
 };
 export type Overview = {
   accounts: StockAccount[];
@@ -159,6 +165,7 @@ export const useRequests = (projectId: string, page: { offset: number; limit: nu
   });
 export const stockKeys = [
   'stock-overview',
+  'customer-materials',
   'stock-commands',
   'stock-requests',
   'stock-ledger',

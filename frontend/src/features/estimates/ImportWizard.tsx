@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type ListResponse } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatMoney } from '@/lib/format';
 import { Alert, Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { lineKinds, useUnits } from './model';
+import { lineKinds, useUnits, type EstimateSummary } from './model';
 import { Form5Import, type Form5Sheet } from './Form5Import';
 
 const fields = [
@@ -18,11 +19,15 @@ const fields = [
   'unit_price',
   'material_name',
   'zone_name',
+  'norm_code',
+  'resource_code',
+  'section_name',
   'category',
   'note',
   'norm',
   'work_quantity',
   'loss_percent',
+  'supplied_by',
 ] as const;
 type Field = (typeof fields)[number];
 const required: Field[] = ['description', 'quantity', 'unit_price'];
@@ -39,14 +44,18 @@ const guessOrder: [Field, RegExp, RegExp?][] = [
   ['unit_id', /o.lchov|birlik(?!.*narx)|(^|[^а-яё])ед|unit/i],
   ['quantity', /miqdor|кол|qty|quantity/i],
   ['description', /nom|наимен|descr/i, /material|материал|zon|зон|blok|блок/i],
-  ['category', /bo.lim|kateg|раздел|катег|category/i],
+  ['resource_code', /resurs\s*(kod|shifr)|(код|шифр)\s*ресурс|resource\s*code/i],
+  ['norm_code', /norma.*kod|shifr|шифр|код.*норм|обоснован|norm.*code/i],
+  ['section_name', /bo.lim|раздел|section/i],
+  ['category', /kateg|катег|category/i],
   ['kind', /tur|тип|kind/i],
   ['material_name', /material|материал/i],
   ['zone_name', /zona|блок|зона|zone|blok/i],
   ['note', /izoh|примеч|note/i],
-  ['norm', /norma|норма|norm/i],
+  ['norm', /norma|норма|norm/i, /kod|код|шифр|code/i],
   ['work_quantity', /hajm|объ[её]м|work/i],
   ['loss_percent', /yo.qot|потер|loss/i],
+  ['supplied_by', /kim beradi|кто постав|поставщик материал|supplied/i],
 ];
 const totalHeader = /jami|итого|всего|total/i;
 function guessMapping(headers: string[]) {
@@ -67,6 +76,8 @@ type Preview = {
   created?: { materials: number; zones: number };
   converted?: { row: number; from: string; to: string }[];
   preview: { name: string; lines: { total: string; unit_price: string; quantity: string }[] };
+  /** D42: mavjud smetaning yangi reviziyasi bo'lsa — o'sha smeta */
+  target: { id: string; name: string; revision: number } | null;
   /** Jami serverda (decimal); frontend qo'shmaydi */
   total: string;
 };
@@ -78,8 +89,18 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const units = useUnits();
+  const { can } = useAuth();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [name, setName] = useState('');
+  // D42: '' — yangi smeta; aks holda shu smetaning yangi reviziyasi (reja almashadi, fakt qoladi)
+  const [target, setTarget] = useState('');
+  const canRevise = can('estimates', 'update');
+  const estimates = useQuery({
+    queryKey: ['estimates', projectId, 'import-targets'],
+    queryFn: () => api<ListResponse<EstimateSummary>>(`/v1/estimates?project_id=${projectId}&limit=100`),
+    enabled: canRevise,
+  });
+  const targets = estimates.data?.items ?? [];
   const [file, setFile] = useState<{ name: string; base64: string } | null>(null);
   const [inspect, setInspect] = useState<Inspect | null>(null);
   const [form5, setForm5] = useState<Form5Sheet[] | null>(null);
@@ -134,6 +155,7 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
           name: name.trim(),
           file_base64: file!.base64,
           mapping: Object.fromEntries(Object.entries(mapping).filter(([, v]) => v)),
+          ...(target ? { estimate_id: target } : {}),
           ...(defaultKind || defaultUnit
             ? {
                 defaults: {
@@ -170,6 +192,8 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
       }),
     onSuccess: async (row) => {
       await queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      await queryClient.invalidateQueries({ queryKey: ['estimate', row.id] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-overview', projectId] });
       toast.success(t('est.import_done'));
       onClose();
       navigate(`/app/estimates/${row.id}`);
@@ -189,6 +213,8 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
         projectId={projectId}
         file={file}
         sheets={form5}
+        targets={canRevise ? targets : []}
+        initialTarget={target}
         onBack={() => {
           setForm5(null);
           setStep(1);
@@ -245,6 +271,24 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
         )}
         {step === 1 && (
           <div className="stack">
+            {targets.length > 0 && (
+              <Select
+                label={t('est.import_target')}
+                value={target}
+                onChange={(e) => {
+                  setTarget(e.target.value);
+                  const picked = targets.find((x) => x.id === e.target.value);
+                  if (picked) setName(picked.name);
+                }}
+              >
+                <option value="">{t('est.import_target_new')}</option>
+                {targets.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {t('est.import_target_revision', { name: x.name, revision: x.revision })}
+                  </option>
+                ))}
+              </Select>
+            )}
             <Input label={t('est.name')} value={name} onChange={(e) => setName(e.target.value)} />
             <label className="field">
               <span className="field-label">{t('est.import_file')}</span>
@@ -342,6 +386,9 @@ export function ImportWizard({ projectId, onClose }: { projectId: string; onClos
                 total: formatMoney(preview.total, lang, true, 'UZS'),
               })}
             </Alert>
+            {preview.target && (
+              <Alert tone="info">{t('est.import_revision_hint', { name: preview.target.name })}</Alert>
+            )}
             {preview.created && (preview.created.materials > 0 || preview.created.zones > 0) && (
               <Alert tone="info">
                 {t('est.import_created', { materials: preview.created.materials, zones: preview.created.zones })}

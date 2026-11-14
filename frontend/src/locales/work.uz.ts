@@ -131,6 +131,8 @@ export const workUz: Record<string, string> = {
   'reports.reviewed_by': 'Tekshirdi',
   'reports.history': 'Tarix',
   'reports.no_work_lines': 'Obyekt smetasida ish qatorlari yo‘q; progress miqdorsiz hisobot yuborish mumkin.',
+  'reports.no_zone_work_lines':
+    'Bu zonada smeta ish qatorlari yo‘q; boshqa zonani tanlang yoki miqdorsiz yuboring.',
   'error.PROGRESS_LINE_REQUIRED': 'Progress miqdori va smeta qatori birga kiritiladi.',
   'error.MATERIAL_IS_NOT_WORK_PROGRESS': 'Material qatori ish progressi emas.',
   'error.RETURN_REASON_REQUIRED': 'Qaytarish sababi kerak.',
