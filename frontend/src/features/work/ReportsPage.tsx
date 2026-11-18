@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Archive, Plus } from 'lucide-react';
 import { api, ApiError, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useRecordParam } from '@/features/notifications/target';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatDate, formatDateTime, formatMoney, formatQuantity, todayIso, unitLabel } from '@/lib/format';
 import {
@@ -60,7 +61,8 @@ export function ReportsPage() {
   const [status, setStatus] = useState('');
   const [kind, setKind] = useState<'' | 'daily' | 'weekly'>('');
   const [create, setCreate] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Ochiq yozuv URL'da (?report=…): bildirishnomadan to'g'ridan-to'g'ri shu yozuv ochiladi.
+  const [selected, setSelected] = useRecordParam('report');
   const query = useReports(
     sel.projectId,
     { ...(status ? { status } : {}), ...(kind ? { kind } : {}) },

@@ -15,6 +15,7 @@ type Notification = {
   title: string;
   body: string;
   project_id: string | null;
+  payload?: Record<string, unknown> | null;
   read_at: string | null;
   created_at: string;
 };
