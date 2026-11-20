@@ -112,7 +112,8 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
               ? 'cookie'
               : 'bearer';
           // Cookie sessiya bilan kelgan o'zgartiruvchi so'rovlar faqat o'z frontend originidan qabul qilinadi (CSRF).
-          if (!bearer && cookieToken && request.method !== 'GET') {
+          // Logout bundan ozod: u faqat o'z sessiyasini yopadi; APP_ORIGIN noto'g'ri bo'lsa ham chiqish ishlashi kerak.
+          if (!bearer && cookieToken && request.method !== 'GET' && route.path !== '/v1/auth/logout') {
             const origin =
               request.headers.origin ??
               request.headers.referer?.replace(/(^https?:\/\/[^/]+).*/, '$1');
