@@ -32,13 +32,17 @@ export function authRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/auth/login',
     summary:
-      'Login yoki telefon raqami bilan kirish; cookie va Bearer sessiya; bloklangan admin faqat billing/supportga kira oladi',
+      'Kompaniya domeni + login yoki telefon bilan kirish (D43; platforma xodimlari domensiz); cookie va Bearer sessiya; bloklangan admin faqat billing/supportga kira oladi',
     public: true,
     session: 'set',
     rateLimit: authLimit(15),
-    body: z.strictObject({ login: identifier, password: z.string().min(1).max(128) }),
+    body: z.strictObject({
+      domain: z.string().trim().max(64).optional(),
+      login: identifier,
+      password: z.string().min(1).max(128),
+    }),
     handler: async ({ db, body }) =>
-      login(db, body as { login: string; password: string }, 'cookie'),
+      login(db, body as { domain?: string; login: string; password: string }, 'cookie'),
   });
   add({
     method: 'POST',
@@ -70,7 +74,7 @@ export function authRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, body }) => {
       const invite = await one(
         db,
-        `SELECT t.legal_name,i.expires_at FROM invites i JOIN tenants t ON t.id=i.tenant_id WHERE i.token_hash=$1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>now() AND t.status='pending'`,
+        `SELECT t.legal_name,t.domain,i.expires_at FROM invites i JOIN tenants t ON t.id=i.tenant_id WHERE i.token_hash=$1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>now() AND t.status='pending'`,
         [digest(body.token)],
       );
       return invite;
@@ -113,13 +117,17 @@ export function authRoutes(add: (r: Endpoint) => void) {
     passwordChange: true,
     handler: async ({ db, actor }) => {
       const tenant = actor.tenant_id
-        ? (await db.query('SELECT legal_name,status FROM tenants WHERE id=$1', [actor.tenant_id]))
-            .rows[0]
+        ? (
+            await db.query('SELECT legal_name,domain,status FROM tenants WHERE id=$1', [
+              actor.tenant_id,
+            ])
+          ).rows[0]
         : null;
       // D21: platforma xodimiga ruxsatlar ro'yxati (UI faqat yashiradi) va super admin uchun 2FA sozlash belgisi.
       return {
         ...publicUser(actor),
         tenant_name: tenant?.legal_name ?? null,
+        tenant_domain: tenant?.domain ?? null,
         platform_permissions: actor.tenant_id ? undefined : await platformGranted(db, actor),
         two_factor_setup_required: twoFactorSetupRequired(actor, telegramConfigured()),
       };

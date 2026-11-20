@@ -52,7 +52,9 @@ async function call(
   return text ? JSON.parse(text) : null;
 }
 /** Login — daqiqasiga cheklangan (AUTH_RATE_LIMIT); 429 bo'lsa kutib qayta uriniladi, chegara yumshatilmaydi. */
-async function login(user: string, password: string): Promise<string> {
+/** D43: sinov kompaniyasining domeni — kompaniya yaratilgach qo'yiladi; platforma xodimi domensiz kiradi. */
+let DOMAIN = '';
+async function login(user: string, password: string, domain = DOMAIN): Promise<string> {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`${API}/v1/auth/login`, {
       method: 'POST',
@@ -61,7 +63,7 @@ async function login(user: string, password: string): Promise<string> {
         origin: ORIGIN,
         'idempotency-key': randomUUID(),
       },
-      body: JSON.stringify({ login: user, password }),
+      body: JSON.stringify({ login: user, password, ...(domain ? { domain } : {}) }),
     });
     if (res.status === 429 && attempt < 12) {
       await new Promise((r) => setTimeout(r, 5000));
@@ -102,13 +104,14 @@ try {
   passed.push('API tayyor (/health/ready)');
 
   // 1. Platforma: kompaniya, taklif, admin ro'yxatdan o'tishi
-  const owner = await login(OWNER_LOGIN, OWNER_PASSWORD);
+  const owner = await login(OWNER_LOGIN, OWNER_PASSWORD, '');
   const tenant = await call(
     'POST',
     '/v1/platform/tenants',
     { legal_name: `QA Sinov MCHJ ${STAMP}`, registration_key: KEY },
     owner,
   );
+  DOMAIN = tenant.domain;
   const invite = await call('POST', `/v1/platform/tenants/${tenant.id}/invites`, undefined, owner);
   await call('POST', '/v1/auth/invites/preview', { token: invite.token });
   const adminLogin = `qa.admin.${STAMP.toLowerCase()}`;

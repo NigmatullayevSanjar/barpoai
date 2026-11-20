@@ -91,6 +91,17 @@ try {
     key?: string,
     expected = 200,
   ) => {
+    // D43: kompaniya xodimi domen bilan kiradi. Sinovlardagi ko'p kirishlar uchun domen login egasining
+    // kompaniyasidan qo'yiladi (login faqat bitta kompaniyada bo'lsa); domen qoidalari alohida aniq tekshiriladi.
+    if (url === '/v1/auth/login' && body && !('domain' in body)) {
+      const owners = (
+        await admin!.query(
+          'SELECT t.domain FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.login=$1',
+          [String(body.login).toLowerCase()],
+        )
+      ).rows;
+      if (owners.length === 1) body = { ...body, domain: owners[0].domain };
+    }
     const res = await app!.inject({
       method: method as any,
       url,
@@ -1686,9 +1697,129 @@ try {
   const cookieLogin = await app!.inject({
     method: 'POST',
     url: '/v1/auth/login',
-    payload: { login: '90 111 22 33', password: pass },
+    payload: { domain: 'test-1', login: '90 111 22 33', password: pass },
   });
   assert.equal(cookieLogin.statusCode, 200, cookieLogin.body);
+  // ---- D43: kompaniya domeni — yagona, kirishda majburiy, login kompaniya ichida yagona
+  assert.equal(t.domain, 'test-1', 'domain derived from registration key when not given');
+  for (const payload of [
+    { login: 'manager', password: pass + '2' }, // domensiz — faqat platforma xodimlari
+    { domain: 'yoq-domen', login: 'manager', password: pass + '2' },
+    { login: '90 111 22 33', password: pass }, // telefon ham domen bilan
+  ])
+    assert.equal(
+      (await app!.inject({ method: 'POST', url: '/v1/auth/login', payload })).json().error.code,
+      'INVALID_CREDENTIALS',
+    );
+  await call('POST', '/v1/auth/login', { domain: ' TEST-1 ', login: 'manager', password: pass + '2' });
+  await call(
+    'POST',
+    '/v1/auth/login',
+    { domain: 'test-1', login: 'owner', password: pass },
+    undefined,
+    undefined,
+    401,
+  );
+  const nova = await call(
+    'POST',
+    '/v1/platform/tenants',
+    { legal_name: 'Nova qurilish', registration_key: 'NOVA-1', domain: 'Nova-Qurilish' },
+    ownerToken,
+  );
+  assert.equal(nova.domain, 'nova-qurilish');
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/platform/tenants',
+        { legal_name: 'Takror', registration_key: 'NOVA-2', domain: 'nova-qurilish' },
+        ownerToken,
+        undefined,
+        409,
+      )
+    ).error.code,
+    'DOMAIN_TAKEN',
+  );
+  for (const domain of ['-nova', 'no', 'nova_q', 'a'.repeat(33)])
+    await call(
+      'POST',
+      '/v1/platform/tenants',
+      { legal_name: 'Xato', registration_key: `BAD-${domain}`, domain },
+      ownerToken,
+      undefined,
+      400,
+    );
+  const novaInvite = await call('POST', `/v1/platform/tenants/${nova.id}/invites`, undefined, ownerToken);
+  assert.equal(
+    (await call('POST', '/v1/auth/invites/preview', { token: novaInvite.token })).domain,
+    'nova-qurilish',
+  );
+  // Bir xil login ikki kompaniyada: domen qaysi hisobga kirishni hal qiladi
+  await call(
+    'POST',
+    '/v1/employees',
+    { login: 'dup.login', display_name: 'Test-1 xodimi', password: pass, role: 'manager' },
+    adminAgain,
+  );
+  await call('POST', '/v1/auth/register', {
+    token: novaInvite.token,
+    login: 'dup.login',
+    password: pass + 'N',
+    display_name: 'Nova admin',
+  });
+  // Kompaniya ichida login yagona (nofaol xodim ham egallaydi); telefon butun platformada — aniq xato kodi bilan
+  const dupUser = (await admin!.query("SELECT id FROM users WHERE login='dup.login' AND tenant_id=$1", [t.id])).rows[0];
+  await admin!.query('UPDATE users SET active=false WHERE id=$1', [dupUser.id]);
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/employees',
+        { login: 'DUP.login', display_name: 'Takror', password: pass, role: 'manager' },
+        adminAgain,
+        undefined,
+        409,
+      )
+    ).error.code,
+    'LOGIN_TAKEN',
+  );
+  await admin!.query('UPDATE users SET active=true WHERE id=$1', [dupUser.id]);
+  assert.equal(
+    (
+      await call(
+        'POST',
+        '/v1/employees',
+        { login: 'phone.takror', display_name: 'Takror', password: pass, role: 'manager', phone: '+998901112233' },
+        adminAgain,
+        undefined,
+        409,
+      )
+    ).error.code,
+    'PHONE_TAKEN',
+  );
+  const dupT = await call('POST', '/v1/auth/login', { domain: 'test-1', login: 'dup.login', password: pass });
+  const dupN = await call('POST', '/v1/auth/login', { domain: 'nova-qurilish', login: 'dup.login', password: pass + 'N' });
+  assert.equal(dupT.user.tenant_id, t.id);
+  assert.equal(dupN.user.tenant_id, nova.id);
+  await call('POST', '/v1/auth/login', { domain: 'nova-qurilish', login: 'dup.login', password: pass }, undefined, undefined, 401);
+  assert.equal((await call('GET', '/v1/auth/me', undefined, dupN.access_token)).tenant_domain, 'nova-qurilish');
+  // Domenni platforma egasi almashtiradi: eski domen bilan kirish yopiladi
+  const novaRow = (await admin!.query('SELECT version FROM tenants WHERE id=$1', [nova.id])).rows[0];
+  await call(
+    'PATCH',
+    `/v1/platform/tenants/${nova.id}/profile`,
+    { version: novaRow.version, legal_name: 'Nova qurilish', domain: 'nova-2' },
+    ownerToken,
+  );
+  await call('POST', '/v1/auth/login', { domain: 'nova-qurilish', login: 'dup.login', password: pass + 'N' }, undefined, undefined, 401);
+  await call('POST', '/v1/auth/login', { domain: 'nova-2', login: 'dup.login', password: pass + 'N' });
+  assert.equal(
+    (await call('GET', '/v1/platform/tenants?q=nova-2', undefined, ownerToken)).items[0].id,
+    nova.id,
+  );
+  passed.push(
+    'Company domain (D43): unique, validated, derived when omitted, required for employee login (login or phone), same login allowed in two companies, owner can rename it',
+  );
   const cookie = cookieLogin.cookies.find((c) => c.name === 'barpo_session');
   assert(cookie && cookie.httpOnly, 'httpOnly cookie expected');
   const viaCookie = await app!.inject({
@@ -2317,6 +2448,53 @@ try {
     await issueDueInvoices(appPool!, new Date(new Date(trialEnd).getTime() - 2 * dayMs)),
     0,
   );
+  // Invoys sinovdan keyin (2026-11-19): kompaniya ochishda «bugun»dan berilgan tarif signupda sinov tugashiga suriladi;
+  // sinov paytidagi sana bilan biriktirish ham sinov tugashiga suriladi; signup qilinmagan kompaniyaga invoys chiqmaydi.
+  const lateStart = await call(
+    'POST',
+    '/v1/platform/tenants',
+    {
+      legal_name: 'Kechiktirilgan tarif',
+      registration_key: 'TRIAL-INV',
+      plan_version_id: plan.id,
+      next_period_start: new Date().toISOString(),
+    },
+    ownerToken,
+  );
+  const lateSub = async () =>
+    (await admin!.query('SELECT next_period_start FROM subscriptions WHERE tenant_id=$1', [lateStart.id])).rows[0]
+      .next_period_start as Date;
+  const lateInvoices = async () =>
+    Number((await admin!.query('SELECT count(*) n FROM billing_invoices WHERE tenant_id=$1', [lateStart.id])).rows[0].n);
+  assert.equal(await issueDueInvoices(appPool!, new Date()), 0); // ro'yxatdan o'tmagan kompaniyaga invoys yo'q
+  assert.equal(await lateInvoices(), 0);
+  const lateInvite = await call('POST', `/v1/platform/tenants/${lateStart.id}/invites`, undefined, ownerToken);
+  await call('POST', '/v1/auth/register', { token: lateInvite.token, login: 'late.admin', password: pass, display_name: 'Late' });
+  const lateTrialEnd = (await admin!.query('SELECT trial_ends_at FROM tenants WHERE id=$1', [lateStart.id])).rows[0]
+    .trial_ends_at as Date;
+  assert.equal((await lateSub()).toISOString(), lateTrialEnd.toISOString());
+  await call(
+    'POST',
+    '/v1/platform/subscriptions',
+    { tenant_id: lateStart.id, plan_version_id: plan.id, next_period_start: new Date().toISOString() },
+    ownerToken,
+  );
+  assert.equal((await lateSub()).toISOString(), lateTrialEnd.toISOString());
+  // Bazada eski sana qolgan bo'lsa ham worker davrni sinov tugashidan boshlaydi
+  await admin!.query('UPDATE subscriptions SET next_period_start=now() WHERE tenant_id=$1', [lateStart.id]);
+  assert.equal(await issueDueInvoices(appPool!, new Date()), 0);
+  assert.equal(await lateInvoices(), 0);
+  assert.equal(await issueDueInvoices(appPool!, new Date(lateTrialEnd.getTime() - 2 * dayMs)), 1);
+  const afterTrialInvoice = (
+    await admin!.query('SELECT period_start,due_at FROM billing_invoices WHERE tenant_id=$1', [lateStart.id])
+  ).rows[0];
+  assert.equal(afterTrialInvoice.period_start.toISOString(), lateTrialEnd.toISOString());
+  assert.equal(afterTrialInvoice.due_at.toISOString(), lateTrialEnd.toISOString());
+  // Keyingi sinovlardagi worker sanalari bu kompaniyaga invoys chiqarmasin
+  await admin!.query('DELETE FROM subscriptions WHERE tenant_id=$1', [lateStart.id]);
+  passed.push(
+    'Subscription invoices start after the trial: a plan given at creation or during the trial moves to the trial end, an unregistered company gets no invoice, and the worker never starts a period inside the trial',
+  );
   const inv1 = (
     await admin.query('SELECT * FROM billing_invoices WHERE tenant_id=$1 ORDER BY period_start', [
       t.id,
@@ -2463,6 +2641,23 @@ try {
   assert((await debtors('overdue=true')).every((d) => Number(d.overdue) > 0));
   assert.deepEqual(await debtors('q=yoq'), []);
   await call('GET', '/v1/platform/billing/debtors?overdue=yes', undefined, ownerToken, undefined, 400);
+  // Sinov muddatidagi kompaniya qarzdorlik, muddati o'tgan qarz va qarzdorlar ro'yxatiga kirmaydi (2026-11-19).
+  const summaryPaid = await call('GET', '/v1/platform/billing/summary', undefined, ownerToken);
+  const paidUntil = (await admin!.query('SELECT paid_until FROM tenants WHERE id=$1', [t.id])).rows[0].paid_until;
+  await admin!.query('UPDATE tenants SET paid_until=NULL WHERE id=$1', [t.id]);
+  assert.equal((await call('GET', `/v1/platform/tenants/${t.id}`, undefined, ownerToken)).access_state, 'trial');
+  assert(!(await debtors()).some((d) => d.tenant_id === t.id), 'trial company is not a debtor');
+  const summaryTrial = await call('GET', '/v1/platform/billing/summary', undefined, ownerToken);
+  assert.equal(dec(summaryTrial.debt).toFixed(2), dec(summaryPaid.debt).sub(debtor.debt).toFixed(2));
+  assert.equal(
+    dec(summaryTrial.debt_split.overdue).add(summaryTrial.debt_split.current).toFixed(2),
+    dec(summaryTrial.debt).toFixed(2),
+  );
+  await admin!.query('UPDATE tenants SET paid_until=$2 WHERE id=$1', [t.id, paidUntil]);
+  assert((await debtors()).some((d) => d.tenant_id === t.id));
+  passed.push(
+    'Platform debtors and the debt cards leave out companies still in their trial; the company comes back once the trial no longer covers it',
+  );
   passed.push(
     'Platform debtors: a paid-up company with unpaid invoices is listed, its debt equals the sum of its unpaid invoices, overdue+current=debt, overdue=true and q filter, other flag values are 400',
   );
@@ -3326,6 +3521,21 @@ try {
   );
   passed.push(
     'Platform tenant state filter matches each tenant access_state; the six state lists are disjoint and together equal the unfiltered list (6 of 6 states seeded)',
+  );
+  // Arxivdan chiqarish: arxivda admin ham ishlay olmaydi; «active» holatiga qaytarilgach o'sha domen va login bilan ishlaydi.
+  const archivedLogin = await call('POST', '/v1/auth/login', { login: 'adminarxiv', password: pass });
+  assert.equal(
+    (await call('GET', '/v1/billing', undefined, archivedLogin.access_token, undefined, 403)).error.code,
+    'TENANT_ARCHIVED',
+  );
+  await setStatus(archivedTenant.tenant.id, 'active');
+  const restored = await call('GET', `/v1/platform/tenants/${archivedTenant.tenant.id}`, undefined, ownerToken);
+  assert.equal(restored.access_state, 'trial');
+  const restoredLogin = await call('POST', '/v1/auth/login', { domain: 'test-g4', login: 'adminarxiv', password: pass });
+  await call('GET', '/v1/projects', undefined, restoredLogin.access_token);
+  await setStatus(archivedTenant.tenant.id, 'archived');
+  passed.push(
+    'An archived company is closed even for its admin; the owner restores it to active and the admin works again with the same domain and login',
   );
   // Qarzdorlar: muddati 5 kun oldin o'tgan invoys — overdue summasi, kunlar soni, eng eski muddat; q — kalit bo'yicha.
   const lateDue = new Date(Date.now() - 5 * dayMs);

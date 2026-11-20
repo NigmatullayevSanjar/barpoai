@@ -82,18 +82,25 @@ export const normalizePhone = (value: string) => '+998' + value.replace(/[\s()-]
 let dummyHash: Promise<string> | undefined;
 export async function login(
   db: Db,
-  input: { login: string; password: string },
+  input: { domain?: string; login: string; password: string },
   channel: 'bearer' | 'cookie' = 'bearer',
 ) {
+  // D43: kompaniya xodimi domen bilan kiradi (login kompaniya ichida yagona); domensiz — faqat platforma xodimlari.
+  // Noma'lum domen ham oddiy INVALID_CREDENTIALS: domen yoki login mavjudligi oshkor qilinmaydi.
+  const domain = input.domain?.trim().toLowerCase() || null;
+  const tenantId = domain
+    ? ((await db.query('SELECT id FROM tenants WHERE domain=$1', [domain])).rows[0]?.id ?? null)
+    : null;
   const byPhone = isPhone(input.login);
-  const user = (
-    await db.query(
-      byPhone
-        ? 'SELECT * FROM users WHERE phone=$1 FOR SHARE'
-        : 'SELECT * FROM users WHERE login=$1 FOR SHARE',
-      [byPhone ? normalizePhone(input.login) : input.login.toLowerCase()],
-    )
-  ).rows[0];
+  const user =
+    domain && !tenantId
+      ? undefined
+      : (
+          await db.query(
+            `SELECT * FROM users WHERE ${byPhone ? 'phone' : 'login'}=$1 AND tenant_id IS NOT DISTINCT FROM $2 FOR SHARE`,
+            [byPhone ? normalizePhone(input.login) : input.login.toLowerCase(), tenantId],
+          )
+        ).rows[0];
   dummyHash ??= hashPassword(token());
   const valid = await verifyPassword(input.password, user?.password_hash ?? (await dummyHash));
   invariant(user?.active && valid, 'INVALID_CREDENTIALS', 401);
@@ -200,6 +207,11 @@ export async function registerInvite(
   await db.query('UPDATE invites SET used_at=now() WHERE id=$1', [invite.id]);
   await db.query(
     "UPDATE tenants SET status='active',trial_started_at=now(),trial_ends_at=now()+interval '14 days',version=version+1 WHERE id=$1",
+    [tenant.id],
+  );
+  // Oldindan biriktirilgan tarifning birinchi davri sinov tugashidan boshlanadi (invoys sinovdan keyin).
+  await db.query(
+    'UPDATE subscriptions s SET next_period_start=greatest(s.next_period_start,t.trial_ends_at) FROM tenants t WHERE t.id=s.tenant_id AND s.tenant_id=$1',
     [tenant.id],
   );
   await audit(db, user, 'tenant.signup', tenant.id);

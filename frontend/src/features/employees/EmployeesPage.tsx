@@ -289,6 +289,8 @@ function CreateEmployeeModal({ open, onClose }: { open: boolean; onClose: () => 
     onError: (e: ApiError) => {
       const field = e.fields?.[0]?.path?.[0];
       if (field === 'phone') form.setError('phone', { message: t('error.VALIDATION_ERROR') });
+      else if (e.code === 'LOGIN_TAKEN') form.setError('login', { message: t('error.LOGIN_TAKEN') });
+      else if (e.code === 'PHONE_TAKEN') form.setError('phone', { message: t('error.PHONE_TAKEN') });
       else toast.error(errorMessage(t, e.code, e.status));
     },
   });

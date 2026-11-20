@@ -14,6 +14,8 @@ export type Me = {
   id: string;
   tenant_id: string | null;
   tenant_name: string | null;
+  /** D43: kompaniya domeni — xodimlar shu domen bilan kiradi; platforma xodimida null. */
+  tenant_domain?: string | null;
   role: Role;
   display_name: string;
   phone: string | null;
@@ -33,7 +35,8 @@ type AuthState = {
   me: Me | null | undefined;
   permissions: PermissionSnapshot | null;
   issue: SessionIssue;
-  login: (login: string, password: string) => Promise<Me | TwoFactorChallenge>;
+  /** D43: domain — kompaniya domeni; platforma xodimlari uchun bo'sh. */
+  login: (login: string, password: string, domain?: string) => Promise<Me | TwoFactorChallenge>;
   verifyCode: (challenge: string, code: string) => Promise<Me>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -102,10 +105,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [me, refresh]);
 
   const login = useCallback(
-    async (loginValue: string, password: string) => {
+    async (loginValue: string, password: string, domain?: string) => {
       const data = await api<{ user: Me } | TwoFactorChallenge>('/v1/auth/login', {
         method: 'POST',
-        body: { login: loginValue, password },
+        body: { login: loginValue, password, ...(domain ? { domain } : {}) },
       });
       if ('two_factor' in data) return data;
       const user = await api<Me>('/v1/auth/me');

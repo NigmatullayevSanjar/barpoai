@@ -12,6 +12,12 @@ export const periodEnd = (start: Date | string) =>
   new Date(new Date(start).getTime() + PERIOD_DAYS * DAY);
 /** Kompaniya qoplangan sana: trial yoki to'langan davr oxiri (accessState covered_until bilan bir xil). */
 export const coveredSql = 'greatest(trial_ends_at,coalesce(paid_until,trial_ends_at))';
+/**
+ * Kompaniya hozir sinov muddatida (accessState 'trial' bilan bir xil). Bunday kompaniyaning invoyslari qarzdorlik,
+ * muddati o'tgan qarz va qarzdorlar ro'yxatiga kirmaydi — sinov tugagach qarz hisoblanadi (egasi qarori, 2026-11-19).
+ */
+export const inTrialSql = (t: string) =>
+  `(${t}.status='active' AND ${t}.trial_ends_at>now() AND NOT coalesce(${t}.paid_until>now(),false))`;
 export const AUTO_BLOCK_REASON = 'Obuna muddati tugadi, to‘lov qilinmagan';
 
 /**
@@ -153,10 +159,15 @@ export async function issueInvoice(
  * Muddati o'tgan qoplanmagan invoys uchun faol kompaniya adminiga bir martalik ogohlantirish (blok — blockUnpaid).
  */
 export async function issueDueInvoices(pool: pg.Pool, now = new Date()) {
+  // Davr sinov muddati tugashidan oldin boshlanmaydi (egasi qarori, 2026-11-19): boshlanish sinov tugashiga suriladi;
+  // sinovi boshlanmagan (signup qilinmagan) kompaniyaga invoys chiqmaydi.
   const due = (
     await pool.query(
-      `SELECT s.tenant_id,s.plan_version_id,s.next_period_start FROM subscriptions s JOIN tenants t ON t.id=s.tenant_id
-       WHERE t.status='active' AND s.next_period_start<=$1::timestamptz+make_interval(days=>$2)
+      `SELECT * FROM (
+         SELECT s.tenant_id,s.plan_version_id,greatest(s.next_period_start,t.trial_ends_at) next_period_start
+         FROM subscriptions s JOIN tenants t ON t.id=s.tenant_id
+         WHERE t.status='active' AND t.trial_ends_at IS NOT NULL) s
+       WHERE s.next_period_start<=$1::timestamptz+make_interval(days=>$2)
          AND NOT EXISTS(SELECT 1 FROM billing_invoices i WHERE i.tenant_id=s.tenant_id AND i.period_start=s.next_period_start)`,
       [now, INVOICE_LEAD_DAYS],
     )

@@ -123,7 +123,10 @@ try {
     return page;
   };
   const login = async (page: Awaited<ReturnType<typeof newPage>>, user: string, pass: string) => {
+    // D43: kompaniya xodimi domen bilan kiradi; platforma xodimida maydon bo'sh qoladi.
+    const owners = (await owner!.query('SELECT t.domain FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.login=$1', [user])).rows;
     await page.goto(webURL + '/login');
+    await page.getByLabel('Kompaniya domeni').fill(owners.length === 1 ? owners[0].domain : '');
     await page.getByLabel('Login yoki telefon').fill(user);
     await page.locator('input[name=password]').fill(pass);
     await page.getByRole('button', { name: 'Kirish', exact: true }).click();
@@ -150,6 +153,7 @@ try {
   await ownerPage.getByLabel('Kompaniya nomi').fill('UI sinov qurilish');
   await ownerPage.getByRole('dialog').getByRole('button', { name: 'Keyingisi', exact: true }).click();
   await ownerPage.getByLabel('Ro‘yxat raqami (STIR yoki ichki kod)').fill('UI-TEST-001');
+  await ownerPage.getByLabel('Domen (kirish uchun)').fill('ui-sinov');
   await ownerPage.getByRole('dialog').getByRole('button', { name: 'Keyingisi', exact: true }).click();
   await ownerPage
     .getByRole('dialog')
@@ -165,6 +169,7 @@ try {
   const adminPage = await newPage();
   await adminPage.goto(inviteUrl);
   await adminPage.getByRole('heading', { name: 'Kompaniyani ro‘yxatdan o‘tkazish' }).waitFor();
+  await adminPage.getByText('Kompaniya domeni: ui-sinov').waitFor();
   await adminPage.getByLabel('Ism va familiya').fill('Sinov Admini');
   await adminPage.getByLabel('Login (lotin harflar, raqam, nuqta)').fill('ui.admin');
   await adminPage.getByLabel(/Telefon/).fill('+998 90 111 22 33');
@@ -1464,14 +1469,15 @@ try {
   await supportPage.goto(webURL + '/admin/tenants');
   await supportPage.getByRole('heading', { name: 'Mijoz kompaniyalar' }).waitFor();
   assert.equal(await supportPage.getByRole('button', { name: 'Yangi kompaniya' }).count(), 0);
-  // Mijozlar jadvali: raqamli ustunda sarlavha va qiymat bir tomonda (o'ngda); egasining aliasi (Domen) supportda yo'q;
+  // Mijozlar jadvali: raqamli ustunda sarlavha va qiymat bir tomonda (o'ngda); Domen (D43, kirish domeni) supportda ham bor;
   // sidebar'da faqat Mijozlar bandi faol.
   await supportPage.locator('table td.num').first().waitFor();
   const align = await supportPage.evaluate(() =>
     ['table th.num', 'table td.num'].map((sel) => getComputedStyle(document.querySelector(sel)!).textAlign),
   );
   assert.deepEqual(align, ['right', 'right'], 'tenants table numeric column alignment');
-  assert.equal(await supportPage.getByRole('columnheader', { name: /Domen/ }).count(), 0);
+  assert.equal(await supportPage.getByRole('columnheader', { name: /Domen/ }).count(), 1);
+  await supportPage.getByRole('cell', { name: 'ui-sinov', exact: true }).waitFor();
   assert.deepEqual(
     await supportPage
       .locator('.sidebar nav a.nav-link.active')

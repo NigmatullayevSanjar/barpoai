@@ -40,12 +40,14 @@ const expenseKinds = ['material', 'labor', 'equipment', 'service'];
 async function companyView(db: Db, actor: Row) {
   const row = await one(
     db,
-    'SELECT id,legal_name,address,phone,settings,status,trial_started_at,trial_ends_at,paid_until,created_at,version FROM tenants WHERE id=$1',
+    'SELECT id,legal_name,domain,address,phone,settings,status,trial_started_at,trial_ends_at,paid_until,created_at,version FROM tenants WHERE id=$1',
     [actor.tenant_id],
   );
   return {
     id: row.id,
     legal_name: row.legal_name,
+    // D43: xodimlar kirishda kiritadigan domen (o'zgartirish faqat platforma egasida)
+    domain: row.domain,
     address: row.address,
     phone: row.phone,
     created_at: row.created_at,

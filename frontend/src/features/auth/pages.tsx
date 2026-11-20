@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, KeyRound, Phone, UserRound } from 'lucide-react';
+import { Building2, Eye, EyeOff, KeyRound, Phone, UserRound } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { isChallenge, useAuth, type Me } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
@@ -52,6 +52,24 @@ const takeNotice = () => {
   }
 };
 
+/** D43: oxirgi kiritilgan kompaniya domeni — keyingi kirishda qayta yozmaslik uchun (faqat qulaylik). */
+const DOMAIN_KEY = 'barpo.login-domain';
+const readDomain = () => {
+  try {
+    return localStorage.getItem(DOMAIN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+const saveDomain = (value: string) => {
+  try {
+    if (value) localStorage.setItem(DOMAIN_KEY, value);
+    else localStorage.removeItem(DOMAIN_KEY);
+  } catch {
+    /* private mode */
+  }
+};
+
 export function LoginPage() {
   const { t } = useT();
   const { login, verifyCode } = useAuth();
@@ -60,12 +78,18 @@ export function LoginPage() {
     state?: { from?: string; notice?: string };
   };
   const schema = z.object({
+    // D43: bo'sh — platforma xodimi; aks holda kompaniya domeni formati.
+    domain: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .refine((v) => !v || /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(v), t('auth.domain_invalid')),
     login: z.string().trim().min(3, t('common.required')),
     password: z.string().min(1, t('common.required')),
   });
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { login: '', password: '' },
+    defaultValues: { domain: hashParam('domain') ?? readDomain(), login: '', password: '' },
   });
   const [error, setError] = useState('');
   const [notice] = useState(() => takeNotice() ?? location.state?.notice ?? '');
@@ -92,7 +116,8 @@ export function LoginPage() {
   const submit = form.handleSubmit(async (values) => {
     setError('');
     try {
-      const result = await login(values.login, values.password);
+      const result = await login(values.login, values.password, values.domain || undefined);
+      saveDomain(values.domain);
       if (isChallenge(result)) {
         setCode('');
         setStep({ challenge: result.challenge, expiresAt: Date.now() + result.expires_in * 1000 });
@@ -171,6 +196,17 @@ export function LoginPage() {
       {notice && <Alert tone="success">{notice}</Alert>}
       <form onSubmit={submit} noValidate>
         <Input
+          label={t('auth.domain')}
+          placeholder={t('auth.domain_placeholder')}
+          hint={t('auth.domain_hint')}
+          autoComplete="organization"
+          autoCapitalize="none"
+          spellCheck={false}
+          icon={<Building2 />}
+          error={form.formState.errors.domain?.message}
+          {...form.register('domain')}
+        />
+        <Input
           label={t('auth.identifier')}
           placeholder={t('auth.identifier_placeholder')}
           autoComplete="username"
@@ -204,7 +240,7 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const { refresh } = useAuth();
   const token = hashParam('token') ?? '';
-  const [preview, setPreview] = useState<{ legal_name: string; expires_at: string } | null | undefined>(
+  const [preview, setPreview] = useState<{ legal_name: string; domain: string; expires_at: string } | null | undefined>(
     undefined,
   );
   useEffect(() => {
@@ -212,7 +248,7 @@ export function RegisterPage() {
       setPreview(null);
       return;
     }
-    api<{ legal_name: string; expires_at: string }>('/v1/auth/invites/preview', {
+    api<{ legal_name: string; domain: string; expires_at: string }>('/v1/auth/invites/preview', {
       method: 'POST',
       body: { token },
     })
@@ -270,6 +306,7 @@ export function RegisterPage() {
     <>
       <h2>{t('auth.register_title')}</h2>
       <p className="sub">{t('auth.register_sub', { company: preview.legal_name })}</p>
+      <Alert tone="info">{t('auth.register_domain', { domain: preview.domain })}</Alert>
       <form onSubmit={submit} noValidate>
         <Input
           label={t('auth.display_name')}

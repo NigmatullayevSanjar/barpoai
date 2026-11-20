@@ -9,7 +9,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { Alert, Button, Input, Modal, PageHeader, SearchInput, Select, useListState } from '@/components/ui';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
-import { legalForms, useApiError, type AccessState, type Plan, type Tenant } from './pages';
+import { DOMAIN_RE, legalForms, useApiError, type AccessState, type Plan, type Tenant } from './pages';
 
 /**
  * Figma F6 (2026-10-17) "Kompaniyalar": qidiruv, holat va tarif filtri, jadval (kompaniya, domen, tarif, xodimlar,
@@ -54,19 +54,21 @@ export function TenantsTable({
         <>
           <div className="cell-main">{r.legal_name}</div>
           <div className="cell-sub mono">{r.registration_key}</div>
+          {/* Shaxsiy belgi (alias) — faqat shu platforma xodimiga ko'rinadi */}
+          {r.alias && <div className="cell-sub">{r.alias}</div>}
         </>
       ),
     },
     {
-      key: 'alias',
+      // D43: kirishda ishlatiladigan yagona kompaniya domeni.
+      key: 'domain',
       header: t('tenants.domain'),
-      sortValue: (r) => r.alias ?? '',
-      render: (r) =>
-        r.alias ? (
-          <span style={{ color: 'var(--brand-600)' }}>{r.alias}</span>
-        ) : (
-          <span className="muted">—</span>
-        ),
+      sortValue: (r) => r.domain,
+      render: (r) => (
+        <span className="mono" style={{ color: 'var(--brand-600)' }}>
+          {r.domain}
+        </span>
+      ),
     },
     {
       key: 'plan',
@@ -106,12 +108,9 @@ export function TenantsTable({
       render: (r) => <span className="mono">{formatDate(r.created_at, lang)}</span>,
     },
   ];
-  // "Domen" — platforma egasining shaxsiy belgisi (alias, egaga bog'liq): texnik xodim va super adminda doim bo'sh,
-  // shuning uchun hech bir qatorda alias bo'lmasa ustun ko'rsatilmaydi.
-  const hasAlias = (rows ?? []).some((r) => r.alias);
   return (
     <DataTable
-      columns={hasAlias ? columns : columns.filter((c) => c.key !== 'alias')}
+      columns={columns}
       rows={rows}
       rowKey={(r) => r.id}
       loading={loading}
@@ -219,10 +218,12 @@ function CreateTenantWizard({ plans, onClose }: { plans: Plan[]; onClose: () => 
     phone: '',
     address: '',
     registration_key: '',
+    domain: '',
     legal_form: '',
     alias: '',
     plan_version_id: '',
-    start: new Date().toISOString().slice(0, 10),
+    // Bo'sh — birinchi davr sinov tugashidan boshlanadi (backend ham oldingi sanani sinov tugashiga suradi).
+    start: '',
   };
   const [form, setForm] = useState(empty);
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -233,6 +234,7 @@ function CreateTenantWizard({ plans, onClose }: { plans: Plan[]; onClose: () => 
         body: {
           legal_name: form.legal_name.trim(),
           registration_key: form.registration_key.trim(),
+          domain: form.domain.trim().toLowerCase(),
           ...(form.contact_name.trim() ? { contact_name: form.contact_name.trim() } : {}),
           ...(form.email.trim() ? { email: form.email.trim() } : {}),
           ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
@@ -242,7 +244,7 @@ function CreateTenantWizard({ plans, onClose }: { plans: Plan[]; onClose: () => 
           ...(form.plan_version_id
             ? {
                 plan_version_id: form.plan_version_id,
-                next_period_start: new Date(form.start + 'T00:00:00Z').toISOString(),
+                ...(form.start ? { next_period_start: new Date(form.start + 'T00:00:00Z').toISOString() } : {}),
               }
             : {}),
         },
@@ -255,11 +257,12 @@ function CreateTenantWizard({ plans, onClose }: { plans: Plan[]; onClose: () => 
     },
     onError,
   });
+  const domainValid = DOMAIN_RE.test(form.domain.trim().toLowerCase());
   const valid =
     step === 1
       ? form.legal_name.trim().length >= 2
       : step === 2
-        ? form.registration_key.trim().length >= 2
+        ? form.registration_key.trim().length >= 2 && domainValid
         : true;
   const titles = {
     1: ['tenants.step1', 'tenants.step1_sub'],
@@ -360,8 +363,17 @@ function CreateTenantWizard({ plans, onClose }: { plans: Plan[]; onClose: () => 
           </Select>
           <Input
             wrapClassName="span-2"
+            label={t('tenants.domain_field')}
+            required
+            placeholder="nova-qurilish"
+            hint={t('tenants.domain_hint')}
+            error={form.domain.trim() && !domainValid ? t('tenants.domain_invalid') : undefined}
+            value={form.domain}
+            onChange={(e) => set('domain', e.target.value.toLowerCase())}
+          />
+          <Input
+            wrapClassName="span-2"
             label={t('tenants.alias')}
-            placeholder="kompaniya.nova.uz"
             value={form.alias}
             onChange={(e) => set('alias', e.target.value)}
           />
@@ -386,6 +398,7 @@ function CreateTenantWizard({ plans, onClose }: { plans: Plan[]; onClose: () => 
           <Input
             type="date"
             label={t('tenants.start_date')}
+            hint={t('tenants.start_empty_trial')}
             value={form.start}
             disabled={!form.plan_version_id}
             onChange={(e) => set('start', e.target.value)}

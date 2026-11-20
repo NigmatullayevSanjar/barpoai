@@ -5,7 +5,7 @@ import { uuid, date, idParams, pageQuery, searchQuery, likePattern, queryBool } 
 import { accessState } from './auth.js';
 import { invariant } from './errors.js';
 import { notify } from './notify.js';
-import { creditBalance } from './billing.js';
+import { creditBalance, inTrialSql } from './billing.js';
 import { money } from './money.js';
 import { platformStaff } from './platform-permissions.js';
 import { roles } from './permissions.js';
@@ -147,6 +147,7 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
         await db.query(
           // Qarz ta'rifi billing/summary (debt_split) bilan bir xil: invoys summasi minus to'lov/kredit (refund ayiriladi);
           // muddati o'tgan — due_at<now(). Kompaniya holati (access_state) alohida — trial/paid_until bo'yicha.
+          // Sinov muddatidagi kompaniya qarzdor hisoblanmaydi (inTrialSql).
           `WITH d AS (
              SELECT i.tenant_id,count(*)::int invoices,round(sum(i.amount-coalesce(c.covered,0)),2) debt,
                     round(coalesce(sum(i.amount-coalesce(c.covered,0)) FILTER(WHERE i.due_at<now()),0),2) overdue,
@@ -161,7 +162,8 @@ export function platformExtraRoutes(add: (r: Endpoint) => void) {
                   d.invoices,d.debt::text debt,d.overdue::text overdue,d.current::text current,d.oldest_due_at,
                   CASE WHEN d.oldest_due_at IS NULL THEN 0 ELSE floor(extract(epoch FROM now()-d.oldest_due_at)/86400)::int END overdue_days
            FROM d JOIN tenants t ON t.id=d.tenant_id
-           WHERE ($1::boolean IS NOT TRUE OR d.overdue>0)
+           WHERE NOT ${inTrialSql('t')}
+             AND ($1::boolean IS NOT TRUE OR d.overdue>0)
              AND ($4::text IS NULL OR t.legal_name ILIKE $4 ESCAPE '\\' OR t.registration_key ILIKE $4 ESCAPE '\\')
            ORDER BY d.overdue DESC,d.debt DESC,t.legal_name,t.id LIMIT $2 OFFSET $3`,
           [

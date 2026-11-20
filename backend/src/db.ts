@@ -113,6 +113,14 @@ export function mapDatabaseError(error: any) {
   // R2: xonadon raqami blok (yoki bloksiz obyekt) ichida takrorlandi — zona turi o'zgarganda ham shu kod.
   if (error.code === '23505' && String(error.constraint ?? '').startsWith('premises_number_'))
     return new DomainError('PREMISE_NUMBER_CONFLICT', 409);
+  // D43: kompaniya domeni boshqa kompaniyada band.
+  if (error.code === '23505' && error.constraint === 'tenants_domain_key')
+    return new DomainError('DOMAIN_TAKEN', 409);
+  // Login kompaniya ichida (nofaol xodim ham egallaydi) yoki platforma xodimlari orasida band; telefon — butun platformada.
+  if (error.code === '23505' && ['users_login_tenant', 'users_login_platform'].includes(error.constraint))
+    return new DomainError('LOGIN_TAKEN', 409);
+  if (error.code === '23505' && error.constraint === 'users_phone_key')
+    return new DomainError('PHONE_TAKEN', 409);
   const codes: Record<string, string> = {
     '23505': 'ALREADY_EXISTS',
     '23503': 'INVALID_REFERENCE',

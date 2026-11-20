@@ -21,6 +21,12 @@ export const phone = z
   .transform((v) => v.replace(/[\s()-]/g, ''))
   .pipe(z.string().regex(/^(\+?998)?[0-9]{9}$/))
   .transform((v) => '+998' + v.slice(-9));
+// D43: kompaniya domeni — 3–32 belgi, kichik lotin harf, raqam, chiziqcha (chetida emas); DB CHECK bilan bir xil.
+export const tenantDomain = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/);
 // Login maydoni: foydalanuvchi nomi yoki telefon raqami.
 export const identifier = z.string().trim().min(3).max(64);
 export const version = z.number().int().positive();

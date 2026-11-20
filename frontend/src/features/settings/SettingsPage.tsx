@@ -16,6 +16,7 @@ type Category = (typeof categories)[number];
 type Company = {
   id: string;
   legal_name: string;
+  domain: string;
   address: string | null;
   phone: string | null;
   created_at: string;
@@ -130,6 +131,11 @@ export function SettingsPage() {
             />
             {c && (
               <dl className="kv">
+                <dt>{t('tenants.domain')}</dt>
+                <dd>
+                  <span className="mono">{c.domain}</span>
+                  <div className="muted text-sm">{t('settings.domain_hint')}</div>
+                </dd>
                 <dt>{t('settings.created_at')}</dt>
                 <dd>{formatDate(c.created_at, lang)}</dd>
                 <dt>{t('settings.subscription')}</dt>

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Check, Copy, KeyRound, Link2, Pencil, Plus, ShieldBan, ShieldCheck, Archive, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, Link2, Pencil, Plus, ShieldBan, ShieldCheck, Archive, ArchiveRestore, UserPlus } from 'lucide-react';
 import { api, apiAll, ApiError, qs, type ListResponse } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
@@ -34,10 +34,13 @@ import { useToast } from '@/components/ui/Toast';
 
 export type AccessState = 'pending' | 'trial' | 'paid' | 'overdue' | 'blocked' | 'archived';
 export type LegalForm = 'mchj' | 'aj' | 'yatt' | 'qk' | 'other';
+/** D43: kompaniya domeni — backend `tenantDomain` va DB CHECK bilan bir xil (3–32, a-z 0-9 -, chetida chiziqcha emas). */
+export const DOMAIN_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 export type Tenant = {
   id: string;
   legal_name: string;
   registration_key: string;
+  domain: string;
   status: string;
   alias: string | null;
   version: number;
@@ -312,7 +315,11 @@ export function TenantDetailPage() {
             {d.legal_name} <AccessBadge row={d} />
           </span>
         }
-        description={<span className="mono">{d.registration_key}</span>}
+        description={
+          <span className="mono">
+            {d.registration_key} · {t('tenants.domain')}: {d.domain}
+          </span>
+        }
         actions={
           (canManage || canBlock) && (
           <>
@@ -329,6 +336,11 @@ export function TenantDetailPage() {
             {canBlock && d.status === 'blocked' && (
               <Button icon={<ShieldCheck />} onClick={() => setConfirm('active')}>
                 {t('tenants.unblock')}
+              </Button>
+            )}
+            {canBlock && d.status === 'archived' && (
+              <Button icon={<ArchiveRestore />} onClick={() => setConfirm('active')}>
+                {t('tenants.unarchive')}
               </Button>
             )}
             {canBlock && d.status !== 'archived' && d.status !== 'pending' && (
@@ -518,7 +530,7 @@ export function TenantDetailPage() {
           confirm === 'blocked'
             ? t('tenants.block')
             : confirm === 'active'
-              ? t('tenants.unblock')
+              ? t(d.status === 'archived' ? 'tenants.unarchive' : 'tenants.unblock')
               : t('tenants.archive')
         }
         danger={confirm !== 'active'}
@@ -529,7 +541,7 @@ export function TenantDetailPage() {
               {confirm === 'blocked'
                 ? t('tenants.block_confirm')
                 : confirm === 'active'
-                  ? t('tenants.unblock_confirm')
+                  ? t(d.status === 'archived' ? 'tenants.unarchive_confirm' : 'tenants.unblock_confirm')
                   : t('tenants.archive_confirm')}
             </p>
             <Textarea
@@ -593,6 +605,7 @@ function TenantProfileModal({
   const onError = useApiError();
   const [form, setForm] = useState({
     legal_name: tenant.legal_name,
+    domain: tenant.domain,
     contact_name: tenant.contact_name ?? '',
     email: tenant.email ?? '',
     phone: tenant.phone ?? '',
@@ -601,6 +614,7 @@ function TenantProfileModal({
     alias: tenant.alias ?? '',
   });
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const domainValid = DOMAIN_RE.test(form.domain.trim());
   const save = useMutation({
     mutationFn: () =>
       api(`/v1/platform/tenants/${tenant.id}/profile`, {
@@ -608,6 +622,7 @@ function TenantProfileModal({
         body: {
           version: tenant.version,
           legal_name: form.legal_name.trim(),
+          domain: form.domain.trim(),
           ...(form.contact_name.trim() ? { contact_name: form.contact_name.trim() } : {}),
           ...(form.email.trim() ? { email: form.email.trim() } : {}),
           ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
@@ -635,7 +650,7 @@ function TenantProfileModal({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={form.legal_name.trim().length < 2}>
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={form.legal_name.trim().length < 2 || !domainValid}>
             {t('common.save')}
           </Button>
         </>
@@ -643,6 +658,15 @@ function TenantProfileModal({
     >
       <div className="form-grid">
         <Input label={t('tenants.legal_name')} required value={form.legal_name} onChange={(e) => set('legal_name', e.target.value)} />
+        <Input
+          wrapClassName="span-2"
+          label={t('tenants.domain_field')}
+          required
+          hint={form.domain.trim() !== tenant.domain ? t('tenants.domain_change_warning') : t('tenants.domain_hint')}
+          error={!domainValid ? t('tenants.domain_invalid') : undefined}
+          value={form.domain}
+          onChange={(e) => set('domain', e.target.value.toLowerCase())}
+        />
         <Input label={t('tenants.email')} type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
         <Input label={t('tenants.contact_name')} value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} />
         <Input label={t('tenants.phone')} placeholder="+998901234567" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
@@ -731,6 +755,7 @@ function SetPlanModal({
         <Input
           type="date"
           label={t('tenants.next_period')}
+          hint={t('tenants.start_after_trial')}
           value={start}
           onChange={(e) => setStart(e.target.value)}
         />

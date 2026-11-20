@@ -17,12 +17,20 @@ import {
   loginName,
   phone,
   date,
+  tenantDomain,
 } from './schemas.js';
 import { token, digest, hashPassword } from './security.js';
 import { invariant } from './errors.js';
 import { dec } from './money.js';
 import { accessState } from './auth.js';
-import { issueInvoice, applyCredit, recomputeCoverage, periodEnd, coveredSql } from './billing.js';
+import {
+  issueInvoice,
+  applyCredit,
+  recomputeCoverage,
+  periodEnd,
+  coveredSql,
+  inTrialSql,
+} from './billing.js';
 import { telegramConfigured, botHealth } from './telegram.js';
 import { platformPermit, platformStaff } from './platform-permissions.js';
 // Rollar (egasi qarori D21, 2026-10-22; D15 o'rniga): ko'rish — barcha platforma xodimlari; har amal o'z ruxsati bilan
@@ -69,7 +77,10 @@ export function platformRoutes(add: (r: Endpoint) => void) {
         ).toISOString();
       const row = await one(
         db,
-        'INSERT INTO subscriptions(tenant_id,plan_version_id,next_period_start) VALUES($1,$2,$3) ON CONFLICT(tenant_id) DO UPDATE SET plan_version_id=excluded.plan_version_id,next_period_start=excluded.next_period_start RETURNING *',
+        // Sinov tugashidan oldingi sana sinov tugashiga suriladi (greatest NULL trialni e'tiborsiz qoldiradi).
+        `INSERT INTO subscriptions(tenant_id,plan_version_id,next_period_start)
+         VALUES($1,$2,greatest($3::timestamptz,(SELECT trial_ends_at FROM tenants WHERE id=$1)))
+         ON CONFLICT(tenant_id) DO UPDATE SET plan_version_id=excluded.plan_version_id,next_period_start=excluded.next_period_start RETURNING *`,
         [body.tenant_id, body.plan_version_id, start],
       );
       await audit(db, actor, 'subscription.set', body.tenant_id);
@@ -80,7 +91,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/platform/tenants',
     summary:
-      'Korxonalar, egaga tegishli alias va trial/to‘lov holati (muddati tugab to‘lanmagani worker bilan bloklanadi, D33); q — nom, kalit, alias; state — access_state filtri',
+      'Korxonalar, egaga tegishli alias va trial/to‘lov holati (muddati tugab to‘lanmagani worker bilan bloklanadi, D33); q — nom, kalit, domen, alias; state — access_state filtri',
     platform: readers,
     query: searchQuery.extend({
       state: z.enum(['pending', 'trial', 'paid', 'overdue', 'blocked', 'archived']).optional(),
@@ -95,7 +106,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
             (SELECT display_name FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active LIMIT 1) admin_name,
             (SELECT p.code FROM subscriptions s JOIN plan_versions p ON p.id=s.plan_version_id WHERE s.tenant_id=t.id) plan_code
            FROM tenants t LEFT JOIN tenant_aliases a ON a.tenant_id=t.id AND a.owner_id=$1
-           WHERE ($4::text IS NULL OR t.legal_name ILIKE $4 ESCAPE '\\' OR t.registration_key ILIKE $4 ESCAPE '\\' OR a.alias ILIKE $4 ESCAPE '\\'
+           WHERE ($4::text IS NULL OR t.legal_name ILIKE $4 ESCAPE '\\' OR t.registration_key ILIKE $4 ESCAPE '\\' OR t.domain ILIKE $4 ESCAPE '\\' OR a.alias ILIKE $4 ESCAPE '\\'
                   OR EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role='tenant_admin' AND u.active AND u.display_name ILIKE $4 ESCAPE '\\'))
              AND ($5::text IS NULL OR (CASE WHEN t.status<>'active' THEN t.status WHEN t.trial_ends_at IS NULL THEN 'pending'
                   WHEN t.paid_until>now() THEN 'paid' WHEN t.trial_ends_at>now() THEN 'trial' ELSE 'overdue' END)=$5)
@@ -117,12 +128,13 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'POST',
     path: '/v1/platform/tenants',
     summary:
-      'Yangi korxona yaratish (Figma F6 uch qadam: profil, alias, boshlang‘ich tarif — bitta so‘rovda); trial signupda boshlanadi',
+      'Yangi korxona yaratish (Figma F6 uch qadam: profil, domen, alias, boshlang‘ich tarif — bitta so‘rovda); domen yagona (D43; berilmasa ro‘yxat raqamidan yasaladi); trial signupda boshlanadi',
     platform: staff,
     platformPermission: 'tenants.manage',
     body: z.strictObject({
       legal_name: text,
       registration_key: text,
+      domain: tenantDomain.optional(),
       ...tenantProfile,
       alias: text.optional(),
       plan_version_id: uuid.optional(),
@@ -131,7 +143,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db, actor, body }) => {
       const row = await one(
         db,
-        'INSERT INTO tenants(legal_name,registration_key,contact_name,email,phone,address,legal_form) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        'INSERT INTO tenants(legal_name,registration_key,contact_name,email,phone,address,legal_form,domain) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
         [
           body.legal_name,
           body.registration_key,
@@ -140,6 +152,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
           body.phone ? e164(body.phone) : null,
           body.address || null,
           body.legal_form ?? null,
+          body.domain ?? null,
         ],
       );
       if (body.alias)
@@ -162,13 +175,14 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     method: 'PATCH',
     path: '/v1/platform/tenants/:id/profile',
     summary:
-      'Kompaniya profilini tahrirlash (Figma F6): nom, mas‘ul shaxs, e-mail, telefon, manzil, shakl, alias',
+      'Kompaniya profilini tahrirlash (Figma F6): nom, domen (D43, yagona), mas‘ul shaxs, e-mail, telefon, manzil, shakl, alias',
     platform: staff,
     platformPermission: 'tenants.manage',
     params: idParams,
     body: z.strictObject({
       version,
       legal_name: text,
+      domain: tenantDomain.optional(),
       ...tenantProfile,
       alias: z.string().trim().max(500).optional(),
     }),
@@ -177,7 +191,8 @@ export function platformRoutes(add: (r: Endpoint) => void) {
       invariant(t.version === body.version, 'VERSION_CONFLICT');
       const row = await one(
         db,
-        `UPDATE tenants SET legal_name=$2,contact_name=$3,email=$4,phone=$5,address=$6,legal_form=$7,version=version+1
+        `UPDATE tenants SET legal_name=$2,contact_name=$3,email=$4,phone=$5,address=$6,legal_form=$7,
+           domain=coalesce($8,domain),version=version+1
          WHERE id=$1 RETURNING *`,
         [
           params.id,
@@ -187,8 +202,11 @@ export function platformRoutes(add: (r: Endpoint) => void) {
           body.phone ? e164(body.phone) : null,
           body.address || null,
           body.legal_form ?? null,
+          body.domain ?? null,
         ],
       );
+      if (body.domain && body.domain !== t.domain)
+        await audit(db, actor, 'tenant.domain', params.id, { from: t.domain, to: body.domain });
       if (body.alias !== undefined) {
         if (body.alias)
           await db.query(
@@ -509,8 +527,9 @@ export function platformRoutes(add: (r: Endpoint) => void) {
     handler: async ({ db }) => {
       const base = await one(
         db,
-        `WITH inv AS(SELECT coalesce(sum(i.amount),0) amount,coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))),0) debt
-                  FROM billing_invoices i LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true),
+        // Qarz (debt, debt_split) sinov muddatidagi kompaniyalarsiz — qarzdorlar ro'yxati bilan bir xil (inTrialSql).
+        `WITH inv AS(SELECT coalesce(sum(i.amount),0) amount,coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE NOT ${inTrialSql('t')}),0) debt
+                  FROM billing_invoices i JOIN tenants t ON t.id=i.tenant_id LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true),
               e AS(SELECT coalesce(sum(amount) FILTER(WHERE kind='payment'),0) payment,coalesce(sum(amount) FILTER(WHERE kind='refund'),0) refund FROM billing_entries),
               cr AS(SELECT coalesce(sum(amount),0) balance FROM billing_credits)
          SELECT inv.amount::text invoiced,e.payment::text cash_received,e.refund::text refunded,inv.debt::text debt,cr.balance::text credit_balance,NULL::text profit FROM inv,e,cr`,
@@ -542,7 +561,9 @@ export function platformRoutes(add: (r: Endpoint) => void) {
                 coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at>=now()),0)::text current,
                 CASE WHEN sum(greatest(0,i.amount-coalesce(c.covered,0)))>0 THEN round(100*coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at<now()),0)/sum(greatest(0,i.amount-coalesce(c.covered,0))),1)::text END overdue_share,
                 CASE WHEN sum(greatest(0,i.amount-coalesce(c.covered,0)))>0 THEN round(100*coalesce(sum(greatest(0,i.amount-coalesce(c.covered,0))) FILTER(WHERE i.due_at>=now()),0)/sum(greatest(0,i.amount-coalesce(c.covered,0))),1)::text END current_share
-         FROM billing_invoices i LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true`,
+         FROM billing_invoices i JOIN tenants t ON t.id=i.tenant_id
+         LEFT JOIN LATERAL (SELECT sum(CASE WHEN e.kind='refund' THEN -e.amount ELSE e.amount END) covered FROM billing_entries e WHERE e.invoice_id=i.id) c ON true
+         WHERE NOT ${inTrialSql('t')}`,
       );
       const recent = (
         await db.query(

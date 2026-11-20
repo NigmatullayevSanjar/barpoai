@@ -108,8 +108,12 @@ try {
     assert.equal(r.status, expected, `${method} ${url}: ${JSON.stringify(r.body)}`);
     return r.body;
   };
-  const login = async (user: string, password = pass) =>
-    (await call('POST', '/v1/auth/login', { login: user, password })).access_token as string;
+  // D43: kompaniya xodimi domen bilan kiradi; platforma xodimi domensiz.
+  const login = async (user: string, password = pass) => {
+    const owners = (await owner!.query('SELECT t.domain FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.login=$1', [user])).rows;
+    const domain = owners.length === 1 ? { domain: owners[0].domain } : {};
+    return (await call('POST', '/v1/auth/login', { ...domain, login: user, password })).access_token as string;
+  };
   const ownerToken = await login('owner');
   const techToken = await login('tech');
   const helpToken = await login('helpdesk');

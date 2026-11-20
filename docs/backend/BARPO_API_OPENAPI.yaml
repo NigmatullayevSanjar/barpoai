@@ -10,8 +10,8 @@ servers:
 paths:
   /v1/auth/login:
     post:
-      summary: Login yoki telefon raqami bilan kirish; cookie va Bearer sessiya; bloklangan admin faqat billing/supportga kira
-        oladi
+      summary: Kompaniya domeni + login yoki telefon bilan kirish (D43; platforma xodimlari domensiz); cookie va Bearer
+        sessiya; bloklangan admin faqat billing/supportga kira oladi
       operationId: post_v1_auth_login
       security: []
       parameters: []
@@ -47,6 +47,9 @@ paths:
               $schema: https://json-schema.org/draft/2020-12/schema
               type: object
               properties:
+                domain:
+                  type: string
+                  maxLength: 64
                 login:
                   type: string
                   minLength: 3
@@ -786,7 +789,7 @@ paths:
   /v1/platform/tenants:
     get:
       summary: Korxonalar, egaga tegishli alias va trial/to‘lov holati (muddati tugab to‘lanmagani worker bilan bloklanadi,
-        D33); q — nom, kalit, alias; state — access_state filtri
+        D33); q — nom, kalit, domen, alias; state — access_state filtri
       operationId: get_v1_platform_tenants
       security:
         - bearerAuth: []
@@ -858,8 +861,8 @@ paths:
         "429": *a18
         "503": *a18
     post:
-      summary: "Yangi korxona yaratish (Figma F6 uch qadam: profil, alias, boshlang‘ich tarif — bitta so‘rovda); trial
-        signupda boshlanadi"
+      summary: "Yangi korxona yaratish (Figma F6 uch qadam: profil, domen, alias, boshlang‘ich tarif — bitta so‘rovda); domen
+        yagona (D43; berilmasa ro‘yxat raqamidan yasaladi); trial signupda boshlanadi"
       operationId: post_v1_platform_tenants
       security:
         - bearerAuth: []
@@ -905,6 +908,9 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 500
+                domain:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$
                 contact_name:
                   type: string
                   maxLength: 200
@@ -943,7 +949,8 @@ paths:
               additionalProperties: false
   /v1/platform/tenants/{id}/profile:
     patch:
-      summary: "Kompaniya profilini tahrirlash (Figma F6): nom, mas‘ul shaxs, e-mail, telefon, manzil, shakl, alias"
+      summary: "Kompaniya profilini tahrirlash (Figma F6): nom, domen (D43, yagona), mas‘ul shaxs, e-mail, telefon, manzil,
+        shakl, alias"
       operationId: patch_v1_platform_tenants__id_profile
       security:
         - bearerAuth: []
@@ -996,6 +1003,9 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 500
+                domain:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$
                 contact_name:
                   type: string
                   maxLength: 200
