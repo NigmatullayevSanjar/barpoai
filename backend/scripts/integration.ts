@@ -1830,23 +1830,32 @@ try {
   assert.equal(viaCookie.statusCode, 200);
   assert.equal(viaCookie.json().phone, '+998901112233');
   const csrf = await app!.inject({
-    method: 'POST',
-    url: '/v1/auth/logout',
+    method: 'PATCH',
+    url: '/v1/auth/profile',
     cookies: { barpo_session: cookie!.value },
     headers: { origin: 'https://evil.example' },
+    payload: { display_name: 'CSRF', phone: '+998901112233' },
   });
   assert.equal(csrf.statusCode, 403);
-  const okOrigin = await app!.inject({
+  assert.equal(csrf.json().error.code, 'CSRF_ORIGIN_REJECTED');
+  // Logout origin tekshiruvisiz: APP_ORIGIN brauzer domeniga mos kelmasa ham sessiya yopiladi.
+  const logoutOtherOrigin = await app!.inject({
     method: 'POST',
     url: '/v1/auth/logout',
     cookies: { barpo_session: cookie!.value },
-    headers: { origin: process.env.APP_ORIGIN! },
+    headers: { origin: 'https://other.example' },
   });
-  assert.equal(okOrigin.statusCode, 200);
+  assert.equal(logoutOtherOrigin.statusCode, 200);
   assert(
-    okOrigin.cookies.some((c) => c.name === 'barpo_session' && c.value === ''),
+    logoutOtherOrigin.cookies.some((c) => c.name === 'barpo_session' && c.value === ''),
     'cookie cleared',
   );
+  const afterLogout = await app!.inject({
+    method: 'GET',
+    url: '/v1/auth/me',
+    cookies: { barpo_session: cookie!.value },
+  });
+  assert.equal(afterLogout.statusCode, 401);
   passed.push('Phone or login identifier; httpOnly cookie session with origin check');
   const link = await call('POST', '/v1/integrations/telegram/link', undefined, adminAgain);
   assert.match(link.url, /^https:\/\/t\.me\/[A-Za-z0-9_]+\?start=[A-Za-z0-9_-]{32,}$/);
