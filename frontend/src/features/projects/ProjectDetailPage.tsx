@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Archive, ArrowLeft, Image as ImageIcon, Pencil, Plus, Trash2, Upload, UserPlus } from 'lucide-react';
-import { api, apiAll, ApiError } from '@/lib/api';
+import { api, apiAll, ApiError, randomId } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DetailError } from '@/app/guards';
 import { errorMessage, useT } from '@/lib/i18n';
@@ -364,7 +364,7 @@ function EditProjectModal({
     setRemoved(false);
   };
   // Bir xil tanlangan fayl qayta urinishda qayta yuklanmasin (server idempotency kaliti bo'yicha bir marta saqlaydi).
-  const uploadKey = useMemo(() => crypto.randomUUID(), [picked]);
+  const uploadKey = useMemo(() => randomId(), [picked]);
   const shown = preview ?? (current.data ? `data:${current.data.mime_type};base64,${current.data.base64}` : null);
   const hasImage = Boolean(picked) || (!removed && Boolean(d.image_file_id));
   const form = useForm<ProjectForm & { forecast_end: string; actual_start: string; actual_end: string }>({

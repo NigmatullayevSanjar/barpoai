@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronDown, Image as ImageIcon, Trash2, Upload } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, randomId } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
 import { formatMoney } from '@/lib/format';
@@ -171,7 +171,7 @@ export function BlockModal({
     return () => URL.revokeObjectURL(url);
   }, [picked]);
   // Bir xil tanlangan fayl qayta urinishda qayta yuklanmasin (server idempotency kaliti bo'yicha bir marta saqlaydi).
-  const uploadKey = useMemo(() => crypto.randomUUID(), [picked]);
+  const uploadKey = useMemo(() => randomId(), [picked]);
   const shown = preview ?? current;
   const hasImage = Boolean(picked) || (!removed && Boolean(zone?.image_file_id));
   // Mas'ul: obyektga biriktirilgan faol xodimlar + joriy mas'ullar (biriktirish olingan bo'lsa ham tahrirda yo'qolmasin).

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api, type ListResponse } from '@/lib/api';
+import { api, randomId, type ListResponse } from '@/lib/api';
 import type { Zone } from '@/features/projects/types';
 
 export type LineKind = 'material' | 'labor' | 'equipment' | 'service';
@@ -153,7 +153,7 @@ export type LineDraft = {
   months: { month: string; quantity: string }[];
 };
 export const newLine = (partial: Partial<LineDraft> = {}): LineDraft => ({
-  key: crypto.randomUUID(),
+  key: randomId(),
   kind: 'material',
   description: '',
   category: '',

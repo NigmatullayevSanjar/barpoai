@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Copy, Plus, Trash2 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, randomId } from '@/lib/api';
 import { DetailError } from '@/app/guards';
 import { useAuth } from '@/lib/auth';
 import { errorMessage, useT } from '@/lib/i18n';
@@ -442,7 +442,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                             const idx = ls.findIndex((x) => x.key === l.key);
                             const copy = {
                               ...l,
-                              key: crypto.randomUUID(),
+                              key: randomId(),
                               months: l.months.map((m) => ({ ...m })),
                             };
                             return [...ls.slice(0, idx + 1), copy, ...ls.slice(idx + 1)];
