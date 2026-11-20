@@ -1,0 +1,16 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	@api path /v1/* /health/*
+	handle @api {
+		reverse_proxy api:3001
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+}
