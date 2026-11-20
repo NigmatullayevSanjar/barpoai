@@ -1,0 +1,23 @@
+# Railway: HTTPS'ni Railway chegarasi beradi, Caddy faqat HTTP'da $PORT ni tinglaydi.
+# API_UPSTREAM — api servisining ichki manzili, masalan app.railway.internal:3001.
+{
+	auto_https off
+	admin off
+}
+
+:{$PORT:8080} {
+	encode zstd gzip
+
+	@api path /v1/* /health/*
+	handle @api {
+		reverse_proxy {$API_UPSTREAM}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+}

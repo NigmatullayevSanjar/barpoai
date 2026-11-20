@@ -8,5 +8,7 @@ COPY frontend ./
 RUN pnpm build
 
 FROM caddy:2.10
-COPY deploy/Caddyfile /etc/caddy/Caddyfile
+# Railway: CADDYFILE=deploy/Caddyfile.railway (servis o'zgaruvchisi build arg bo'lib keladi).
+ARG CADDYFILE=deploy/Caddyfile
+COPY ${CADDYFILE} /etc/caddy/Caddyfile
 COPY --from=build /app/dist /srv
