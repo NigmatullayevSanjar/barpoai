@@ -1,5 +1,7 @@
 # CLAUDE.md — BARPO AI
 
+BARPO AI is a multi-tenant SaaS ERP for construction companies in Uzbekistan. The platform owner sells subscriptions to companies; each company runs its projects in it: estimates (smeta), stock, tasks and daily reports, finance, payroll and brigade piece rates, apartments and price sheets. The UI is in Uzbek (Latin) and Russian. The owner speaks Uzbek: answer in Uzbek unless asked otherwise. This file is for Claude Code sessions: read it fully before changing anything.
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
@@ -64,52 +66,98 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
-## Project pointers
+## Product in one page
 
-- Current work plan (2026-10): `docs/TZ_VA_NARX_REJASI.md` — owner decisions D1–D10 and R1–R2 override older docs; stage status in section 3, ready prompts in section 6, how to continue on another computer and open items in section 9. Client design TZ: `docs/tz/` (`.md` copy for search, `.docx` original).
-- Session handoff snapshot (2026-10-12): `docs/BARPO_AI_DAVOM_ETTIRISH.md` — what is done, owner decisions made in recent sessions, open work in order, environment workarounds.
-- Plan of record: `docs/BACKEND_TODO.md` (12 stages, per-stage status lines dated). Product spec: `docs/BARPO_AI_PROJECT_CONTEXT.md`. When the two conflict, backend business rules in `docs/backend/BARPO_BUSINESS_RULES.md` win; the context doc guides UI and scope.
-- Verify before every commit: `backend`: `npm run build`, `npm test`, `npm run test:integration` (Docker), `npm run test:ui` (Docker + Headless Chrome), `npm run test:roles` (rol × endpoint matritsasi, Docker); `frontend`: `pnpm typecheck`, `pnpm build`. Regenerate API docs with `npm run docs` after route changes.
-- Conventions: money and quantities are decimal strings end to end; storage and input are UZS only. USD is display-only: conversion happens only inside `formatMoney`, with the server-provided CBU rate and decimal arithmetic (never `Number`) — the single exception to "frontend does no arithmetic"; no sums, totals come from the server in UZS; forms and Excel exports stay UZS (except the price sheet); money/quantity/area inputs use `Input` with `inputMode="decimal"` (or `NumericInput` in grids): digits show grouped (`3 000 000`), the form value stays without spaces; permissions are enforced server-side (UI only hides); every new UI string goes into both `frontend/src/locales/*.uz.ts` and `*.ru.ts`; no static demo numbers — empty/error states instead.
-- Secrets stay in `backend/.env` (gitignored). Never commit tokens.
-- Layout: `frontend/` (Vite app), `backend/` (API, worker, migrations, tests), `docs/` (all documentation; backend scripts write generated docs and test results to `docs/backend/`). Full project context for a new session: `docs/BARPO_AI_HANDOFF.md`.
+**Tenancy.** Two levels. The platform (owner, super admin, support) creates companies, plans, invoices and answers support requests; it never opens a company's projects, estimates, stock or finance pages. Each company is isolated by PostgreSQL row-level security (`app.tenant_id`). Company users log in with company domain + login or phone + password (D43); platform staff log in without a domain. A company starts with a 14-day trial; the worker blocks it when the trial or paid period ends unpaid, a covering payment reopens it, a manual owner block always wins (D33).
 
-## Project status (2026-11-05)
+**Roles and what they do** (full reference: `docs/BARPO_ROLLAR_VA_FUNKSIYALAR.md`):
 
-Everything below is merged into `main`. Work order and owner decisions: `docs/TZ_VA_NARX_REJASI.md` (D1–D34, section 3 table, "Video tahlili g‘oyalari (D23)" table). Business rules per feature: `docs/backend/BARPO_BUSINESS_RULES.md`.
+| Role | Key | Can | Cannot |
+|---|---|---|---|
+| Platform owner | `platform_owner` | Everything on the platform: companies, plans, billing, staff, permissions, audit, diagnostics, corrections (reversals) inside a company | Open a company's business pages |
+| Super admin | `super_admin` | Owner's actions by default; Telegram 2FA is mandatory (D21) | Block or change the owner |
+| Support | `support` | Read, reply to support requests, diagnostics, password reset links | Create, block, bill, reverse |
+| Company admin | `tenant_admin` | Employees, role permissions, projects, estimates, tasks, report review, all finance, payroll, price sheet, audit, settings | Any stock operation or material creation (D18), even with a grant |
+| Chief engineer | `manager` | Projects and blocks, estimates (create, edit, import), prices, tasks, reports, read employees | Finance pages, stock operations |
+| Foreman | `foreman` | Tasks, report review and progress corrections, approve consumption, read stock and estimates by quantity | See any money: prices, sums, rates, earnings (D20) |
+| Brigadier | `brigadier` | Tasks, daily reports with photos, accept transfers, propose consumption, returns, multi-line material requests, own earnings | Estimates, other brigadiers' data |
+| Warehouse manager | `warehouse_manager` | Materials, receipts, transfers, request fulfilment, reversals, inventory, minimum stock (assigned warehouses only) | Prices, consumption approval |
+| Financier | `financier` | Budgets, plan–actual, forecast, payment requests and calendar, price sheet, estimate import | Post documents or pay |
+| Accountant | `accountant` | Counterparties, cash accounts, invoices and acts, payments, advances and offsets, reversals, payroll entries, allocations | Edit estimates, stock operations; closing or paying payroll needs the admin's grant |
 
-- Stages 1–4 of the plan (pagination/search, server totals, 404/error states, charts, premises, UZS/USD display, price sheet), Figma stages F1–F6 (roles, stock, work, finance, platform), platform roles D21 (super admin with Telegram 2FA, support), Excel import for estimates and premises.
-- PR #9 advance offset (`advance_offset`, D22) and "Subpudratchi" naming; PR #11 platform roles merge; PR #12 grouped number inputs (`NumericInput`, `1 000 000`); PR #13 button visibility and font-size setting (O.docx); PR #14 atomic 2FA code check, O3 (all money sums on the server), O12 (accounting by document date), O17 (UTC+5 date parsing); PR #15 role matrix coverage and V-D project finance card.
-- Video-analysis ideas (D23, order D → A → B → E → C): V-D project finance card (`GET /v1/projects/:id` `finance`), V-A tasks linked to an estimate line with planned start (migration 025, `GET /v1/estimate-lines`), V-B multi-line material requests (migration 026, `group_id`), V-E floor × work progress matrix (`GET /v1/projects/:id/floor-progress`), V-C brigade piece-rate accounting (migration 027: `labor_rate`, `brigade_percent`, frozen rate on acceptance, `progress_payroll`, `GET /v1/me/earnings`, payroll `piece_rate`, advance settled first on payment).
-- Estimates from external companies (D24–D32): estimate archiving stays with the tenant admin (D24); estimate Excel up to 10 MB and 20 000 rows (D25, D30); revision keeps line identity, tasks and facts (migration 028 `lineage_id`, D26–D27); floor matrix rows by work code + name + unit (D28); full Form 5 import (`backend/src/form5.ts`, `/v1/estimate-imports/form5/*`, D29); t ↔ kg auto-conversion on import (D31); Form 5 work-line piece rate from its labor resources × project percent, material aliases on stock receipt, units l/section/boiler/cycle/end and unit labels (migration 029, D32). Test reports: `docs/tests/FORM5_SMETALAR_TEKSHIRUV_2026_11_05.md`. Workbooks with links to other files are accepted; macros stay rejected (D34).
-- Billing D33 (migration 030): the worker blocks an active company whose trial or paid period ended unpaid (`blockUnpaid`, `auto_blocked`); a covering payment reopens it in `recomputeCoverage`; a manual owner decision wins (`auto_blocked_for`, a payment never lifts a manual block).
-- Estimate re-upload D42 (migration 031; on `main-vxg6su`, not yet in `main`): an Excel or Form 5 sheet can be imported into an existing estimate as its next revision (`estimate_id` on the preview, `IMPORT_TARGET_CHANGED` if the estimate moved on); import matches material aliases; `GET /v1/stock/overview` lists every current estimate material with `plan_quantity`, `received_quantity`, `over_plan` (new ones at zero on the main warehouse, received or stocked ones stay). Manual cases: `docs/tests/SMETA_REVIZIYA_OMBOR_D35_TEST_CASES.md`.
-- Automated suites as of 2026-11-14 (`main-vxg6su` after the S1–S5 + D42 merge): unit 41, integration 107 checks, role matrix 10 roles × 89 GET routes with no findings, UI 67 checks. Expected counts grow with every feature; a lower count means a removed check and needs an explanation.
-- Open: production readiness (hosting, PostgreSQL backup and restore, monitoring and error alerts, env and deploy procedure) and the consolidated manual test cases.
+The admin can change every role's page CRUD matrix and give individual grants (`/v1/company/role-permissions`, `/v1/employees/:id/permissions`); the server enforces everything, the UI only hides.
 
-### Session 2026-11-08 … 11-14 (pushed to `main-vxg6su`, not merged into `main`)
+**Modules.** Projects → blocks → zones (block, entrance, floor, other) → premises (apartments, Excel import). Estimates: manual grid, Excel import, full Form 5 import (`form5.ts`, D29–D35), immutable revisions keeping line identity (`lineage_id`), price chain with overheads, profit and optional VAT (D36–D39), customer-supplied materials (D37), F-2 act and F-3 statement per period (D40–D41), re-upload as the next revision (D42). Stock: receipt → transfer (reserve) → brigadier accepts → consumption approved by the foreman becomes an expense; returns, reversals, inventory, multi-line requests (D23/B). Tasks (Kanban, optional estimate line) and daily/weekly reports; an accepted report writes progress and freezes the brigade rate. Finance: double-entry journal (`finance.ts`), invoices matched to stock receipts, payments allocated to documents, advances and advance offsets (D22), budgets, plan–actual by document date, forecast, payment requests, reconciliation. Payroll with automatic brigadier piece-rate entries and advances settled first (D23/C). Price sheet per apartment with UZS/USD (CBU rate, display only). Dashboards per role, notifications in the app and Telegram, Telegram bot flows for brigadiers and other roles, audit log with Excel export.
 
-- On `origin/main-vxg6su`, PR to `main` still to open: S1–S5 estimate correction (`docs/SMETA_TUZATISH_PROMPTLARI.md`, D35–D41), the D42 re-upload commit `282be75` made on the other computer, and a merge of the two. The two lines of work both used decision D35 and migration number 031: the re-upload decision was renumbered D35 → **D42** (TZ table, business rules, code comments; the test case file keeps its name `SMETA_REVIZIYA_OMBOR_D35_TEST_CASES.md` and its «D35 …» test data names). Migrations `031_estimate_codes_header.sql` and `031_import_target.sql` share the prefix on purpose: the runner tracks file names, both machines already applied their own 031, renaming would re-run one. The next migration is 034 (033 = tenant domain, see the 2026-11-19 session).
-- `backend/compose.yaml` gives `db` `restart: unless-stopped` (after Docker restarts, api/worker came back without the DB and logged "Connection terminated due to connection timeout").
-- Fixes from the owner's manual QA (2026-11-13): `GET /v1/stock/estimate-lines` (`stock.read`, no `estimates.read`) fills the «Smeta qatori» select in the brigadier's consumption and the transfer modal (before, it was empty, so consumptions were not linked to estimate lines); brigadier and warehouse manager stock sections are sidebar items without tabs (`StockPage` `tabless`); transfer, consumption and return notifications open `?tab=movements`; report modal: a zone narrows «Smeta qatori (ish)» to that zone, its child zones and zone-less lines (`work-lines` returns `zone_id`); the accountant sidebar has «Smetalar» (the F-2/F-3 act opens from the estimate); plan-actual KPI cards use a flex `.stat-progress` row (the inline `.progress` span rendered as a large green block).
-- Sample QA company «Namuna ofis» (registration key `54645`, local DB): its act shows 44 801 911,86 instead of 47 065 711,86 because none of its consumptions is linked to an estimate line (customer materials 9 625 000 missing; 2 263 800 = 9 625 000 × 21 % × 1,12) and the Q-17 reversal was never made. To finish the manual case: the warehouse manager reverses the unlinked consumptions 14 m3, 1 m3 blocks and 125 m2 film (keep the 0,5 m3), the brigadier re-enters them with the estimate line, the foreman approves, the 1 m3 one is reversed again (Q-17), then compare the act with the expected numbers.
-- QA with the sample Form 5 workbook `docs/research/NAMUNA_SMETA_FORM5_2026_11_10.xlsx` (synthetic, safe to show): 38 of 40 checks passed; report `docs/tests/NAMUNA_SMETA_TEKSHIRUV_2026_11_10.md`, screenshots `docs/tests/screenshots/namuna-*.png`, manual case `docs/tests/NAMUNA_SMETA_QOLDA_TEST_CASE_2026_11_11.md`. Excel totals block, VMQ 583 column, resource summary, F-2/F-3 and the S5 report match to the tiyin. Earlier real-file QA: `docs/tests/SMETA_S1_S5_TEKSHIRUV_2026_11_08.md`.
-- Open defects, not fixed (fix only when the owner says): N-01 Form 5 imports the trailing «ИТОГО ПО ЛОКАЛЬНОЙ РЕСУРСНОЙ ВЕДОМОСТИ» block of the real «ОБЩЕЕ» sheet as fake works (`form5.ts` stops only at «ВСЕГО ЗАТРАТ»); N-02 chief engineer (manager) gets 403 on acts (`prices.read` maps to the finance page in `permissions.ts`); K-1 estimate line «Fakt» and the «Umumiy» tab do not subtract stock reversals (`routes-operations.ts:421`, `:467-472`, `estimates.ts:26,29`), unlike acts and S5 (documented as "reversalsiz" in BUSINESS_RULES:123); login over a LAN IP (`http://10.x.x.x:5173`) is broken twice: `crypto.randomUUID` is missing outside secure contexts (`frontend/src/lib/api.ts:42`, so no request is sent) and the Docker API runs with `NODE_ENV=production`, so the session cookie is `Secure` and the browser drops it. Proposed fix (awaiting the owner): ids via `crypto.getRandomValues`, cookie `Secure` only for https requests.
-- Owner questions still open: should K-1 subtract reversals; the stock «Materiallar» tab is a company-wide catalog (create only, no rename/archive) — the owner wants it to follow the estimate (D42 already shows the estimate plan in balances), still to choose: filter the catalog by the project's current estimates, allow rename/archive; freezing a signed act (acts are recomputed from the current revision, so a price change alters past months); re-pricing labor at MHTEKM × 5 % for VMQ 583 (not implemented); N-03 unpriced general-contractor rows marked «customer».
-- Another computer on the LAN (`10.144.91.54`) runs its own BARPO stack with the same Telegram bot token, hence the worker's "Conflict: terminated by other getUpdates request". The local machine is `10.144.91.7`.
+## Architecture and stack
 
-### Session 2026-11-19 … 11-20 (uncommitted, working tree of `main`)
+- `backend/`: Node.js 22, TypeScript 5.9, Fastify 5, `pg` with raw SQL (no ORM), zod 4 schemas, `decimal.js` for all money, ExcelJS. Every route is declared with `add({ method, path, permission | page, action, body, query, params, sensitive, idempotent, handler })` (`http.ts`); mutations require an `Idempotency-Key` and optimistic `version`; `transaction()` sets `app.tenant_id` and rolls back on throw; `invariant(cond, CODE, status)` raises domain errors (`errors.ts`). Sessions are httpOnly cookies or Bearer tokens.
+- Main modules: `routes-*.ts` (HTTP), `finance.ts` (journal posting and rules), `inventory.ts` (stock ledger), `estimates.ts`, `estimate-price.ts`, `estimate-acts.ts`, `form5.ts`, `customer-materials.ts`, `earnings.ts`, `billing.ts`, `pricing.ts`, `premises.ts`, `permissions.ts` and `platform-permissions.ts`, `notify.ts`, `telegram.ts` and `telegram-flows.ts`, `worker.ts` (outbox, invoices, auto-block, Telegram polling, CBU rate), `migrate.ts`.
+- Database: PostgreSQL 17, migrations in `backend/migrations/NNN_name.sql` (runner tracks file names; next free number is **034**). Two roles: `barpo_owner` (migrations, superuser) and `barpo_app` (runtime, `NOBYPASSRLS`).
+- `frontend/`: Vite 7, React 19, TypeScript, TanStack Query 5, react-router, react-hook-form + zod. Features in `frontend/src/features/*`, shared UI in `frontend/src/components/ui`, i18n strings in `frontend/src/locales/*.uz.ts` and `*.ru.ts`, number and money formatting in `frontend/src/lib/format.ts`, navigation per role in `frontend/src/lib/permissions.ts`.
+- `deploy/`: production Compose (`db`, `migrate`, `api`, `worker`, `web` = Caddy with HTTPS serving the frontend and proxying `/v1`), `web.Dockerfile`, `Caddyfile`, `Caddyfile.railway`, `backup.sh`.
+- `docs/`: all documentation (map below). Backend scripts write generated docs and test reports to `docs/backend/`.
 
-Not committed and not pushed. The same working tree also holds someone else's uncommitted changes (`EstimateEditor.tsx`, `model.ts`, `ProjectDetailPage.tsx`, `blocks.tsx`, `lib/api.ts`, `deploy/`, `docs/DEPLOY_HETZNER.md`, `docs/tests/PLATFORMA_TOLIQ_*`): leave them out of this work's commit. Rules: `docs/backend/BARPO_BUSINESS_RULES.md` (last two sections), decision D43 in `docs/TZ_VA_NARX_REJASI.md`.
+## Running locally
 
-- **D43 company domain** (migration `033_tenant_domain.sql`; the next migration is **034**): `tenants.domain` is unique, 3–32 chars `^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$`. The owner enters it in the create wizard (step 2, required) and the profile edit (audited as `tenant.domain`); when the API gets none, the trigger `tenant_default_domain` derives it from `registration_key` (existing companies were backfilled that way). A taken domain gives `DOMAIN_TAKEN`. Company users log in with domain + login or phone + password; platform staff log in without a domain. An unknown or missing domain gives a plain `INVALID_CREDENTIALS`. Login is unique per company (`users_login_tenant`) and among platform staff (`users_login_platform`), so the same login can exist in two companies. Phone stays globally unique (owner chose option A). The «Domen» column shows `tenants.domain` to every platform role; the alias stays a private label under the company name. `/v1/auth/me` returns `tenant_domain`, and the invite preview and company settings show it. The login page remembers the last domain in `localStorage` (`barpo.login-domain`). Test helpers in `integration.ts`, `role-tests.ts` and `ui-test.ts` add the domain automatically when the login belongs to exactly one company.
-- Duplicate login or phone now gives `LOGIN_TAKEN` or `PHONE_TAKEN` (shown under the field in «Xodim qo‘shish»). An inactive employee still holds their login.
-- **Trial companies are not debtors**: `inTrialSql` in `billing.ts` (same rule as `access_state = trial`) removes them from `GET /v1/platform/billing/debtors` and from the debt cards and the split in `billing/summary`. Archived companies stay in the debtors list; the owner hasn't decided whether to drop them or write their debt off with a credit.
-- **Invoices after the trial**: a plan start date before the trial end moves to the trial end. This applies when a plan is assigned (`POST /v1/platform/subscriptions`), at signup (`registerInvite`) and in the worker (`issueDueInvoices` uses `greatest(next_period_start, trial_ends_at)` and skips companies that haven't registered). The first invoice is still prepared `INVOICE_LEAD_DAYS` (3) before the trial end, with its due date on the trial end; the owner hasn't decided whether it should wait until the trial actually ends. Manual invoices aren't affected. In the create wizard the start date is empty by default.
-- The company card has an «Arxivdan chiqarish» button for archived companies (`PATCH /v1/platform/tenants/:id` with `status: 'active'`, permission `tenants.block`).
-- On the local DB, «QA To‘liq MCHJ» and «sinov» still have 1 500 000 invoices issued during their trial (before this fix). They become debt when the trial ends; the owner hasn't decided what to do with them.
-- The Docker API and worker run built images: after backend changes run `docker compose up -d --build api worker` in `backend/`.
-- Suites passed on 2026-11-20: unit 41, integration 111 checks, UI 67, role matrix with no findings. The run's report files in `docs/backend/` must be restored with `git checkout --` before committing.
+1. `backend/.env` from `backend/.env.example` (DB passwords, `APP_ORIGIN=http://localhost:5173`, optional `TELEGRAM_BOT_TOKEN`). Secrets never leave this file.
+2. `cd backend && docker compose up --build -d` starts `db`, `migrate`, `api` (port 3001), `worker`. After backend changes: `docker compose up -d --build api worker`.
+3. First platform owner: `BOOTSTRAP_LOGIN=... BOOTSTRAP_PASSWORD=... npm run bootstrap` (`MIGRATION_DATABASE_URL` from `.env`).
+4. `cd frontend && pnpm install && pnpm dev` → `http://localhost:5173` (`/v1` is proxied to the API).
+5. Owner → «Mijozlar» → create a company → invite link → register its admin in another browser window.
+
+## Verification before every commit
+
+- `backend`: `npm run build`, `npm test`, `npm run test:integration`, `npm run test:roles`, `npm run test:ui` (the last three each start a disposable PostgreSQL 17 in Docker; run at most two at a time), `npm run docs` after route or schema changes.
+- `frontend`: `pnpm typecheck`, `pnpm build`.
+- On a running local stack: `npm run qa:smoke` then confirm no `QA-` company is left; post-pull procedure for Claude Code: `docs/tests/CLAUDE_CODE_PULL_TEKSHIRUVI.md`.
+- Last recorded counts (2026-11-20): unit 41, integration 111 checks, UI 67 checks, role matrix 10 roles with no findings. Counts only grow; a lower count means a removed check and needs an explanation.
+
+## Deployment
+
+- Hetzner VPS (one server, Docker Compose, Caddy HTTPS, daily `backup.sh`): `docs/DEPLOY_HETZNER.md`.
+- Railway (`Postgres`, `app` = API + worker in one container, `web` = Caddy + frontend): `docs/DEPLOY_RAILWAY.md`. The pilot domain is `barpoai.uz`.
+- Both host data outside Uzbekistan (personal data law, article 27¹): pilot only; section 7 of each guide covers moving to a local server.
+- Production sets `NODE_ENV=production`, so session cookies are `Secure`: serve over HTTPS and set `APP_ORIGIN` to the real domain (logout skips the origin check since PR #25; other mutations do not).
+
+## Documentation map
+
+- `docs/TZ_VA_NARX_REJASI.md` — work plan and **owner decisions D1–D43** (they override older docs), stage table (section 3), ready prompts (section 6), open items (section 9).
+- `docs/backend/BARPO_BUSINESS_RULES.md` — the binding rules per feature; wins over `docs/BARPO_AI_PROJECT_CONTEXT.md` (product spec, guides UI and scope) and `docs/BACKEND_TODO.md` (original 12-stage plan).
+- `docs/backend/BARPO_API_OPENAPI.yaml`, `BARPO_DATABASE_SPEC.md`, `BARPO_ROLE_TEST_REPORT.md` — generated; do not edit by hand.
+- `docs/BARPO_ROLLAR_VA_FUNKSIYALAR.md` (+ PDF) — roles and "what happens when" for the owner.
+- `docs/SMETA_TUZATISH_PROMPTLARI.md`, `docs/FORM5_IMPORT_LOYIHA.md`, `docs/research/` — estimate research, Form 5 design, sample workbooks (synthetic `NAMUNA_SMETA_FORM5_2026_11_10.xlsx` is safe to show).
+- `docs/tests/` — manual test cases per feature (`ID | Qadam | Kutilgan natija`), QA reports and screenshots; owner's end-to-end case `QOLDA_TEST_CASE_2026_10_28.md`, full platform case `PLATFORMA_TOLIQ_*`.
+- `docs/tz/` — client design TZ (`.md` for search, `.docx` original). `docs/BARPO_AI_HANDOFF.md`, `docs/BARPO_AI_DAVOM_ETTIRISH.md` — older handoff snapshots (2026-10-12), history only.
+
+## Conventions
+
+- Money and quantities are decimal strings end to end; storage and input are UZS only. All sums and totals come from the server. USD is display-only: conversion happens only inside `formatMoney`, with the server-provided CBU rate and decimal arithmetic (never `Number`) — the single exception to "frontend does no arithmetic". Forms and Excel exports stay UZS (except the price sheet).
+- Money/quantity/area inputs use `Input` with `inputMode="decimal"` (or `NumericInput` in grids): digits show grouped (`3 000 000`), the form value stays without spaces.
+- Permissions are enforced server-side; the UI only hides. Every new UI string goes into both `frontend/src/locales/*.uz.ts` and `*.ru.ts`. No static demo numbers: empty and error states instead.
+- Secrets stay in `backend/.env` and `deploy/.env` (gitignored). Never commit tokens, never write passwords to files or chat.
+- Code comments and docs for the owner are in Uzbek; commit messages and this file are in English.
+
+## Project status (2026-11-22)
+
+Everything below is merged into `main` (latest: PR #25, 2026-11-21).
+
+- Stages 1–4 (pagination and search, server totals, error states, charts, premises, UZS/USD, price sheet), Figma stages F1–F6, platform roles D21, Excel import for estimates and premises.
+- PR #9–#15: advance offset and «Subpudratchi» (D22), grouped number inputs, button visibility and font size, atomic 2FA check, server-side sums (O3), accounting by document date (O12), UTC+5 dates (O17), role matrix coverage.
+- Video-analysis ideas (D23): project finance card, tasks linked to estimate lines (migration 025), multi-line material requests (026), floor × work matrix, brigade piece rate with payroll and advances (027). PR #20: `qa:smoke`, `qa:cleanup`, owner guides.
+- Estimates from external companies (D24–D34): Form 5 import, revision identity (028), piece rate from labor resources, material aliases, units (029), auto-block of unpaid companies (030, D33), linked workbooks accepted, macros rejected (D34).
+- Estimate correction S1–S5 (D35–D41): «П» rows, line codes and sections, header and resource summary (031), price chain, customer materials and settings (032), F-2 and F-3 acts, customer materials report (S5); re-upload as a revision with the warehouse showing the estimate plan (D42, `031_import_target.sql`). Two `031_*` files are intentional: renaming one would re-run it.
+- Company domain login, unique login per company, `LOGIN_TAKEN`/`PHONE_TAKEN`, trial companies are not debtors, invoices start after the trial, unarchive button (D43, migration 033). Notifications open their source page. Ids without `crypto.randomUUID` over plain http. Hetzner and Railway deploy setups. Logout works from any origin.
+
+**Open items** (fix only when the owner says):
+
+- Production readiness: choose the host (Hetzner vs Railway vs a server in Uzbekistan), verify backup and restore, monitoring and error alerts.
+- N-01: Form 5 imports the trailing «ИТОГО ПО ЛОКАЛЬНОЙ РЕСУРСНОЙ ВЕДОМОСТИ» block of the real «ОБЩЕЕ» sheet as works (`form5.ts` stops only at «ВСЕГО ЗАТРАТ»).
+- N-02: the chief engineer gets 403 on acts (`prices.read` maps to the finance page in `permissions.ts`).
+- K-1: estimate line «Fakt» and the «Umumiy» tab ignore stock reversals, unlike acts and S5 (owner to decide whether they should subtract them).
+- Login on the Docker stack over a LAN IP (`http://10.x.x.x:5173`): the API runs with `NODE_ENV=production`, so the `Secure` cookie is dropped over http. Proposed: `Secure` only for https requests.
+- Owner questions: the stock «Materiallar» tab as a company catalog vs following the estimate; freezing a signed act (acts are recomputed from the current revision); labor re-pricing at MHTEKM × 5 % for VMQ 583; N-03 unpriced general-contractor rows; archived companies in the debtors list; whether the first invoice should wait until the trial actually ends; the 1 500 000 invoices issued during trial on the local DB.
+- Two computers on the same LAN running the same Telegram bot token cause «Conflict: terminated by other getUpdates request»: one bot token per running stack.
 
 ## Working rules learned in this project
 
