@@ -22,6 +22,15 @@ import { customerMaterials, customerMaterialsWorkbook } from './customer-materia
 import { quantity } from './money.js';
 import { MAIN_WAREHOUSE_NAME } from './routes-company.js';
 
+/**
+ * Ombordagi smeta ma'lumoti (reja, rejadan oshgan, smeta qatorlari): smetani ko'ruvchi (`estimates.read`) yoki
+ * sarfni smeta qatoriga yozuvchi brigadir (`stock.consume`). Omborchi smetani ko'rmaydi (egasi, 2026-11-23).
+ */
+async function stockEstimatesVisible(db: Db, actor: Row) {
+  return (
+    (await allowed(db, actor, 'estimates.read')) || (await allowed(db, actor, 'stock.consume'))
+  );
+}
 /** Hisoblarni rol doirasiga qarab filtrlovchi umumiy shart. */
 const accountFilter = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
 
@@ -49,8 +58,9 @@ export async function stockOverview(db: Db, actor: Row, projectId: string) {
   ).rows;
   // D42: smeta rejasi ko'rinadigan asosiy omborda (bo'lmasa birinchi ko'rinadigan omborda) ko'rsatiladi
   const warehouses = accounts.filter((a) => a.kind === 'warehouse');
-  const planAccount =
-    (warehouses.find((a) => a.name === MAIN_WAREHOUSE_NAME) ?? warehouses[0])?.id ?? null;
+  const planAccount = (await stockEstimatesVisible(db, actor))
+    ? ((warehouses.find((a) => a.name === MAIN_WAREHOUSE_NAME) ?? warehouses[0])?.id ?? null)
+    : null;
   /**
    * D42: qatorlar — qoldig'i, rezervi yoki minimumi bor, kirim qilingan (kirim/boshlang'ich qoldiq, storno ayirilgan)
    * yoki obyektning joriy smetalarida bor material; smetadagi, hali omborga kelmagan material 0 qoldiq bilan.
@@ -184,11 +194,12 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
     method: 'GET',
     path: '/v1/stock/estimate-lines',
     summary:
-      'Jo‘natish va sarfda tanlash uchun obyektning joriy smetalaridagi shu materialning qatorlari (barcha arxivlanmagan smetalar); narxsiz, `estimates.read` talab qilinmaydi (brigadir, ombor mudiri)',
+      'Jo‘natish va sarfda tanlash uchun obyektning joriy smetalaridagi shu materialning qatorlari (barcha arxivlanmagan smetalar); narxsiz; `estimates.read` yoki `stock.consume` (brigadir) bilan, aks holda (ombor mudiri) bo‘sh ro‘yxat',
     permission: 'stock.read',
     query: z.object({ project_id: uuid, material_id: uuid }),
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
+      if (!(await stockEstimatesVisible(db, actor))) return { items: [] };
       return {
         items: (
           await db.query(
@@ -223,12 +234,13 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
     sensitive: true,
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
+      const estimatesVisible = await stockEstimatesVisible(db, actor);
       return {
         items: (
           await db.query(
             `SELECT c.*,m.name material_name,m.unit_id,
                     coalesce(wf.name,uf.display_name) from_name,coalesce(wt.name,ut.display_name) to_name,
-                    cb.display_name created_by_name,rb.display_name reviewed_by_name,l.description estimate_line_name,z.name zone_name,
+                    cb.display_name created_by_name,rb.display_name reviewed_by_name,CASE WHEN $14 THEN l.description END estimate_line_name,z.name zone_name,
                     (c.quantity-c.accepted_quantity)::text remaining_quantity,
                     CASE WHEN c.kind IN ('receipt','opening') THEN (SELECT coalesce(sum(sl.value_delta),0) FROM stock_ledger sl WHERE sl.tenant_id=c.tenant_id AND sl.command_id=c.id)::numeric(20,2)::text END value
              FROM stock_commands c
@@ -262,6 +274,7 @@ export function stockExtraRoutes(add: (r: Endpoint) => void) {
               query.q ? likePattern(query.q) : null,
               query.unmatched ?? null,
               query.direction ?? null,
+              estimatesVisible,
             ],
           )
         ).rows,

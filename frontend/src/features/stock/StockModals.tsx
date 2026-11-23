@@ -88,9 +88,12 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
   const [zone, setZone] = useState('');
   const [newMaterial, setNewMaterial] = useState(false);
   const lines = useMaterialLines(projectId, material);
-  const sourceBalance = balances.find((b) => b.account_id === from && b.material_id === material);
-  const available = sourceBalance ? Number(sourceBalance.available) : null;
   const needsSource = kind === 'transfer' || kind === 'consumption' || kind === 'return';
+  // Kirim va boshlang'ich qoldiqda manba hisob yo'q: «Mavjud» va yetishmovchilik faqat chiqimda tekshiriladi.
+  const sourceBalance = needsSource
+    ? balances.find((b) => b.account_id === from && b.material_id === material)
+    : undefined;
+  const available = sourceBalance ? Number(sourceBalance.available) : null;
   const sourceMaterials = needsSource
     ? balances.filter((b) => b.account_id === from && Number(b.available) > 0)
     : [];
@@ -113,7 +116,8 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
       }),
     onClose,
   );
-  const unit = selectedMaterial?.unit_id ?? sourceBalance?.unit_id ?? '';
+  const unit =
+    selectedMaterial?.unit_id ?? balances.find((b) => b.material_id === material)?.unit_id ?? '';
   const valid =
     material &&
     qty &&
@@ -229,7 +233,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
               onChange={(e) => setUnitCost(e.target.value)}
             />
           )}
-          {(kind === 'consumption' || kind === 'transfer') && (
+          {(kind === 'consumption' || kind === 'transfer') && lines.length > 0 && (
             <Select label={t('stock.estimate_line')} value={line} onChange={(e) => setLine(e.target.value)}>
               <option value="">—</option>
               {lines.map((l) => (
