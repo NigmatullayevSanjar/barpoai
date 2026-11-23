@@ -516,7 +516,7 @@ try {
   await adminPage.goto(stockUrl);
   await adminPage.getByRole('tab', { name: /Qoldiqlar|Harakatlar/ }).first().waitFor();
   assert.equal(await adminPage.getByRole('button', { name: 'Kirim', exact: true }).count(), 0);
-  assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish', exact: true }).count(), 0);
+  assert.equal(await adminPage.getByRole('button', { name: 'Chiqim', exact: true }).count(), 0);
   checks.push('Tenant admin sees the stock page without any action buttons (read-only warehouse and materials)');
   // D42: smetadagi, hali kelmagan material qoldiqlarda reja bilan va «Kirim yo'q» holatida (smetani ko'ruvchiga)
   await adminPage.getByRole('columnheader', { name: 'Reja (smeta)' }).waitFor();
@@ -601,7 +601,7 @@ try {
   await warehousePage.getByRole('dialog').getByRole('button', { name: 'Bekor qilish' }).click();
   await warehousePage.getByRole('dialog').waitFor({ state: 'detached' });
   checks.push('A receipt larger than the current balance shows no “insufficient stock” error');
-  await warehousePage.getByRole('button', { name: 'Jo‘natish', exact: true }).first().click();
+  await warehousePage.getByRole('button', { name: 'Chiqim', exact: true }).first().click();
   await warehousePage
     .getByRole('dialog')
     .getByLabel('Qayerga')

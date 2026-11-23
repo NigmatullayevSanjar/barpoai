@@ -93,7 +93,7 @@ export const stockRu: Record<string, string> = {
   'stock.no_balances': 'Остатков нет. Начните с прихода.',
   'stock.receipt': 'Приход',
   'stock.opening': 'Начальный остаток',
-  'stock.transfer': 'Отправка',
+  'stock.transfer': 'Выдача',
   'stock.consumption': 'Расход',
   'stock.return': 'Возврат',
   'stock.reconcile': 'Инвентаризация',
