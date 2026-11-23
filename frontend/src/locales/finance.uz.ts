@@ -47,7 +47,8 @@ export const financeUz: Record<string, string> = {
   'fin.description': 'Tavsif',
   'fin.matched_receipt': 'Bog‘lanadigan ombor kirimi',
   'fin.matched_receipt_hint':
-    'Invoys summasi kirim qiymatiga teng bo‘lishi shart (hozircha narx tuzatish yo‘q).',
+    'Invoys summasi kirimning haqiqiy narxi bo‘ladi: farq material qoldig‘iga, sarflangan qismi xarajatga yoziladi.',
+  'fin.receipt_provisional': 'Omborchi narx yozmagan, taxminiy qiymat (smeta narxi)',
   'fin.allocated_invoice': 'Qaysi hujjat to‘lanmoqda',
   'fin.outstanding': 'Qoldiq',
   'fin.paid': 'To‘langan',
@@ -318,6 +319,7 @@ export const financeUz: Record<string, string> = {
   'error.RECEIPT_MATCH_REQUIRED': 'Yetkazib beruvchi invoysi uchun ombor kirimini tanlang.',
   'error.RECEIPT_MISMATCH': 'Tanlangan kirim bu obyektga yoki bajarilgan holatga mos emas.',
   'error.RECEIPT_REVERSED': 'Tanlangan kirim teskari qilingan.',
+  'error.STOCK_ALREADY_MOVED': 'Bu invoysning narx farqi yozilgan material omborda qolmagan: avval harakatlarni storno qiling.',
   'error.PAYMENT_ALLOCATION_REQUIRED': 'To‘lov qaysi hujjatga tegishli ekanini tanlang.',
   'error.OVERPAYMENT_USE_ADVANCE': 'Summa hujjat qoldig‘idan oshadi. Ortiqcha qism uchun avans yozing.',
   'error.INVOICE_MISMATCH': 'Hujjat kontragent yoki obyektga mos emas.',

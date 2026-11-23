@@ -287,3 +287,10 @@ Hisob (rejaning 4-bo‘limi, `backend/src/pricing.ts`, hammasi decimal.js bilan,
 - Prorab sarfni tasdiqsiz yozadi (darhol xarajat). Talabnomalar (`/v1/stock/requests`, Telegram «Material so‘rash») butunlay olib tashlangan; overview `pending` = `{transfers, returns}`.
 - Kunlik hisobotni prorab yozadi (`reports.submit`), bosh muhandis yoki mijoz admini qabul qiladi (`reports.review`); prorabda `reports.review` va `stock.review` yo‘q (admin sahifa matritsasi orqali alohida ochishi mumkin).
 - Akkord va brigadir avanslari yo‘q (yuqoridagi bo‘limga qarang).
+
+## Narxsiz kirim, narxni buxgalter beradi (2026-11-23, egasi qarori)
+
+- Omborchi «Kirim» oynasida narx yozmaydi (`unit_cost` yuborilmaydi). Kirim taxminiy tannarx bilan yoziladi (`stock_commands.cost_provisional = true`, migratsiya 037): obyektning arxivlanmagan smetalaridagi shu material (pudratchi ta'minlaydigan) qatorlarining o'rtacha narxi (Σ jami / Σ hajm); bo'lmasa kompaniyadagi oxirgi narxli kirim narxi; bo'lmasa 0. Omborchi narxni ko'rmaydi (`unit_cost` narx maydoni sifatida kesiladi). Boshlang'ich qoldiq va inventarizatsiya ko'payishi hamon narx so'raydi.
+- Buxgalter yetkazuvchi invoysini kirimga bog'laganda invoys summasi haqiqiy narx bo'ladi (`PRICE_ADJUSTMENT_REQUIRED` yo'q). Farq = invoys − kirimning ledger qiymati. Kirim miqdoridan obyektda hali turgan qismi (barcha ombor va prorab hisoblaridagi shu material qoldig'i, kirim miqdoridan oshmaydi) ulushi qoldiqqa — hisoblarga miqdorga mutanosib (oxirgisi yaxlitlash qoldig'ini oladi; manfiy farq hisob qiymatidan oshmaydi), qolgani xarajatga (smeta qatorisiz). Ledger yozuvlari kirim buyrug'iga `price:<invoys id>` kaliti bilan, miqdor 0. Jurnal: `clearing` + kirim qiymati, `inventory` + qoldiqqa yozilgani, `expense` + qolgani, `payable` − invoys.
+- Invoys stornosi `price-rev:<invoys id>` bilan farqni qaytaradi; material qiymati allaqachon chiqib ketgan bo'lsa `STOCK_ALREADY_MOVED` (409).
+- Invoys oynasida narxsiz kirim tanlansa summa oldindan to'ldirilmaydi, izohda taxminiy qiymat ko'rinadi.

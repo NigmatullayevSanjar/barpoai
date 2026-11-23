@@ -49,8 +49,9 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
   const needsCounterparty = [...payableKinds, 'payment', 'advance', 'advance_offset'].includes(kind);
   const allocates = kind === 'payment' || kind === 'advance_offset';
   const needsCash = cashKinds.includes(kind);
-  // Kirim qiymati serverdan (ledger): invoys summasi aynan shunga teng bo'lishi shart.
+  // Kirim qiymati serverdan (ledger); narxsiz kirimda u taxminiy — haqiqiy narx shu invoys summasi bo'ladi.
   const receiptValue = selectedReceipt?.value ?? null;
+  const provisional = selectedReceipt?.cost_provisional === true;
   const save = useFinanceMutation(
     () =>
       api('/v1/finance/documents', {
@@ -186,7 +187,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
               onChange={(id, r) => {
                 setReceipt(id);
                 setSelectedReceipt(r);
-                if (r?.value) setAmount(r.value);
+                if (r?.value && !r.cost_provisional) setAmount(r.value);
               }}
               getId={(r) => r.id}
               getLabel={(r) =>
@@ -229,7 +230,7 @@ export function DocumentModal({ projectId, kinds, initialKind, preset, onClose }
             onChange={(e) => setAmount(e.target.value)}
             hint={
               receiptValue
-                ? `${t('fin.matched_receipt')}: ${formatMoney(receiptValue, lang, true, 'UZS')}`
+                ? `${t(provisional ? 'fin.receipt_provisional' : 'fin.matched_receipt')}: ${formatMoney(receiptValue, lang, true, 'UZS')}`
                 : undefined
             }
           />

@@ -108,7 +108,8 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
           ...(needsSource ? { from_account_id: from } : {}),
           ...(kind !== 'consumption' ? { to_account_id: to } : {}),
           quantity: normalizeNumber(qty),
-          ...(kind === 'receipt' || kind === 'opening' ? { unit_cost: normalizeNumber(unitCost) } : {}),
+          // Kirimda narx yo'q (2026-11-23): narxni buxgalter yetkazuvchi invoysi bilan beradi
+          ...(kind === 'opening' ? { unit_cost: normalizeNumber(unitCost) } : {}),
           ...(line ? { estimate_line_id: line } : {}),
           ...(zone ? { zone_id: zone } : {}),
           reason: reason.trim(),
@@ -124,7 +125,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
     reason.trim().length >= 5 &&
     (!needsSource || from) &&
     (kind === 'consumption' || to) &&
-    (!(kind === 'receipt' || kind === 'opening') || unitCost);
+    (kind !== 'opening' || unitCost);
   const hints: Record<string, string> = {
     transfer: 'stock.transfer_hint',
     consumption: 'stock.consumption_hint',
@@ -225,7 +226,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
                 : undefined
             }
           />
-          {(kind === 'receipt' || kind === 'opening') && (
+          {kind === 'opening' && (
             <Input
               label={`${t('stock.unit_cost')} (UZS)`}
               inputMode="decimal"

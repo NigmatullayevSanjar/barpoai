@@ -133,6 +133,103 @@ async function ledger(
       });
   }
 }
+/**
+ * Narxsiz kirimning taxminiy birlik tannarxi: obyekt smetalaridagi shu material (pudratchi materiali) qatorlarining
+ * o'rtacha narxi; bo'lmasa kompaniyadagi oxirgi narxli kirim; bo'lmasa 0.
+ */
+async function provisionalUnitCost(db: Db, tenant: string, project: string, material: string) {
+  const row = await one(
+    db,
+    `SELECT coalesce(
+       (SELECT round(sum(l.total)/sum(l.effective_quantity),6) FROM estimate_lines l JOIN estimates e ON e.tenant_id=l.tenant_id AND e.id=l.estimate_id
+        WHERE l.tenant_id=$1 AND l.project_id=$2 AND l.material_id=$3 AND l.archived_at IS NULL AND e.archived_at IS NULL AND l.supplied_by='contractor' HAVING sum(l.effective_quantity)>0),
+       (SELECT c.unit_cost FROM stock_commands c WHERE c.tenant_id=$1 AND c.material_id=$3 AND c.kind='receipt' AND NOT c.cost_provisional AND c.unit_cost IS NOT NULL ORDER BY c.created_at DESC LIMIT 1),
+       0)::text unit_cost`,
+    [tenant, project, material],
+  );
+  return row.unit_cost as string;
+}
+/**
+ * Yetkazuvchi invoysi kirimga bog'langanda (2026-11-23): farq (invoys − kirim qiymati) materialning obyektdagi joriy
+ * qoldig'iga (ombor va prorablar qo'li, miqdorga mutanosib) va allaqachon sarflangan qismi xarajatga yoziladi.
+ * Ledger yozuvlari kirim buyrug'iga `price:<invoys>` kaliti bilan qo'shiladi. Qaytaradi: inventarga yozilgan summa.
+ */
+export async function revalueReceipt(
+  db: Db,
+  actor: Row,
+  receipt: Row,
+  documentId: string,
+  diff: string,
+) {
+  if (dec(diff).isZero()) return '0.00';
+  const rows = (
+    await db.query(
+      `SELECT b.account_id,b.quantity::text,b.value::text FROM stock_balances b JOIN stock_accounts a ON a.tenant_id=b.tenant_id AND a.id=b.account_id
+       WHERE b.tenant_id=$1 AND a.project_id=$2 AND b.material_id=$3 AND b.quantity>0 ORDER BY b.account_id FOR UPDATE OF b`,
+      [actor.tenant_id, receipt.project_id, receipt.material_id],
+    )
+  ).rows;
+  const onHand = rows.reduce((sum, r) => sum.plus(r.quantity), dec('0'));
+  const share = onHand.gte(receipt.quantity) ? dec('1') : onHand.div(receipt.quantity);
+  const total = dec(money(dec(diff).mul(share)));
+  let allocated = dec('0');
+  let applied = dec('0');
+  for (const [i, r] of rows.entries()) {
+    // oxirgi hisob yaxlitlash qoldig'ini oladi; manfiy farq hisob qiymatidan oshmaydi (qolgani xarajatga)
+    const target =
+      i === rows.length - 1
+        ? total.minus(allocated)
+        : dec(money(total.mul(r.quantity).div(onHand)));
+    allocated = allocated.plus(target);
+    const part = target.lt(0) && target.neg().gt(r.value) ? dec(r.value).neg() : target;
+    if (part.isZero()) continue;
+    await db.query(
+      'INSERT INTO stock_ledger(tenant_id,command_id,account_id,material_id,effect_key,quantity_delta,value_delta) VALUES($1,$2,$3,$4,$5,0,$6)',
+      [
+        actor.tenant_id,
+        receipt.id,
+        r.account_id,
+        receipt.material_id,
+        `price:${documentId}`,
+        money(part),
+      ],
+    );
+    await db.query(
+      'UPDATE stock_balances SET value=value+$4 WHERE tenant_id=$1 AND account_id=$2 AND material_id=$3',
+      [actor.tenant_id, r.account_id, receipt.material_id, money(part)],
+    );
+    applied = applied.plus(part);
+  }
+  return money(applied);
+}
+/** Invoys stornosida narx farqi ledgerdan teskari yoziladi; material qiymati allaqachon chiqib ketgan bo'lsa — rad. */
+export async function reverseRevaluation(db: Db, actor: Row, documentId: string) {
+  const rows = (
+    await db.query(
+      'SELECT * FROM stock_ledger WHERE tenant_id=$1 AND effect_key=$2 ORDER BY account_id',
+      [actor.tenant_id, `price:${documentId}`],
+    )
+  ).rows;
+  for (const r of rows) {
+    const b = await balance(db, actor.tenant_id, r.account_id, r.material_id);
+    invariant(dec(b.value).minus(r.value_delta).gte(0), 'STOCK_ALREADY_MOVED');
+    await db.query(
+      'INSERT INTO stock_ledger(tenant_id,command_id,account_id,material_id,effect_key,quantity_delta,value_delta) VALUES($1,$2,$3,$4,$5,0,$6)',
+      [
+        actor.tenant_id,
+        r.command_id,
+        r.account_id,
+        r.material_id,
+        `price-rev:${documentId}`,
+        money(dec(r.value_delta).neg()),
+      ],
+    );
+    await db.query(
+      'UPDATE stock_balances SET value=value-$4 WHERE tenant_id=$1 AND account_id=$2 AND material_id=$3',
+      [actor.tenant_id, r.account_id, r.material_id, r.value_delta],
+    );
+  }
+}
 async function stockCost(db: Db, actor: Row, account: string, material: string, qty: string) {
   const row = await balance(db, actor.tenant_id, account, material);
   invariant(dec(row.quantity).gte(qty), 'INSUFFICIENT_STOCK');
@@ -163,7 +260,7 @@ export async function createStock(db: Db, actor: Row, input: Row) {
   );
   if (kind === 'receipt' || kind === 'opening')
     invariant(
-      !from && to?.warehouse_id && input.unit_cost !== undefined,
+      !from && to?.warehouse_id && (kind === 'receipt' || input.unit_cost !== undefined),
       'WAREHOUSE_RECEIPT_REQUIRED',
       400,
     );
@@ -195,12 +292,17 @@ export async function createStock(db: Db, actor: Row, input: Row) {
       'INSUFFICIENT_AVAILABLE_STOCK',
     );
   }
+  // Narxsiz kirim (2026-11-23): taxminiy tannarx; haqiqiy narx buxgalter invoysni bog'laganda (revalueReceipt)
+  const provisional = kind === 'receipt' && input.unit_cost === undefined;
+  const unitCost = provisional
+    ? await provisionalUnitCost(db, actor.tenant_id, input.project_id, input.material_id)
+    : input.unit_cost;
   // Sarf (prorab, 2026-11-23) tasdiqsiz darhol xarajatga yoziladi; jo'natish va qaytarish qabulni kutadi.
   const pending = ['transfer', 'consumption', 'return'].includes(kind);
   const command = await one(
     db,
-    `INSERT INTO stock_commands(tenant_id,project_id,kind,material_id,from_account_id,to_account_id,quantity,unit_cost,status,estimate_line_id,zone_id,reason,created_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    `INSERT INTO stock_commands(tenant_id,project_id,kind,material_id,from_account_id,to_account_id,quantity,unit_cost,status,estimate_line_id,zone_id,reason,created_by,cost_provisional)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
     [
       actor.tenant_id,
       input.project_id,
@@ -209,12 +311,13 @@ export async function createStock(db: Db, actor: Row, input: Row) {
       from?.id ?? null,
       to?.id ?? null,
       input.quantity,
-      input.unit_cost ?? null,
+      unitCost ?? null,
       pending ? 'pending' : 'posted',
       input.estimate_line_id ?? null,
       input.zone_id ?? null,
       input.reason,
       actor.id,
+      provisional,
     ],
   );
   if (pending)
@@ -223,7 +326,7 @@ export async function createStock(db: Db, actor: Row, input: Row) {
       [actor.tenant_id, from!.id, input.material_id, input.quantity],
     );
   else {
-    const value = money(dec(input.quantity).mul(input.unit_cost));
+    const value = money(dec(input.quantity).mul(unitCost!));
     await ledger(db, actor, command, to!.id, input.quantity, value, command.id);
     await journal(db, actor, input.project_id, { stock: command.id }, [
       { account: 'inventory', amount: value },

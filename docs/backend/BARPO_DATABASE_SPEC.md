@@ -1231,6 +1231,15 @@ ALTER TABLE projects DROP COLUMN brigade_percent;
 
 ```
 
+## 037_receipt_cost_provisional.sql
+
+```sql
+-- Omborchi kirimda narx yozmaydi (egasi, 2026-11-23): narxsiz kirim taxminiy tannarx (smeta narxi yoki oxirgi kirim
+-- narxi) bilan yoziladi; haqiqiy narxni buxgalter yetkazuvchi invoysini bog'laganda beradi.
+ALTER TABLE stock_commands ADD COLUMN cost_provisional boolean NOT NULL DEFAULT false;
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

@@ -3892,6 +3892,48 @@ try {
   ).items.map((r: any) => r.id);
   assert(accountantReceipts.includes(freeReceipt.id) && !accountantReceipts.includes(matchedReceipt.id));
   await call('POST', '/v1/stock/commands', receiptBody, accP, undefined, 403);
+  // Narxsiz kirim (2026-11-23): omborchi narx yozmaydi — taxminiy tannarx; buxgalter invoysda haqiqiy narxni beradi,
+  // farq qoldiqqa (hammasi omborda — to'liq) yoziladi; invoys stornosi farqni qaytaradi
+  const { unit_cost: _cost, ...unpricedBody } = receiptBody;
+  const unpriced = await call('POST', '/v1/stock/commands', { ...unpricedBody, quantity: '10', reason: 'Narxsiz kirim' }, whP);
+  assert.deepEqual([unpriced.cost_provisional, unpriced.unit_cost], [true, undefined]);
+  const unpricedRow = (await admin!.query('SELECT unit_cost::text FROM stock_commands WHERE id=$1', [unpriced.id])).rows[0];
+  const provisionalValue = (Number(unpricedRow.unit_cost) * 10).toFixed(2);
+  const stockValue = async () =>
+    (await admin!.query('SELECT sum(b.value)::text v FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.project_id=$1 AND b.material_id=$2', [project.id, material.id])).rows[0].v;
+  const valueBefore = Number(await stockValue());
+  await call('POST', '/v1/stock/commands', { ...unpricedBody, kind: 'opening', reason: 'Narxsiz boshlang‘ich' }, whP, undefined, 400);
+  const pricedInvoice = await call(
+    'POST',
+    '/v1/finance/documents',
+    {
+      project_id: project.id,
+      kind: 'supplier_invoice',
+      amount: (Number(provisionalValue) + 70).toFixed(2),
+      counterparty_id: supplier.id,
+      matched_receipt_id: unpriced.id,
+      description: 'Narxsiz kirim invoysi',
+      document_date: '2026-10-02',
+    },
+    accP,
+  );
+  assert.equal(Number(await stockValue()), valueBefore + 70);
+  const pricedJournal = (
+    await admin!.query("SELECT account,sum(amount)::text amount FROM journal_entries WHERE finance_document_id=$1 GROUP BY account ORDER BY account", [pricedInvoice.id])
+  ).rows.map((r: any) => [r.account, r.amount]);
+  assert.deepEqual(
+    pricedJournal,
+    [
+      ...(Number(provisionalValue) ? [['clearing', provisionalValue]] : []),
+      ['inventory', '70.00'],
+      ['payable', (-(Number(provisionalValue) + 70)).toFixed(2)],
+    ],
+  );
+  await call('POST', `/v1/finance/documents/${pricedInvoice.id}/reverse`, { reason: 'Narx xato yozilgan' }, adminAgain);
+  assert.equal(Number(await stockValue()), valueBefore);
+  passed.push(
+    'Unpriced receipt: the warehouse manager posts without a price (provisional cost, opening still needs one), the accountant prices it with the supplier invoice and the difference revalues stock on hand; reversing the invoice restores the stock value',
+  );
   await call(
     'GET',
     `/v1/stock/commands?project_id=${project.id}&unmatched=yes`,
