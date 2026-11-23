@@ -209,7 +209,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/stock/custody',
-    summary: 'Biriktirilgan brigadirning obyekt qoldiq hisobi',
+    summary: 'Biriktirilgan prorabning obyekt qoldiq hisobi',
     permission: 'employees.manage',
     action: 'create',
     body: z.strictObject({ project_id: uuid, custodian_id: uuid }),
@@ -218,7 +218,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       await projectScope(db, actor, body.project_id);
       await one(
         db,
-        "SELECT u.id FROM users u JOIN project_assignments a ON a.tenant_id=u.tenant_id AND a.user_id=u.id WHERE u.tenant_id=$1 AND u.id=$2 AND u.role='brigadier' AND u.active AND a.project_id=$3",
+        "SELECT u.id FROM users u JOIN project_assignments a ON a.tenant_id=u.tenant_id AND a.user_id=u.id WHERE u.tenant_id=$1 AND u.id=$2 AND u.role='foreman' AND u.active AND a.project_id=$3",
         [actor.tenant_id, body.custodian_id, body.project_id],
       );
       return one(
@@ -231,14 +231,14 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/stock/accounts',
-    summary: 'Ruxsatli ombor va brigadir hisoblari',
+    summary: 'Ruxsatli ombor va prorab hisoblari',
     permission: 'stock.read',
     query: projectQuery,
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       const rows = (
         await db.query(
-          `SELECT a.* FROM stock_accounts a WHERE a.tenant_id=$1 AND a.project_id=$2 AND ($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4)) ORDER BY a.id LIMIT $5 OFFSET $6`,
+          `SELECT a.* FROM stock_accounts a WHERE a.tenant_id=$1 AND a.project_id=$2 AND ($3<>'foreman' OR a.custodian_id IS NULL OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4)) ORDER BY a.id LIMIT $5 OFFSET $6`,
           [actor.tenant_id, query.project_id, actor.role, actor.id, query.limit, query.offset],
         )
       ).rows;
@@ -278,13 +278,13 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/stock/commands/:id/actions',
-    summary: 'Qisman qabul, sarfni tekshirish, qoldiqni bekor qilish yoki dispute',
+    summary: 'Chiqim yoki qaytarishni qisman qabul qilish, qoldiqni bekor qilish yoki dispute (sarf tasdiqsiz)',
     page: 'stock',
     action: 'update',
     params: idParams,
     body: z.strictObject({
       version,
-      action: z.enum(['accept', 'review', 'cancel', 'dispute']),
+      action: z.enum(['accept', 'cancel', 'dispute']),
       quantity: qty.optional(),
       reason: reason.optional(),
     }),

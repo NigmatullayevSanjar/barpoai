@@ -17,7 +17,6 @@ export type Role =
   | 'support'
   | 'tenant_admin'
   | 'foreman'
-  | 'brigadier'
   | 'warehouse_manager'
   | 'financier'
   | 'accountant'
@@ -45,20 +44,12 @@ export type PlatformPermission = (typeof platformPermissionKeys)[number];
 export const tenantRoles: Role[] = [
   'tenant_admin',
   'foreman',
-  'brigadier',
   'warehouse_manager',
   'financier',
   'accountant',
   'manager',
 ];
-export const employeeRoles: Role[] = [
-  'foreman',
-  'brigadier',
-  'warehouse_manager',
-  'financier',
-  'accountant',
-  'manager',
-];
+export const employeeRoles: Role[] = ['foreman', 'warehouse_manager', 'financier', 'accountant', 'manager'];
 
 export const pages = [
   'dashboard',
@@ -195,24 +186,12 @@ export const roleNav: Partial<Record<Role, NavGroup[]>> = {
     nav.reports,
     nav.employees,
   ),
-  // Figma brigadir: "Material qabul" (jo'natmalarni qabul qilish) va "Material talabnomasi" — ombor sahifasining bo'limlari.
-  // Qoldiqlar va Materiallar ham alohida band: brigadirda ombor sahifasi tablarsiz, har band o'z bo'limini ochadi.
-  brigadier: flat(
-    nav.dashboard,
-    nav.tasks,
-    item('stock', 'Boxes', 'nav.material_accept', '/app/stock?tab=movements&kind=transfer'),
-    item('stock', 'FileInput', 'nav.material_request', '/app/stock?tab=requests'),
-    item('stock', 'BarChart3', 'stock.tab.balances', '/app/stock?tab=balances'),
-    item('stock', 'Package', 'nav.materials_catalog', '/app/stock?tab=materials'),
-    nav.reports,
-  ),
-  // Figma ombor mudiri: kirim/chiqim, omborlar (qoldiqlar), talabnomalar, transferlar, inventarizatsiya, materiallar.
+  // Figma ombor mudiri: kirim/chiqim, omborlar (qoldiqlar), transferlar, inventarizatsiya, materiallar (talabnomalar yo'q, 2026-11-23).
   // "Buyurtma" (yetkazuvchi buyurtmasi) va "Hisobdan chiqarish" ma'lumoti yo'q (D17).
   warehouse_manager: flat(
     nav.dashboard,
     item('stock', 'ArrowLeftRight', 'nav.stock_movements', '/app/stock?tab=movements'),
     item('stock', 'Boxes', 'nav.warehouses', '/app/stock?tab=balances'),
-    item('stock', 'FileInput', 'nav.requests', '/app/stock?tab=requests'),
     item('stock', 'GitCompare', 'nav.transfers', '/app/stock?tab=movements&kind=transfer'),
     item('stock', 'ClipboardList', 'nav.inventory', '/app/stock?tab=balances&inventory=1'),
     item('stock', 'Package', 'nav.materials_catalog', '/app/stock?tab=materials'),

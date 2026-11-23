@@ -239,7 +239,7 @@ try {
   const custody = await call(
     'POST',
     '/v1/stock/custody',
-    { project_id: projectA1.id, custodian_id: staff.brigadier!.id },
+    { project_id: projectA1.id, custodian_id: staff.foreman!.id },
     A.adminToken,
   );
   // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi — yaratish ombor mudirida
@@ -302,7 +302,7 @@ try {
     'POST',
     `/v1/stock/commands/${transfer.id}/actions`,
     { version: 1, action: 'accept', quantity: '60' },
-    staff.brigadier!.token,
+    staff.foreman!.token,
   );
   const consumption = await call(
     'POST',
@@ -315,12 +315,6 @@ try {
       quantity: '20',
       reason: 'Devor uchun',
     },
-    staff.brigadier!.token,
-  );
-  await call(
-    'POST',
-    `/v1/stock/commands/${consumption.id}/actions`,
-    { version: 1, action: 'review' },
     staff.foreman!.token,
   );
   const estimate = await call(
@@ -358,8 +352,8 @@ try {
     {
       project_id: projectA1.id,
       title: 'Sinov vazifasi',
-      assignee_id: staff.brigadier!.id,
-      reviewer_id: staff.foreman!.id,
+      assignee_id: staff.foreman!.id,
+      reviewer_id: staff.manager!.id,
       priority: 'normal',
     },
     A.adminToken,
@@ -375,7 +369,7 @@ try {
       progress_quantity: '5',
       estimate_line_id: workLine.id,
     },
-    staff.brigadier!.token,
+    staff.foreman!.token,
   );
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -389,7 +383,7 @@ try {
       mime_type: 'image/png',
       base64: png,
     },
-    staff.brigadier!.token,
+    staff.foreman!.token,
   );
   const supplier = await call(
     'POST',
@@ -740,7 +734,7 @@ try {
     '/v1/company/role-permissions',
     {
       version: rp.version,
-      role: 'brigadier',
+      role: 'foreman',
       rules: [{ page: 'reports', read: false, create: false, update: false, delete: false }],
     },
     A.adminToken,
@@ -749,14 +743,14 @@ try {
     'GET',
     `/v1/reports?project_id=${projectA1.id}`,
     undefined,
-    staff.brigadier!.token,
+    staff.foreman!.token,
     403,
   );
   await call(
     'POST',
     '/v1/reports',
     { project_id: projectA1.id, kind: 'daily', report_date: '2026-10-02', content: 'Taqiqlangan' },
-    staff.brigadier!.token,
+    staff.foreman!.token,
     403,
   );
   rp = await call('GET', '/v1/company/role-permissions', undefined, A.adminToken);
@@ -765,17 +759,17 @@ try {
     '/v1/company/role-permissions',
     {
       version: rp.version,
-      role: 'brigadier',
+      role: 'foreman',
       rules: [{ page: 'reports', read: true, create: true, update: true, delete: false }],
     },
     A.adminToken,
   );
-  await call('GET', `/v1/reports?project_id=${projectA1.id}`, undefined, staff.brigadier!.token);
+  await call('GET', `/v1/reports?project_id=${projectA1.id}`, undefined, staff.foreman!.token);
   await call(
     'GET',
     `/v1/stock/overview?project_id=${projectA2.id}`,
     undefined,
-    staff.brigadier!.token,
+    staff.foreman!.token,
     404,
   );
   await call('GET', `/v1/tasks?project_id=${projectA2.id}`, undefined, staff.foreman!.token, 404);
@@ -842,26 +836,20 @@ try {
     'share_percent',
     'over_budget',
   ];
-  // Narx huquqi yo'q rollar: prorab (smeta o'qiydi, narx yo'q) va brigadir (ombor/ish qatorlari/dashboard).
+  // Narx huquqi yo'q rollar: prorab (smeta, ombor, ish qatorlari, dashboard — narxsiz) va omborchi.
   const priceChecks: [string, string, string][] = [
     ['estimate card (foreman)', `/v1/estimates/${estimate.id}`, staff.foreman!.token],
     ['estimates list (foreman)', `/v1/estimates?project_id=${projectA1.id}`, staff.foreman!.token],
-    [
-      'stock overview (brigadier)',
-      `/v1/stock/overview?project_id=${projectA1.id}`,
-      staff.brigadier!.token,
-    ],
     [
       'stock overview (foreman)',
       `/v1/stock/overview?project_id=${projectA1.id}`,
       staff.foreman!.token,
     ],
-    ['work lines (brigadier)', `/v1/projects/${projectA1.id}/work-lines`, staff.brigadier!.token],
-    ['dashboard (brigadier)', '/v1/dashboard', staff.brigadier!.token],
+    ['work lines (foreman)', `/v1/projects/${projectA1.id}/work-lines`, staff.foreman!.token],
     ['dashboard (foreman)', '/v1/dashboard', staff.foreman!.token],
-    ['dashboard filtered (brigadier)', `/v1/dashboard?project_id=${projectA1.id}&months=12`, staff.brigadier!.token],
+    ['dashboard filtered (warehouse)', `/v1/dashboard?project_id=${projectA1.id}&months=12`, staff.warehouse_manager!.token],
     ['dashboard filtered (foreman)', `/v1/dashboard?project_id=${projectA1.id}&months=3`, staff.foreman!.token],
-    ['tasks (brigadier)', `/v1/tasks?project_id=${projectA1.id}`, staff.brigadier!.token],
+    ['tasks (foreman)', `/v1/tasks?project_id=${projectA1.id}`, staff.foreman!.token],
   ];
   for (const [label, url, token] of priceChecks) {
     const r = await raw('GET', url, undefined, token);
@@ -874,19 +862,19 @@ try {
     if (leaked) findings.push(`price leak in ${label}: ${leaked}`);
   }
   // Narx varaqasi: sahifa ruxsati bilan kirgan, lekin prices.read'siz rol pul maydonlarini ko'rmaydi, Excel ololmaydi.
-  // 2026-10-16 dan menejer narxni ko'radi, shuning uchun bu tekshiruv brigadir bilan.
+  // 2026-10-16 dan menejer narxni ko'radi, shuning uchun bu tekshiruv prorab bilan (brigadir roli yo'q).
   rp = await call('GET', '/v1/company/role-permissions', undefined, A.adminToken);
   await call(
     'POST',
     '/v1/company/role-permissions',
     {
       version: rp.version,
-      role: 'brigadier',
+      role: 'foreman',
       rules: [{ page: 'pricing', read: true, create: true, update: false, delete: false }],
     },
     A.adminToken,
   );
-  const managerPricing = await login('a_brigadier', pass + '2');
+  const managerPricing = await login('a_foreman', pass + '2');
   const pricingChecks: [string, any][] = [
     [
       'price list versions (manager)',
@@ -911,13 +899,13 @@ try {
     if (leaked) findings.push(`price leak in ${label}: ${leaked}`);
   }
   await call('GET', `/v1/pricing/price-lists/${priceList.id}/export`, undefined, managerPricing, 403);
-  await call('GET', `/v1/estimates/${estimate.id}`, undefined, staff.brigadier!.token, 403);
-  await call('GET', '/v1/finance/summary', undefined, staff.brigadier!.token, 403);
+  await call('GET', `/v1/estimates/${estimate.id}`, undefined, staff.warehouse_manager!.token, 403);
+  await call('GET', '/v1/finance/summary', undefined, staff.foreman!.token, 403);
   await call(
     'GET',
     `/v1/finance/plan-actual/export?project_id=${projectA1.id}`,
     undefined,
-    staff.brigadier!.token,
+    staff.foreman!.token,
     403,
   );
   assert.deepEqual(
@@ -925,7 +913,7 @@ try {
     [],
   );
   passed.push(
-    'Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; brigadier responses carry no price fields',
+    'Individual deny beats role grant; role page revoke blocks read and create; unassigned project/warehouse → 404; foreman and warehouse manager responses carry no price fields',
   );
 
   // ---------------------------------------------------------------- 4. Takror / parallel yozuvlar
@@ -939,14 +927,14 @@ try {
     ])
   ).rows[0].n;
   assert(journalRows >= 2 && journalRows <= 4, 'idempotent payment posts one journal set');
-  const t2 = await call('GET', `/v1/tasks/${task.id}`, undefined, staff.brigadier!.token);
+  const t2 = await call('GET', `/v1/tasks/${task.id}`, undefined, staff.foreman!.token);
   const races = await Promise.all(
     [1, 2].map(() =>
       raw(
         'POST',
         `/v1/tasks/${task.id}/transition`,
         { version: t2.version, status: 'in_progress' },
-        staff.brigadier!.token,
+        staff.foreman!.token,
       ),
     ),
   );
@@ -965,7 +953,7 @@ try {
     'POST',
     `/v1/reports/${report.id}/review`,
     reviewBody,
-    staff.foreman!.token,
+    staff.manager!.token,
     200,
     reviewKey,
   );
@@ -973,7 +961,7 @@ try {
     'POST',
     `/v1/reports/${report.id}/review`,
     reviewBody,
-    staff.foreman!.token,
+    staff.manager!.token,
     200,
     reviewKey,
   );
@@ -981,7 +969,7 @@ try {
     'POST',
     `/v1/reports/${report.id}/review`,
     reviewBody,
-    staff.foreman!.token,
+    staff.manager!.token,
   );
   assert.notEqual(again.status, 200, 'stale version re-accept is rejected');
   const progressRows = (

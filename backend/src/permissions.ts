@@ -6,7 +6,6 @@ export const roles = [
   'support',
   'tenant_admin',
   'foreman',
-  'brigadier',
   'warehouse_manager',
   'financier',
   'accountant',
@@ -15,7 +14,6 @@ export const roles = [
 export const tenantRoles = [
   'tenant_admin',
   'foreman',
-  'brigadier',
   'warehouse_manager',
   'financier',
   'accountant',
@@ -174,16 +172,17 @@ export const adminReadOnlyStock: readonly Permission[] = [
 ];
 export const basePermissions: Record<string, readonly Permission[]> = {
   tenant_admin: permissions.filter((p) => !adminReadOnlyStock.includes(p)),
+  // Brigadir roli yo'q (egasi, 2026-11-23): prorab omborchidan materialni qabul qiladi va o'zi sarf qiladi
+  // (tasdiqsiz), hisobotni yozadi; hisobotni bosh muhandis yoki admin tasdiqlaydi.
   foreman: [
     ...common,
     'stock.read',
-    'stock.review',
+    'stock.accept',
+    'stock.consume',
     'tasks.manage',
     'reports.submit',
-    'reports.review',
     'estimates.read',
   ],
-  brigadier: [...common, 'stock.read', 'stock.accept', 'stock.consume', 'reports.submit'],
   // stock.reverse: storno va inventarizatsiya endi ombor mudirida (admin ombor amallarini bajarmaydi).
   warehouse_manager: [...common, 'stock.read', 'stock.receive', 'stock.send', 'stock.reverse'],
   financier: [
@@ -382,8 +381,9 @@ export async function accountScope(db: Db, actor: Row, id: string, custodySelf =
       404,
     );
   }
-  if (custodySelf && actor.role === 'brigadier')
-    invariant(account.custodian_id === actor.id, 'NOT_FOUND', 404);
+  // Prorab omborlarni ko'radi, shaxsiy hisoblardan faqat o'zinikini
+  if (custodySelf && actor.role === 'foreman')
+    invariant(!account.custodian_id || account.custodian_id === actor.id, 'NOT_FOUND', 404);
   return account;
 }
 export async function assignedUser(db: Db, tenant: string, project: string, id: string) {

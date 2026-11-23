@@ -1193,6 +1193,34 @@ CREATE UNIQUE INDEX users_login_tenant ON users(tenant_id, login) WHERE tenant_i
 
 ```
 
+## 034_brigadier_to_foreman.sql
+
+```sql
+-- Egasi qarori (2026-11-23): brigadir roli olib tashlanadi. Mavjud brigadirlar prorab bo'ladi; ularning qo'lidagi
+-- material hisobi (custody) o'zlarida qoladi. Omborchi materialni prorabga chiqim qiladi, prorab qabul qiladi va
+-- o'zi sarf qiladi. Har bir prorab biriktirilgan obyektida shaxsiy material hisobi ochiladi.
+-- Rol cheklovlari keyingi migratsiyada (UPDATE va ALTER TABLE bir faylda emas).
+UPDATE users SET role = 'foreman' WHERE role = 'brigadier';
+DELETE FROM role_page_permissions WHERE role = 'brigadier';
+INSERT INTO stock_accounts(tenant_id, project_id, custodian_id)
+SELECT a.tenant_id, a.project_id, a.user_id
+FROM project_assignments a JOIN users u ON u.tenant_id = a.tenant_id AND u.id = a.user_id
+WHERE u.role = 'foreman'
+ON CONFLICT DO NOTHING;
+
+```
+
+## 035_drop_brigadier_role.sql
+
+```sql
+-- Brigadir roli endi yo'q (2026-11-23, 034 dan keyin): rol ro'yxatlaridan chiqariladi.
+ALTER TABLE users DROP CONSTRAINT users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('super_admin','platform_owner','support','tenant_admin','foreman','warehouse_manager','financier','accountant','manager'));
+ALTER TABLE role_page_permissions DROP CONSTRAINT role_page_permissions_role_check;
+ALTER TABLE role_page_permissions ADD CONSTRAINT role_page_permissions_role_check CHECK(role IN ('foreman','warehouse_manager','financier','accountant','manager'));
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

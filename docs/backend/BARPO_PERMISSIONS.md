@@ -16,38 +16,38 @@ POST /v1/company/role-permissions optimistic version + idempotency bilan saqlayd
 
 ## Rol × domain amal
 
-| Permission | Sahifa / CRUD | super_admin | platform_owner | support | tenant_admin | foreman | brigadier | warehouse_manager | financier | accountant | manager |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| projects.read | projects / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| projects.write | projects / create | — | — | — | ✓ | — | — | — | — | — | ✓ |
-| employees.read | employees / read | — | — | — | ✓ | — | — | — | — | — | ✓ |
-| employees.manage | employees / update | — | — | — | ✓ | — | — | — | — | — | — |
-| estimates.read | estimates / read | — | — | — | ✓ | ✓ | — | — | ✓ | ✓ | ✓ |
-| estimates.import | estimates / create | — | — | — | ✓ | — | — | — | ✓ | — | ✓ |
-| estimates.edit | estimates / update | — | — | — | ✓ | — | — | — | — | — | ✓ |
-| prices.read | finance / read | — | — | — | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| stock.read | stock / read | — | — | — | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
-| stock.receive | stock / create | — | — | — | — | — | — | ✓ | — | — | — |
-| stock.send | stock / create | — | — | — | — | — | — | ✓ | — | — | — |
-| stock.accept | stock / update | — | — | — | — | — | ✓ | — | — | — | — |
-| stock.consume | stock / create | — | — | — | — | — | ✓ | — | — | — | — |
-| stock.review | stock / update | — | — | — | — | ✓ | — | — | — | — | — |
-| stock.reverse | stock / delete | — | — | — | — | — | — | ✓ | — | — | — |
-| finance.read | finance / read | — | — | — | ✓ | — | — | — | ✓ | ✓ | — |
-| finance.allocate | finance / create | — | — | — | ✓ | — | — | — | ✓ | ✓ | — |
-| finance.post | finance / create | — | — | — | ✓ | — | — | — | — | ✓ | — |
-| finance.reverse | finance / delete | — | — | — | ✓ | — | — | — | — | ✓ | — |
-| tasks.read | tasks / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| tasks.manage | tasks / update | — | — | — | ✓ | ✓ | — | — | — | — | ✓ |
-| reports.read | reports / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| reports.submit | reports / create | — | — | — | ✓ | ✓ | ✓ | — | — | — | ✓ |
-| reports.review | reports / update | — | — | — | ✓ | ✓ | — | — | — | — | ✓ |
-| files.read | files / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| files.write | files / create | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| integrations.read | integrations / read | — | — | — | ✓ | — | — | — | — | — | — |
-| audit.read | audit / read | — | — | — | ✓ | — | — | — | — | — | — |
-| pricing.read | pricing / read | — | — | — | ✓ | — | — | — | ✓ | — | — |
-| pricing.write | pricing / create | — | — | — | ✓ | — | — | — | ✓ | — | — |
+| Permission | Sahifa / CRUD | super_admin | platform_owner | support | tenant_admin | foreman | warehouse_manager | financier | accountant | manager |
+|---|---|---|---|---|---|---|---|---|---|---|
+| projects.read | projects / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| projects.write | projects / create | — | — | — | ✓ | — | — | — | — | ✓ |
+| employees.read | employees / read | — | — | — | ✓ | — | — | — | — | ✓ |
+| employees.manage | employees / update | — | — | — | ✓ | — | — | — | — | — |
+| estimates.read | estimates / read | — | — | — | ✓ | ✓ | — | ✓ | ✓ | ✓ |
+| estimates.import | estimates / create | — | — | — | ✓ | — | — | ✓ | — | ✓ |
+| estimates.edit | estimates / update | — | — | — | ✓ | — | — | — | — | ✓ |
+| prices.read | finance / read | — | — | — | ✓ | — | — | ✓ | ✓ | ✓ |
+| stock.read | stock / read | — | — | — | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| stock.receive | stock / create | — | — | — | — | — | ✓ | — | — | — |
+| stock.send | stock / create | — | — | — | — | — | ✓ | — | — | — |
+| stock.accept | stock / update | — | — | — | — | ✓ | — | — | — | — |
+| stock.consume | stock / create | — | — | — | — | ✓ | — | — | — | — |
+| stock.review | stock / update | — | — | — | — | — | — | — | — | — |
+| stock.reverse | stock / delete | — | — | — | — | — | ✓ | — | — | — |
+| finance.read | finance / read | — | — | — | ✓ | — | — | ✓ | ✓ | — |
+| finance.allocate | finance / create | — | — | — | ✓ | — | — | ✓ | ✓ | — |
+| finance.post | finance / create | — | — | — | ✓ | — | — | — | ✓ | — |
+| finance.reverse | finance / delete | — | — | — | ✓ | — | — | — | ✓ | — |
+| tasks.read | tasks / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| tasks.manage | tasks / update | — | — | — | ✓ | ✓ | — | — | — | ✓ |
+| reports.read | reports / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| reports.submit | reports / create | — | — | — | ✓ | ✓ | — | — | — | ✓ |
+| reports.review | reports / update | — | — | — | ✓ | — | — | — | — | ✓ |
+| files.read | files / read | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| files.write | files / create | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| integrations.read | integrations / read | — | — | — | ✓ | — | — | — | — | — |
+| audit.read | audit / read | — | — | — | ✓ | — | — | — | — | — |
+| pricing.read | pricing / read | — | — | — | ✓ | — | — | ✓ | — | — |
+| pricing.write | pricing / create | — | — | — | ✓ | — | — | ✓ | — | — |
 
 ## Sahifalar
 

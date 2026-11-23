@@ -1,7 +1,6 @@
 import { useAuth } from '@/lib/auth';
 import {
   AccountantDashboard,
-  BrigadierDashboard,
   FinancierDashboard,
   ForemanDashboard,
   ManagerDashboard,
@@ -17,8 +16,6 @@ export function TenantDashboard() {
   switch (me?.role) {
     case 'foreman':
       return <ForemanDashboard />;
-    case 'brigadier':
-      return <BrigadierDashboard />;
     case 'warehouse_manager':
       return <WarehouseDashboard />;
     case 'accountant':

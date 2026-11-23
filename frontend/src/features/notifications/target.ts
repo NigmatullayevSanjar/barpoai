@@ -44,10 +44,9 @@ const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
 /** Ombor bildirishnomasi qaysi bo'limni ochadi (menyu bandlari bilan bir xil so'rov parametrlari). */
 function stockSection(kind: string, params: URLSearchParams) {
-  if (kind === 'stock.request' || kind.startsWith('stock.request.')) params.set('tab', 'requests');
-  else if (kind === 'stock.low') params.set('tab', 'balances');
+  if (kind === 'stock.low') params.set('tab', 'balances');
   else if (kind === 'stock.transfer') {
-    // Jo'natma faqat qabul qiluvchiga (brigadir) keladi: "Material qabul" bo'limi.
+    // Chiqim faqat qabul qiluvchiga (prorab) keladi: harakatlardagi chiqimlar.
     params.set('tab', 'movements');
     params.set('kind', 'transfer');
   } else if (kind === 'stock.consumption' || kind === 'stock.return') params.set('tab', 'movements');

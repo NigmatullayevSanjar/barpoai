@@ -1,6 +1,4 @@
 import {
-  startMaterialRequest,
-  continueFlow,
   loadState,
   hasFlow,
   startProgressReport,
@@ -154,14 +152,14 @@ try {
   );
   passed.push('Platform tenant list filters by q and access state on the server');
   const project = await call('POST', '/v1/projects', { name: 'Obyekt A' }, adminToken);
-  const employee = async (role: string) => {
+  const employee = async (role: string, login = role) => {
     const user = await call(
       'POST',
       '/v1/employees',
-      { login: role, display_name: role, password: pass, role },
+      { login, display_name: login, password: pass, role },
       adminToken,
     );
-    const first = await call('POST', '/v1/auth/login', { login: role, password: pass });
+    const first = await call('POST', '/v1/auth/login', { login, password: pass });
     await call('GET', '/v1/projects', undefined, first.access_token, undefined, 403);
     await call(
       'POST',
@@ -169,7 +167,7 @@ try {
       { current_password: pass, new_password: pass + '2' },
       first.access_token,
     );
-    const logged = await call('POST', '/v1/auth/login', { login: role, password: pass + '2' });
+    const logged = await call('POST', '/v1/auth/login', { login, password: pass + '2' });
     await call(
       'POST',
       `/v1/employees/${user.id}/assignments`,
@@ -178,7 +176,8 @@ try {
     );
     return { ...user, token: logged.access_token };
   };
-  const brigadier = await employee('brigadier'),
+  // Brigadir roli yo'q (2026-11-23): ikkinchi prorab materialni qabul qiladi, sarf qiladi va hisobot yozadi
+  const foreman2 = await employee('foreman', 'prorab2'),
     foreman = await employee('foreman'),
     warehouseManager = await employee('warehouse_manager'),
     financier = await employee('financier'),
@@ -493,7 +492,7 @@ try {
   assert.deepEqual(await empIds('q=muhandis'), [searcher.id]);
   assert.deepEqual(await empIds('q=xodim'), [searcher.id]);
   assert.deepEqual(await empIds('q=izlovchi'), [searcher.id]);
-  assert.deepEqual(await empIds('role=foreman'), [foreman.id]);
+  assert.deepEqual((await empIds('role=foreman')).sort(), [foreman.id, foreman2.id].sort());
   assert(!JSON.stringify(searcher).includes('password_hash'));
   assert(!JSON.stringify(searcher).includes('scrypt$'));
   const employeeJson = JSON.stringify(
@@ -555,7 +554,7 @@ try {
   const custody = await call(
     'POST',
     '/v1/stock/custody',
-    { project_id: project.id, custodian_id: brigadier.id },
+    { project_id: project.id, custodian_id: foreman2.id },
     adminToken,
   );
   // Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; yaratishni ombor mudiri qiladi
@@ -678,14 +677,14 @@ try {
     'POST',
     `/v1/stock/commands/${transfer.id}/actions`,
     acceptBody,
-    brigadier.token,
+    foreman2.token,
     acceptKey,
   );
   const a2 = await call(
     'POST',
     `/v1/stock/commands/${transfer.id}/actions`,
     acceptBody,
-    brigadier.token,
+    foreman2.token,
     acceptKey,
   );
   assert.deepEqual(a, a2);
@@ -702,13 +701,17 @@ try {
       quantity: '25',
       reason: 'Devor uchun sarf',
     },
-    brigadier.token,
+    foreman2.token,
   );
+  // Sarf tasdiqsiz darhol xarajatga (2026-11-23); eski "review" amali yo'q
+  assert.equal(consumption.status, 'posted');
   await call(
     'POST',
     `/v1/stock/commands/${consumption.id}/actions`,
-    { version: 1, action: 'review' },
+    { version: 2, action: 'review' },
     foreman.token,
+    undefined,
+    400,
   );
   const dashboard = await call(
     'GET',
@@ -721,13 +724,27 @@ try {
     'GET',
     `/v1/stock/accounts/${custody.id}/balances`,
     undefined,
-    brigadier.token,
+    foreman2.token,
   );
   assert.equal(held.items[0].quantity, '15.000000');
   assert.equal(held.items[0].value, undefined);
   passed.push(
-    'Partial acceptance retry is idempotent; only reviewed consumption posts cost; prices redacted',
+    'Partial acceptance retry is idempotent; the foreman\'s consumption posts cost at once (no review); prices redacted',
   );
+  // Prorab omborlarni va faqat o'z hisobini ko'radi; boshqa prorab hisobidan sarf qila olmaydi
+  await call(
+    'POST',
+    '/v1/stock/commands',
+    { project_id: project.id, kind: 'consumption', material_id: material.id, from_account_id: custody.id, quantity: '1', reason: 'Begona hisobdan sarf' },
+    foreman.token,
+    undefined,
+    404,
+  );
+  const foreOverview = await call('GET', `/v1/stock/overview?project_id=${project.id}`, undefined, foreman.token);
+  assert(!foreOverview.accounts.some((x: any) => x.id === custody.id));
+  assert(foreOverview.accounts.some((x: any) => x.kind === 'warehouse'));
+  assert(foreOverview.accounts.some((x: any) => x.kind === 'custody' && x.custodian_id === foreman.id));
+  passed.push('Each assigned foreman gets an own stock account; a foreman sees warehouses and only the own account and cannot consume from another foreman');
   await call(
     'POST',
     `/v1/stock/commands/${transfer.id}/actions`,
@@ -1043,21 +1060,30 @@ try {
       estimate_line_id: workEstimate.lines[0].id,
       forecast_end: '2026-12-01',
     },
-    brigadier.token,
+    foreman2.token,
+  );
+  // Prorab hisobotni tasdiqlamaydi (2026-11-23): bosh muhandis yoki admin
+  await call(
+    'POST',
+    `/v1/reports/${report.id}/review`,
+    { version: 1, action: 'accepted', reason: 'Ish joyida tekshirildi' },
+    foreman.token,
+    undefined,
+    403,
   );
   const reviewKey = randomUUID();
   await call(
     'POST',
     `/v1/reports/${report.id}/review`,
     { version: 1, action: 'accepted', reason: 'Ish joyida tekshirildi' },
-    foreman.token,
+    manager.token,
     reviewKey,
   );
   await call(
     'POST',
     `/v1/reports/${report.id}/review`,
     { version: 1, action: 'accepted', reason: 'Ish joyida tekshirildi' },
-    foreman.token,
+    manager.token,
     reviewKey,
   );
   assert.equal(
@@ -1082,7 +1108,7 @@ try {
     {
       project_id: project.id,
       title: 'Sinov vazifasi',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       priority: 'normal',
     },
@@ -1114,7 +1140,7 @@ try {
     {
       project_id: project.id,
       title: 'Devor vazifasi',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       priority: 'normal',
       estimate_line_id: workEstimate.lines[0].id,
@@ -1159,7 +1185,7 @@ try {
           {
             version: 1,
             title: 'Devor vazifasi',
-            assignee_id: brigadier.id,
+            assignee_id: foreman2.id,
             reviewer_id: foreman.id,
             deadline: null,
             estimate_line_id: badLine,
@@ -1190,7 +1216,7 @@ try {
     {
       version: 1,
       title: 'Devor vazifasi',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       deadline: null,
       estimate_line_id: revEstimate.lines[0].id,
@@ -1239,7 +1265,7 @@ try {
     {
       version: 2,
       title: 'Devor vazifasi (tahrir)',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       deadline: null,
       estimate_line_id: revised.lines[0].id,
@@ -1254,7 +1280,7 @@ try {
     {
       version: 3,
       title: 'Devor vazifasi',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       deadline: null,
       estimate_line_id: null,
@@ -1271,13 +1297,13 @@ try {
     'POST',
     `/v1/tasks/${task.id}/transition`,
     { version: 1, status: 'in_progress' },
-    brigadier.token,
+    foreman2.token,
   );
   await call(
     'POST',
     `/v1/tasks/${task.id}/transition`,
     { version: 2, status: 'submitted' },
-    brigadier.token,
+    foreman2.token,
   );
   await call(
     'POST',
@@ -1909,23 +1935,23 @@ try {
     {
       project_id: project.id,
       title: 'Bildirishnoma sinovi',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       priority: 'high',
     },
     adminAgain,
   );
-  const brigadierAgain = (
-    await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })
+  const foreman2Again = (
+    await call('POST', '/v1/auth/login', { login: 'prorab2', password: pass + '2' })
   ).access_token;
-  const inbox = await call('GET', '/v1/me/notifications?unread=true', undefined, brigadierAgain);
+  const inbox = await call('GET', '/v1/me/notifications?unread=true', undefined, foreman2Again);
   assert(
     inbox.items.some((n: any) => n.kind === 'task.assigned' && n.payload.task_id === notifTask.id),
   );
   assert(inbox.unread >= 1);
-  await call('POST', '/v1/me/notifications/read', { ids: [] }, brigadierAgain);
+  await call('POST', '/v1/me/notifications/read', { ids: [] }, foreman2Again);
   assert.equal(
-    (await call('GET', '/v1/me/notifications?unread=true', undefined, brigadierAgain)).unread,
+    (await call('GET', '/v1/me/notifications?unread=true', undefined, foreman2Again)).unread,
     0,
   );
   // unread=false: o'qilganlar ham qaytadi (avval "false" true deb olinib ro'yxat bo'sh chiqardi)
@@ -1933,225 +1959,53 @@ try {
     'GET',
     '/v1/me/notifications?unread=false',
     undefined,
-    brigadierAgain,
+    foreman2Again,
   );
   assert(readInbox.items.some((n: any) => n.payload.task_id === notifTask.id));
-  await call('GET', '/v1/me/notifications?unread=yes', undefined, brigadierAgain, undefined, 400);
+  await call('GET', '/v1/me/notifications?unread=yes', undefined, foreman2Again, undefined, 400);
   const queued = (
     await admin.query(
       "SELECT status,error_code FROM outbox WHERE kind='notification' AND recipient_id=$1",
-      [brigadier.id],
+      [foreman2.id],
     )
   ).rows;
   assert(queued.length >= 1);
   passed.push('Task assignment creates in-app notification and durable Telegram outbox job');
-  // Telegram material so'rovi oqimi (chat_state): obyekt bitta → material → miqdor → izoh → so'rov
-  const brigadierAgain2 = (
-    await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })
+  // Telegram progress oqimi uchun prorab Telegramga bog'lanadi
+  const foreman2Again2 = (
+    await call('POST', '/v1/auth/login', { login: 'prorab2', password: pass + '2' })
   ).access_token;
-  const brigadierLink = await call(
+  const foreman2Link = await call(
     'POST',
     '/v1/integrations/telegram/link',
     undefined,
-    brigadierAgain2,
+    foreman2Again2,
   );
-  const tgBrigadier = {
+  const tgForeman2 = {
     id: '515151',
     username: 'brig_tg',
     first_name: 'Brigadir',
     language_code: 'uz',
   };
-  const brigadierUser = await transaction(appPool!, null, (db) =>
-    consumeLinkToken(db, brigadierLink.url.split('start=')[1], tgBrigadier),
+  const foreman2User = await transaction(appPool!, null, (db) =>
+    consumeLinkToken(db, foreman2Link.url.split('start=')[1], tgForeman2),
   );
   // Admin material yaratmaydi (2026-10-16); ombor mudiri (kirim huquqi) yangi sessiya bilan yaratadi
   const whTg = (await call('POST', '/v1/auth/login', { login: 'warehouse_manager', password: pass + '2' }))
     .access_token;
   await call('POST', '/v1/materials', { name: 'Armatura 12', unit_id: 'kg' }, whTg);
-  const step1 = await startMaterialRequest(appPool!, brigadierUser, 'uz');
-  assert.match(step1, /Materialni tanlang/);
-  assert.equal(hasFlow(await loadState(appPool!, '515151')), true);
-  const step2 = await continueFlow(
-    appPool!,
-    brigadierUser,
-    await loadState(appPool!, '515151'),
-    '1',
-    'uz',
-  );
-  assert.match(step2, /Miqdorni kiriting/);
-  const bad = await continueFlow(
-    appPool!,
-    brigadierUser,
-    await loadState(appPool!, '515151'),
-    'abc',
-    'uz',
-  );
-  assert.match(bad, /musbat son/);
-  const step3 = await continueFlow(
-    appPool!,
-    brigadierUser,
-    await loadState(appPool!, '515151'),
-    '25.5',
-    'uz',
-  );
-  assert.match(step3, /Izoh/);
-  const done = await continueFlow(
-    appPool!,
-    brigadierUser,
-    await loadState(appPool!, '515151'),
-    'Poydevor uchun',
-    'uz',
-  );
-  assert.match(done, /so‘rovi yuborildi/);
-  assert.equal(hasFlow(await loadState(appPool!, '515151')), false);
-  const requestRow = (
-    await admin.query(
-      'SELECT quantity::text,status,note FROM material_requests WHERE requested_by=$1',
-      [brigadierUser.id],
-    )
-  ).rows[0];
-  assert.deepEqual(
-    [requestRow.quantity, requestRow.status, requestRow.note],
-    ['25.500000', 'pending', 'Poydevor uchun'],
-  );
-  const requests = await call(
-    'GET',
-    `/v1/stock/requests?project_id=${project.id}`,
-    undefined,
-    adminAgain,
-  );
-  assert.equal(requests.items.length, 1);
-  // V-B: Telegram so'rovi bitta qatorli talabnoma
-  assert.equal(requests.items[0].lines.length, 1);
-  const tgLineId = requests.items[0].lines[0].id;
-  // Talabnomani faqat ombor mudiri hal qiladi (2026-10-16); admin faqat ko'radi
-  await call(
-    'POST',
-    `/v1/stock/requests/${tgLineId}/actions`,
-    { version: 1, action: 'reject', note: 'Sinov: rad etish' },
-    adminAgain,
-    undefined,
-    403,
-  );
-  const fulfilled = await call(
-    'POST',
-    `/v1/stock/requests/${tgLineId}/actions`,
-    { version: 1, action: 'reject', note: 'Sinov: rad etish' },
-    whTg,
-  );
-  assert.equal(fulfilled.status, 'rejected');
-  passed.push(
-    'Telegram multi-step material request creates a pending request; the admin only reads it, the warehouse manager resolves it via API',
-  );
-  // ---- V-B (D23): ko'p qatorli talabnoma — bitta so'rovda bir nechta material; holat va amallar qatorma-qator
-  const armatura = (await call('GET', '/v1/materials?q=Armatura', undefined, whTg)).items[0];
-  const multi = await call(
-    'POST',
-    '/v1/stock/requests',
-    {
-      project_id: project.id,
-      lines: [
-        { material_id: material.id, quantity: '10' },
-        { material_id: armatura.id, quantity: '2.5' },
-      ],
-      note: 'Ikki qatorli talabnoma',
-    },
-    brigadierAgain2,
-  );
-  assert.equal(multi.lines.length, 2);
-  assert(multi.lines.every((l: any) => l.group_id === multi.group_id));
-  assert.deepEqual(
-    multi.lines.map((l: any) => l.position),
-    [1, 2],
-  );
-  assert.equal(
-    (
-      await call(
-        'POST',
-        '/v1/stock/requests',
-        {
-          project_id: project.id,
-          lines: [
-            { material_id: material.id, quantity: '1' },
-            { material_id: material.id, quantity: '2' },
-          ],
-        },
-        brigadierAgain2,
-        undefined,
-        400,
-      )
-    ).error.code,
-    'REQUEST_LINE_DUPLICATE',
-  );
-  const grouped = await call(
-    'GET',
-    `/v1/stock/requests?project_id=${project.id}`,
-    undefined,
-    adminAgain,
-  );
-  assert.deepEqual(grouped.summary, { total: 2, pending: 1, fulfilled: 0, rejected: 1 });
-  const group = grouped.items.find((g: any) => g.group_id === multi.group_id);
-  assert.equal(group.status, 'pending');
-  assert.equal(group.note, 'Ikki qatorli talabnoma');
-  assert.deepEqual(
-    group.lines.map((l: any) => [l.material_name, l.quantity, l.status]),
-    [
-      ['Sement', '10.000000', 'pending'],
-      ['Armatura 12', '2.500000', 'pending'],
-    ],
-  );
-  // Telegram so'rovi bitta qatorli talabnoma sifatida ko'rinadi
-  assert.equal(grouped.items.find((g: any) => g.status === 'rejected').lines.length, 1);
-  // KPI talabnomalarni (qatorlarni emas) sanaydi
-  assert.equal((await call('GET', '/v1/dashboard', undefined, adminAgain)).stock.pending_requests, 1);
-  // 1-qator rad etiladi — talabnoma hali kutilmoqda; 2-qatorni so'rovchi bekor qiladi — talabnoma rad etilgan
-  await call(
-    'POST',
-    `/v1/stock/requests/${group.lines[0].id}/actions`,
-    { version: 1, action: 'reject', note: 'Omborda yo‘q' },
-    whTg,
-  );
-  const stillPending = await call(
-    'GET',
-    `/v1/stock/requests?project_id=${project.id}&status=pending`,
-    undefined,
-    brigadierAgain2,
-  );
-  assert.deepEqual(
-    stillPending.items.map((g: any) => g.group_id),
-    [multi.group_id],
-  );
-  assert.deepEqual(
-    stillPending.items[0].lines.map((l: any) => [l.status, l.review_note]),
-    [
-      ['rejected', 'Omborda yo‘q'],
-      ['pending', null],
-    ],
-  );
-  await call(
-    'POST',
-    `/v1/stock/requests/${group.lines[1].id}/actions`,
-    { version: 1, action: 'cancel' },
-    brigadierAgain2,
-  );
-  const closed = await call(
-    'GET',
-    `/v1/stock/requests?project_id=${project.id}`,
-    undefined,
-    adminAgain,
-  );
-  assert.equal(closed.items.find((g: any) => g.group_id === multi.group_id).status, 'rejected');
-  assert.deepEqual(closed.summary, { total: 2, pending: 0, fulfilled: 0, rejected: 2 });
-  assert.equal((await call('GET', '/v1/dashboard', undefined, adminAgain)).stock.pending_requests, 0);
-  passed.push(
-    'Multi-line material request: one group with ordered lines, duplicate material rejected, group status and KPIs derive from the lines (pending while any line is open), line-by-line reject and cancel',
-  );
+  // Material so'rovlari (talabnomalar) olib tashlandi (2026-11-23): API yo'q, KPI yo'q
+  await call('GET', `/v1/stock/requests?project_id=${project.id}`, undefined, adminAgain, undefined, 404);
+  await call('POST', '/v1/stock/requests', { project_id: project.id, lines: [] }, foreman2Again2, undefined, 404);
+  assert.equal('pending_requests' in (await call('GET', '/v1/dashboard', undefined, adminAgain)).stock, false);
+  assert.equal('requests' in (await call('GET', `/v1/stock/overview?project_id=${project.id}`, undefined, adminAgain)).pending, false);
+  passed.push('Material requests are removed: no request routes, no request counters on the dashboard or the stock overview');
   // Telegram progress oqimi: obyekt bitta → ish qatori → miqdor → matn → rasmsiz → kunlik hisobot
-  const p1 = await startProgressReport(appPool!, brigadierUser, 'uz');
+  const p1 = await startProgressReport(appPool!, foreman2User, 'uz');
   assert.match(p1, /Qaysi ish/);
   const p2 = await continueProgressFlow(
     appPool!,
-    brigadierUser,
+    foreman2User,
     await loadState(appPool!, '515151'),
     '1',
     'uz',
@@ -2159,7 +2013,7 @@ try {
   assert.match(p2, /Bajarilgan miqdorni/);
   const p3 = await continueProgressFlow(
     appPool!,
-    brigadierUser,
+    foreman2User,
     await loadState(appPool!, '515151'),
     '7.5',
     'uz',
@@ -2167,7 +2021,7 @@ try {
   assert.match(p3, /Bajarilgan ishlarni/);
   const p4 = await continueProgressFlow(
     appPool!,
-    brigadierUser,
+    foreman2User,
     await loadState(appPool!, '515151'),
     'Devor terish davom etdi',
     'uz',
@@ -2175,7 +2029,7 @@ try {
   assert.match(p4, /Rasm yuboring/);
   const p5 = await continueProgressFlow(
     appPool!,
-    brigadierUser,
+    foreman2User,
     await loadState(appPool!, '515151'),
     '-',
     'uz',
@@ -2195,7 +2049,7 @@ try {
   // ---- 09: kompaniya sozlamalari, dashboard, audit, fayllar, eksport, texnik panel, support javobi
   const company = await call('GET', '/v1/company', undefined, adminAgain);
   assert.equal(company.settings.telegram.tasks, true);
-  await call('GET', '/v1/company', undefined, brigadierAgain2, undefined, 403);
+  await call('GET', '/v1/company', undefined, foreman2Again2, undefined, 403);
   const savedCompany = await call(
     'PATCH',
     '/v1/company',
@@ -2225,7 +2079,7 @@ try {
     {
       project_id: project.id,
       title: 'Telegram o‘chirilgan sinov',
-      assignee_id: brigadier.id,
+      assignee_id: foreman2.id,
       reviewer_id: foreman.id,
       priority: 'normal',
     },
@@ -2252,7 +2106,7 @@ try {
   assert(dashProject && dashProject.open_tasks >= 2, 'project row with open task count');
   assert(dash.tasks.open >= 2 && dash.stock && dash.employees.active >= 5);
   assert.equal(dash.finance.actual_cost, final.actual_cost);
-  const brigDash = await call('GET', '/v1/dashboard', undefined, brigadierAgain2);
+  const brigDash = await call('GET', '/v1/dashboard', undefined, foreman2Again2);
   assert.equal(brigDash.finance, null);
   assert.equal(brigDash.employees, null);
   assert.equal(brigDash.reports.pending_review, null);
@@ -2265,7 +2119,7 @@ try {
   const audits = await call('GET', '/v1/audit?action=company.&limit=10', undefined, adminAgain);
   assert(audits.total >= 1 && audits.items.every((a: any) => a.action.startsWith('company.')));
   assert(audits.items[0].actor_name);
-  await call('GET', '/v1/audit', undefined, brigadierAgain2, undefined, 403);
+  await call('GET', '/v1/audit', undefined, foreman2Again2, undefined, 403);
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   await call(
@@ -2330,7 +2184,7 @@ try {
   );
   assert.equal(paBook.getWorksheet('Qatorlar')!.getRow(1).getCell(1).value, 'Turi');
   const taskBook = await load(
-    await call('GET', `/v1/tasks/export?project_id=${project.id}`, undefined, brigadierAgain2),
+    await call('GET', `/v1/tasks/export?project_id=${project.id}`, undefined, foreman2Again2),
   );
   assert(taskBook.getWorksheet('Vazifalar')!.rowCount >= 3);
   // Eksportda ham mine=false filtrsiz bilan bir xil; admin hech bir vazifa ishtirokchisi emas
@@ -2354,7 +2208,7 @@ try {
       'GET',
       `/v1/stock/overview/export?project_id=${project.id}`,
       undefined,
-      brigadierAgain2,
+      foreman2Again2,
     ),
   );
   const stockHeaders = (stockBook.getWorksheet('Qoldiqlar')!.getRow(1).values as any[]).filter(
@@ -2362,7 +2216,7 @@ try {
   );
   assert(!stockHeaders.includes('Qiymat (UZS)'), 'brigadier export has no value column');
   await load(await call('GET', '/v1/audit/export?action=export.', undefined, adminAgain));
-  await call('GET', '/v1/audit/export', undefined, brigadierAgain2, undefined, 403);
+  await call('GET', '/v1/audit/export', undefined, foreman2Again2, undefined, 403);
   assert(
     (await admin.query("SELECT count(*)::int n FROM audit_events WHERE action LIKE 'export.%'"))
       .rows[0].n >= 4,
@@ -3224,13 +3078,13 @@ try {
     },
     adminAgain,
   );
-  await call('POST', `/v1/employees/${brigadier.id}/assignments`, { project_id: px.id }, adminAgain);
+  await call('POST', `/v1/employees/${foreman2.id}/assignments`, { project_id: px.id }, adminAgain);
   const floorReport = async (body: Record<string, unknown>) => {
     const r = await call(
       'POST',
       '/v1/reports',
       { project_id: px.id, kind: 'daily', report_date: '2026-10-05', content: 'Qavat ishi', ...body },
-      brigadierAgain2,
+      foreman2Again2,
     );
     await call(
       'POST',
@@ -3248,9 +3102,9 @@ try {
     'POST',
     '/v1/reports',
     { project_id: px.id, kind: 'daily', report_date: '2026-10-06', content: 'Kutilmoqda', zone_id: floorB3.id, estimate_line_id: floorEst.lines[0].id, progress_quantity: '99' },
-    brigadierAgain2,
+    foreman2Again2,
   );
-  const matrix = await call('GET', `${pxUrl}/floor-progress`, undefined, brigadierAgain2);
+  const matrix = await call('GET', `${pxUrl}/floor-progress`, undefined, foreman2Again2);
   assert.deepEqual(
     matrix.floors.map((f: any) => [f.parent_name, f.name, f.plan, f.fact, f.percent]),
     [
@@ -3302,7 +3156,7 @@ try {
   const workTask = await call(
     'POST',
     '/v1/tasks',
-    { project_id: px.id, title: 'Armatura (ikkinchi)', assignee_id: brigadier.id, reviewer_id: workReviewer, priority: 'normal', estimate_line_id: workEst.lines[2].id },
+    { project_id: px.id, title: 'Armatura (ikkinchi)', assignee_id: foreman2.id, reviewer_id: workReviewer, priority: 'normal', estimate_line_id: workEst.lines[2].id },
     adminAgain,
   );
   await floorReport({ estimate_line_id: workEst.lines[2].id, progress_quantity: '12' });
@@ -3328,7 +3182,7 @@ try {
   assert.deepEqual(workDetail.lines.map((l: any) => Number(l.fact_quantity)), [0, 0, 0, 12]);
   const pxPlanActual = await call('GET', `/v1/finance/plan-actual?project_id=${px.id}`, undefined, adminAgain);
   assert.equal(Number(pxPlanActual.lines.find((l: any) => l.id === newArm.id).fact_qty), 12);
-  const workMatrix = await call('GET', `${pxUrl}/floor-progress`, undefined, brigadierAgain2);
+  const workMatrix = await call('GET', `${pxUrl}/floor-progress`, undefined, foreman2Again2);
   const workCell = (category: string) =>
     workMatrix.cells.find((c: any) => c.zone_id === floorA1.id && c.category === category && c.description === 'Mehnat');
   assert.deepEqual([workCell('E-02 Armatura').plan, Number(workCell('E-02 Armatura').fact)], ['55.000000', 12]);
@@ -3336,8 +3190,9 @@ try {
   passed.push(
     'Estimate revision keeps work identity (D26–D28): same kind/name/unit/zone/category matched in order even when lines shift, the task and accepted progress follow the line (task card, estimate, plan-actual), the floor matrix splits same-named resources by work code',
   );
-  // ---- V-C (D23): brigada akkord hisobi — stavka qabulda qotiriladi, obyekt foizi, tuzatish, davr, avans bilan to'lov
+  // ---- Ishbay yo'q (2026-11-23, brigadir roli olib tashlandi): qabul qilingan hisobot stavkasiz, akkord hisobi bo'sh
   const pxNow = await call('GET', pxUrl, undefined, adminAgain);
+  await call('PATCH', pxUrl, { version: pxNow.version, name: pxNow.name, brigade_percent: '20' }, adminAgain);
   const pieceEst = await call(
     'POST',
     '/v1/estimates',
@@ -3347,126 +3202,30 @@ try {
       lines: [
         { kind: 'labor', description: 'Gipsokarton', unit_id: 'm2', quantity: '50', unit_price: '100000', labor_rate: '20000' },
         { kind: 'labor', description: 'Boyoq', unit_id: 'm2', quantity: '30', unit_price: '50000' },
-        { kind: 'material', description: 'Sement', material_id: material.id, unit_id: 'kg', quantity: '10', unit_price: '1', labor_rate: '5' },
       ],
     },
     adminAgain,
   );
-  // material qatorida stavka saqlanmaydi
-  assert.equal(pieceEst.lines[2].labor_rate, null);
-  assert.equal(pieceEst.lines[0].labor_rate, '20000.00');
-  const pieceReport = async (lineId: string, qty: string, reportDate = '2026-10-05') => {
+  for (const [lineId, qty] of [[pieceEst.lines[0].id, '10'], [pieceEst.lines[1].id, '4']]) {
     const r = await call(
       'POST',
       '/v1/reports',
-      { project_id: px.id, kind: 'daily', report_date: reportDate, content: 'Akkord ishi', estimate_line_id: lineId, progress_quantity: qty },
-      brigadierAgain2,
+      { project_id: px.id, kind: 'daily', report_date: '2026-10-05', content: 'Akkord ishi', estimate_line_id: lineId, progress_quantity: qty },
+      foreman2Again2,
     );
     await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
-    return (await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)) as any;
-  };
-  // R1: qator stavkasi 20000 × 10 m2 = 200000; R2: stavka yo'q (foiz hali berilmagan) → summa yo'q
-  const r1 = await pieceReport(pieceEst.lines[0].id, '10');
-  assert.deepEqual([r1.progress.labor_rate, r1.progress.labor_amount], ['20000.00', '200000.00']);
-  const r2 = await pieceReport(pieceEst.lines[1].id, '5');
-  assert.deepEqual([r2.progress.labor_rate, r2.progress.labor_amount], [null, null]);
-  // obyekt foizi 20% → Boyoq: 50000 × 20% = 10000; R2 ning stavkasi o'zgarmaydi (qotirilgan)
-  await call('PATCH', pxUrl, { version: pxNow.version, name: pxNow.name, brigade_percent: '20' }, adminAgain);
-  const r3 = await pieceReport(pieceEst.lines[1].id, '4');
-  assert.deepEqual([r3.progress.labor_rate, r3.progress.labor_amount], ['10000.00', '40000.00']);
-  assert.equal((await call('GET', `/v1/reports/${r2.id}`, undefined, adminAgain)).progress.labor_rate, null);
-  // tuzatish qotirilgan stavka bilan: 10 − 2 = 8 m2 × 20000 = 160000
-  await call('POST', `/v1/progress-entries/${r1.progress.id}/corrections`, { quantity_delta: '-2', reason: 'Qayta o‘lchash' }, adminAgain);
-  assert.equal((await call('GET', `/v1/reports/${r1.id}`, undefined, adminAgain)).progress.labor_amount, '160000.00');
-  // reviziya: yangi stavka 30000 faqat yangi hisobotlarga; eski 160000 da qoladi
-  const pieceRevised = await call(
-    'PATCH',
-    `/v1/estimates/${pieceEst.id}`,
-    {
-      project_id: px.id,
-      name: 'Akkord smetasi',
-      version: 1,
-      lines: [
-        { kind: 'labor', description: 'Gipsokarton', unit_id: 'm2', category: '', quantity: '50', unit_price: '100000', labor_rate: '30000' },
-        { kind: 'labor', description: 'Boyoq', unit_id: 'm2', category: '', quantity: '30', unit_price: '50000' },
-      ],
-    },
-    adminAgain,
-  );
-  const r4 = await pieceReport(pieceRevised.lines[0].id, '1');
-  assert.equal(r4.progress.labor_amount, '30000.00');
-  assert.equal((await call('GET', `/v1/reports/${r1.id}`, undefined, adminAgain)).progress.labor_amount, '160000.00');
-  // D20: prorab hajmni ko'radi, summani emas; brigadir o'z hisobotida ko'radi
+    const accepted = await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain);
+    assert.deepEqual([accepted.progress.quantity, accepted.progress.labor_rate, accepted.progress.labor_amount], [`${qty}.000000`, null, null]);
+  }
+  // D20: prorab hajmni ko'radi, summani emas
   await call('POST', `/v1/employees/${foreman.id}/assignments`, { project_id: px.id }, adminAgain);
   const forePx = (await call('POST', '/v1/auth/login', { login: 'foreman', password: pass + '2' })).access_token;
-  const r1Fore = await call('GET', `/v1/reports/${r1.id}`, undefined, forePx);
-  assert.equal(r1Fore.progress.quantity, '10.000000');
-  assert.equal(r1Fore.progress.labor_amount, undefined);
-  assert.equal((await call('GET', `/v1/reports/${r1.id}`, undefined, brigadierAgain2)).progress.labor_amount, '160000.00');
-  // Brigadir balansi: 160000 + 40000 + 30000 = 230000, hali davrga kirmagan
-  const earn1 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
-  const pxEarn = earn1.projects.find((p: any) => p.project_id === px.id);
-  // Hisobotlar 2026-10 sanasida; "shu oy" summasi faqat test oktyabrda ishlasa 230000 (current_date bo'yicha)
-  const pieceMonth = new Date().toISOString().slice(0, 7) === '2026-10' ? '230000.00' : '0.00';
-  assert.deepEqual(
-    [pxEarn.earned, pxEarn.earned_month, pxEarn.in_payroll, pxEarn.paid, pxEarn.advances, pxEarn.balance],
-    ['230000.00', pieceMonth, '0.00', '0.00', '0.00', '230000.00'],
-  );
-  assert.equal(earn1.totals.earned, '230000.00');
-  assert.equal(earn1.entries.find((e: any) => e.id === r2.progress.id).amount, null);
-  await call('GET', `/v1/employees/${brigadier.id}/earnings`, undefined, brigadierAgain2, undefined, 403);
-  assert.equal((await call('GET', `/v1/employees/${brigadier.id}/earnings`, undefined, adminAgain)).totals.earned, '230000.00');
-  // Ish haqi davri: kutilayotgan akkord ko'rinadi, yopishda yozuv avtomatik qo'shiladi
+  assert.equal((await call('GET', '/v1/me/earnings', undefined, foreman2Again2)).totals.earned, '0.00');
   const piecePeriod = await call('POST', '/v1/finance/payroll/periods', { project_id: px.id, month: '2026-10-01' }, adminAgain);
-  const payroll1 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
-  assert.deepEqual(
-    payroll1.periods.find((p: any) => p.id === piecePeriod.id).piece_pending.map((p: any) => [p.employee_id, p.amount]),
-    [[brigadier.id, '230000.00']],
-  );
-  await call('POST', `/v1/finance/payroll/periods/${piecePeriod.id}/post`, { version: piecePeriod.version }, adminAgain);
-  const payroll2 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
-  const pieceEntry = payroll2.entries.find((e: any) => e.period_id === piecePeriod.id && e.employee_id === brigadier.id);
-  assert.deepEqual([pieceEntry.base_salary, pieceEntry.piece_rate, pieceEntry.net, pieceEntry.status], ['0.00', '230000.00', '230000.00', 'posted']);
-  assert.equal(payroll2.periods.find((p: any) => p.id === piecePeriod.id).piece_total, '230000.00');
-  const earn2 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
-  const pxEarn2 = earn2.projects.find((p: any) => p.project_id === px.id);
-  assert.deepEqual([pxEarn2.in_payroll, pxEarn2.posted_unpaid, pxEarn2.balance], ['230000.00', '230000.00', '230000.00']);
-  // Avans 50000 → to'lovda avval avans hisoblanadi, 180000 kassadan
-  const pieceLabor = (
-    await admin.query('SELECT f.counterparty_id FROM finance_documents f WHERE f.id=$1', [pieceEntry.labor_document_id])
-  ).rows[0];
-  await call(
-    'POST',
-    '/v1/finance/documents',
-    { project_id: px.id, counterparty_id: pieceLabor.counterparty_id, kind: 'advance', amount: '50000', cash_account_id: treasury.id, description: 'Brigadirga avans', document_date: '2026-10-20' },
-    adminAgain,
-  );
-  const payroll3 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
-  const pieceEntry2 = payroll3.entries.find((e: any) => e.id === pieceEntry.id);
-  assert.deepEqual([pieceEntry2.advance_available, pieceEntry2.cash_due], ['50000.00', '180000.00']);
-  assert.equal((await call('GET', '/v1/me/earnings', undefined, brigadierAgain2)).projects.find((p: any) => p.project_id === px.id).balance, '180000.00');
-  const paid = await call(
-    'POST',
-    `/v1/finance/payroll/entries/${pieceEntry.id}/pay`,
-    { version: pieceEntry2.version, cash_account_id: treasury.id, document_date: '2026-10-31' },
-    adminAgain,
-  );
-  assert.deepEqual([paid.status, paid.advance_applied, paid.paid_cash], ['paid', '50000.00', '180000.00']);
-  assert(paid.advance_offset_document_id && paid.payment_document_id);
-  const earn3 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
-  const pxEarn3 = earn3.projects.find((p: any) => p.project_id === px.id);
-  assert.deepEqual([pxEarn3.paid, pxEarn3.advances, pxEarn3.balance], ['230000.00', '0.00', '0.00']);
-  // To'lovdan keyingi tuzatish (+1 m2 × 20000) keyingi davrga kiradi
-  await call('POST', `/v1/progress-entries/${r1.progress.id}/corrections`, { quantity_delta: '1', reason: 'Qo‘shimcha hajm' }, adminAgain);
-  const earn4 = await call('GET', '/v1/me/earnings', undefined, brigadierAgain2);
-  const pxEarn4 = earn4.projects.find((p: any) => p.project_id === px.id);
-  assert.deepEqual([pxEarn4.earned, pxEarn4.in_payroll, pxEarn4.balance], ['250000.00', '230000.00', '20000.00']);
-  const piecePeriod2 = await call('POST', '/v1/finance/payroll/periods', { project_id: px.id, month: '2026-11-01' }, adminAgain);
-  await call('POST', `/v1/finance/payroll/periods/${piecePeriod2.id}/post`, { version: piecePeriod2.version }, adminAgain);
-  const payroll4 = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
-  assert.equal(payroll4.entries.find((e: any) => e.period_id === piecePeriod2.id && e.employee_id === brigadier.id).piece_rate, '20000.00');
+  const piecePayroll = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
+  assert.deepEqual(piecePayroll.periods.find((p: any) => p.id === piecePeriod.id).piece_pending, []);
   passed.push(
-    'Brigade piece-rate (D23): line rate or project percent frozen at acceptance, corrections and revisions respect the frozen rate, foreman sees quantities only, brigadier balance per project, payroll post adds the piece-rate entry, payment settles the advance first, a post-payment correction rolls into the next period',
+    'No piece rate since the brigadier role was removed: accepted reports carry no labor rate even with a line rate or a project percent, earnings stay zero and payroll has no pending piece-rate entries',
   );
   // ---- G3: platforma ro'yxatidagi state filtri har bir kartadagi access_state bilan mos
   const pendingTenant = await call(
@@ -3848,7 +3607,7 @@ try {
   await call('POST', '/v1/pricing/price-lists', { project_id: emptyP.id, markup_percent: '1000.01' }, adminAgain, undefined, 400);
   // Egasi qarori (2026-10-11, 1-savol): zonasiz, lekin smeta qatoriga bog'langan sarf qator zonasiga tushadi.
   // Reja A 100, sarf 80 (zonasiz, A qatoriga bog'langan) → A prognozi 100, umumiy guruh 0.
-  const brigP = (await call('POST', '/v1/auth/login', { login: 'brigadier', password: pass + '2' })).access_token;
+  const foreman2P = (await call('POST', '/v1/auth/login', { login: 'prorab2', password: pass + '2' })).access_token;
   // Ombor mudiri: material yaratish va ombor amallari (admin faqat ko'radi, 2026-10-16)
   const whP = (await call('POST', '/v1/auth/login', { login: 'warehouse_manager', password: pass + '2' })).access_token;
   const projectQ = await call('POST', '/v1/projects', { name: 'Sarf zonasi obyekti' }, adminAgain);
@@ -3872,9 +3631,9 @@ try {
     },
     adminAgain,
   );
-  await call('POST', `/v1/employees/${brigadier.id}/assignments`, { project_id: projectQ.id }, adminAgain);
+  await call('POST', `/v1/employees/${foreman2.id}/assignments`, { project_id: projectQ.id }, adminAgain);
   const qWarehouse = await call('POST', '/v1/warehouses', { project_id: projectQ.id, name: 'Ombor Q' }, adminAgain);
-  const qCustody = await call('POST', '/v1/stock/custody', { project_id: projectQ.id, custodian_id: brigadier.id }, adminAgain);
+  const qCustody = await call('POST', '/v1/stock/custody', { project_id: projectQ.id, custodian_id: foreman2.id }, adminAgain);
   // Admin ombor amallarini bajarmaydi (2026-10-16): ombor mudiri va prorab obyektga biriktiriladi
   await call(
     'POST',
@@ -3892,15 +3651,14 @@ try {
     { project_id: projectQ.id, kind: 'transfer', material_id: brick.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '1', reason: 'Brigadirga' },
     whP,
   );
-  await call('POST', `/v1/stock/commands/${qTransfer.id}/actions`, { version: 1, action: 'accept', quantity: '1' }, brigP);
+  await call('POST', `/v1/stock/commands/${qTransfer.id}/actions`, { version: 1, action: 'accept', quantity: '1' }, foreman2P);
   const qConsumption = await call(
     'POST',
     '/v1/stock/commands',
     { project_id: projectQ.id, kind: 'consumption', material_id: brick.id, from_account_id: qCustody.id, quantity: '1', estimate_line_id: qEstimate.lines[0].id, reason: 'Zonasiz sarf' },
-    brigP,
+    foreman2P,
   );
-  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, adminAgain, undefined, 403);
-  await call('POST', `/v1/stock/commands/${qConsumption.id}/actions`, { version: 1, action: 'review' }, foreP);
+  assert.equal(qConsumption.status, 'posted');
   const vQ = await call('POST', '/v1/pricing/price-lists', { project_id: projectQ.id, markup_percent: '0' }, adminAgain);
   assert.deepEqual(
     vQ.groups.map((g: any) => [g.zone_name, g.plan_value, g.fact_value, g.forecast_value]),
@@ -5041,13 +4799,14 @@ try {
       'POST',
       '/v1/reports',
       { project_id: projectQ.id, kind: 'daily', report_date: '2026-10-06', content: 'Form 5 akkord', estimate_line_id: lineId, progress_quantity: qty },
-      brigadierAgain2,
+      foreman2Again2,
     );
     await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
     return { ...(await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)).progress, report: r.id };
   };
   const kladkaDone = await f5report(kladka.id, '10');
-  assert.deepEqual([kladkaDone.labor_rate, kladkaDone.labor_amount], ['3744.00', '37440.00']);
+  // Ishbay yo'q (2026-11-23): smetadagi stavka qoladi, qabul qilingan hajmga stavka yozilmaydi
+  assert.deepEqual([kladkaDone.labor_rate, kladkaDone.labor_amount], [null, null]);
   const laborDone = await f5report(kladkaLabor.id, '5');
   assert.deepEqual([laborDone.labor_rate, laborDone.labor_amount], [null, null]);
   // reviziya: ishchi soati 40 000 → kladka 4 992 (avtomatik, yangi narxdan); karkasga qo'lda 2 500
@@ -5077,11 +4836,7 @@ try {
   );
   assert.deepEqual(
     [(await f5report(kladka2.id, '1')).labor_amount, (await f5report(karkas2.id, '1')).labor_amount],
-    ['4992.00', '2500.00'],
-  );
-  assert.equal(
-    (await call('GET', `/v1/reports/${kladkaDone.report}`, undefined, adminAgain)).progress.labor_amount,
-    '37440.00',
+    [null, null],
   );
   // nakladnoy nomi farq qilsa: o'xshash smeta materiali taklif qilinadi, omborchi tasdiqlagan nom muqobil nom bo'ladi
   const blocks = f5row('Блоки газобетонные', '1-qavat').material_id;
@@ -5420,13 +5175,12 @@ try {
   );
   // D38: plan_total (moliya kartasi) — qatorlar jami, buyurtmachi materiallari bilan, foiz va QQSsiz
   assert.equal(dec(await planOf()).minus(planBefore).toFixed(2), '2000000.00');
-  // Narx redaksiyasi: prorab zanjirni va foizlarni ko'rmaydi (rejim ko'rinadi); brigadir va omborchi smetaga kirmaydi
+  // Narx redaksiyasi: prorab zanjirni va foizlarni ko'rmaydi (rejim ko'rinadi); omborchi smetaga kirmaydi
   const s3Fore = await call('GET', `/v1/estimates/${s3.id}`, undefined, forePx);
   assert.deepEqual(
     [s3Fore.price_summary, s3Fore.other_costs_percent, s3Fore.vat_percent, s3Fore.markup_mode, s3Fore.lines[3].supplied_by],
     [undefined, undefined, undefined, 'vmq583', 'customer'],
   );
-  await call('GET', `/v1/estimates/${s3.id}`, undefined, brigadierAgain2, undefined, 403);
   await call('GET', `/v1/estimates/${s3.id}`, undefined, whP, undefined, 403);
   // Reviziya snapshot'i sozlamalarni ham saqlaydi
   await call('PATCH', `/v1/estimates/${s3.id}`, { project_id: projectQ.id, name: 'S3 nazorat', version: 1, lines: s3Lines }, adminAgain);
@@ -5559,7 +5313,7 @@ try {
       'POST',
       '/v1/reports',
       { project_id: projectQ.id, kind: 'daily', report_date: day, content: 'S4 dalolatnoma', estimate_line_id: lineId, progress_quantity: qty },
-      brigadierAgain2,
+      foreman2Again2,
     );
     await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
     return (await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)).progress;
@@ -5583,7 +5337,7 @@ try {
     'POST',
     '/v1/reports',
     { project_id: projectQ.id, kind: 'daily', report_date: '2026-10-10', content: 'Qabul qilinmagan', estimate_line_id: s4Rev.lines[0].id, progress_quantity: '99' },
-    brigadierAgain2,
+    foreman2Again2,
   );
   // UTC+5 chegarasi: 31.10 19:30 UTC — Toshkentda 1-noyabr; oktyabr dalolatnomasiga kirmaydi
   await admin.query(
@@ -5600,15 +5354,14 @@ try {
     { project_id: projectQ.id, kind: 'transfer', material_id: s4Block.id, from_account_id: qWarehouse.account.id, to_account_id: qCustody.id, quantity: '5', reason: 'Brigadirga' },
     whP,
   );
-  await call('POST', `/v1/stock/commands/${s4Transfer.id}/actions`, { version: 1, action: 'accept', quantity: '5' }, brigP);
+  await call('POST', `/v1/stock/commands/${s4Transfer.id}/actions`, { version: 1, action: 'accept', quantity: '5' }, foreman2P);
   const s4Consume = async (qty: string, lineId?: string) => {
     const c = await call(
       'POST',
       '/v1/stock/commands',
       { project_id: projectQ.id, kind: 'consumption', material_id: s4Block.id, from_account_id: qCustody.id, quantity: qty, ...(lineId ? { estimate_line_id: lineId } : {}), reason: 'S4 sarf' },
-      brigP,
+      foreman2P,
     );
-    await call('POST', `/v1/stock/commands/${c.id}/actions`, { version: 1, action: 'review' }, foreP);
     return c;
   };
   await s4Consume('3', s4Rev.lines[3].id);
@@ -5729,7 +5482,7 @@ try {
   assert.equal((await s4Act('?from=2026-10-31&to=2026-10-01', adminAgain, 400)).error.code, 'DATE_RANGE_INVALID');
   assert.equal((await s4Act('?from=2025-12-01&to=2026-01-31', adminAgain, 400)).error.code, 'ACT_PERIOD_CROSSES_YEAR');
   await s4Act('?from=2026-10-01&to=2026-10-31', forePx, 403);
-  await s4Act('?from=2026-10-01&to=2026-10-31', brigadierAgain2, 403);
+  await s4Act('?from=2026-10-01&to=2026-10-31', foreman2Again2, 403);
   passed.push(
     'S4: the completion act for a period (accepted reports by report date, corrections by their own date, Form 5 resources as norm × work share, normless materials from linked stock consumption with reversals, facts across revisions by lineage at current prices) feeds the S3 chain for the period, the year and since the start, with the contract percent; removed lines and unlinked consumption are warnings; foreman and brigadier are refused; the Excel file has F-2 and F-3 sheets with values and is audited',
   );
@@ -6152,7 +5905,7 @@ try {
       planned_end: '2020-12-31',
       actual_start: '2020-02-01',
       image_file_id: blockImage.id,
-      responsible_ids: [brigadier.id],
+      responsible_ids: [foreman2.id],
     },
     adminAgain,
   );
@@ -6170,8 +5923,8 @@ try {
     (await call('GET', `/v1/projects/${projectQ.id}`, undefined, token)).zones.find((z: any) => z.id === qBlock.id);
   const delayed = await blockOf(adminAgain);
   assert.equal(delayed.status, 'delayed');
-  assert.deepEqual(delayed.responsibles.map((r: any) => r.id), [brigadier.id]);
-  assert.equal((await blockOf(brigP)).estimate_total, null);
+  assert.deepEqual(delayed.responsibles.map((r: any) => r.id), [foreman2.id]);
+  assert.equal((await blockOf(foreman2P)).estimate_total, null);
   await call(
     'PATCH',
     `/v1/projects/${projectQ.id}/zones/${qBlock.id}`,
@@ -6208,7 +5961,7 @@ try {
     0,
   );
   assert.equal(
-    (await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}`, undefined, brigP)).items[0].cost,
+    (await call('GET', `/v1/projects/${projectQ.id}/premises?block_id=${qBlock.id}`, undefined, foreman2P)).items[0].cost,
     null,
   );
   await call('DELETE', `/v1/files/${planImage.id}`, { reason: 'Reja rasmi almashtiriladi' }, adminAgain);

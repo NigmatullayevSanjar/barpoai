@@ -4,15 +4,7 @@ import { digest, token as randomToken } from './security.js';
 import { invariant, DomainError } from './errors.js';
 import { tenantAccess, accessState } from './auth.js';
 import { allowed } from './permissions.js';
-import {
-  continueFlow,
-  continueProgressFlow,
-  hasFlow,
-  listMaterialRequests,
-  loadState,
-  startMaterialRequest,
-  startProgressReport,
-} from './telegram-flows.js';
+import { continueProgressFlow, hasFlow, loadState, startProgressReport } from './telegram-flows.js';
 export type TelegramUser = {
   id: string;
   username?: string;
@@ -269,7 +261,6 @@ const roleLabel: Record<string, Record<Lang, string>> = {
   support: { uz: 'Texnik yordam', ru: 'Техподдержка' },
   tenant_admin: { uz: 'Mijoz admini', ru: 'Админ компании' },
   foreman: { uz: 'Prorab', ru: 'Прораб' },
-  brigadier: { uz: 'Brigadir', ru: 'Бригадир' },
   warehouse_manager: { uz: 'Ombor mudiri', ru: 'Завсклад' },
   financier: { uz: 'Finansist', ru: 'Финансист' },
   accountant: { uz: 'Buxgalter', ru: 'Бухгалтер' },
@@ -277,13 +268,6 @@ const roleLabel: Record<string, Record<Lang, string>> = {
 };
 /** Menyu tugmalari: matn → ichki amal. Xavfsizlik menyuda emas, har amalda qayta tekshiriladi. */
 const MENU: Record<string, [Record<Lang, string>, string][]> = {
-  brigadier: [
-    [{ uz: '📋 Mening vazifalarim', ru: '📋 Мои задачи' }, 'tasks'],
-    [{ uz: '📊 Progress yuborish', ru: '📊 Отправить прогресс' }, 'progress'],
-    [{ uz: '📦 Material so‘rash', ru: '📦 Запросить материал' }, 'material_request'],
-    [{ uz: '🔔 Bildirishnomalar', ru: '🔔 Уведомления' }, 'notifications'],
-    [{ uz: '👤 Profil', ru: '👤 Профиль' }, 'profile'],
-  ],
   foreman: [
     [{ uz: '🏗 Obyektlar', ru: '🏗 Объекты' }, 'projects'],
     [{ uz: '📋 Vazifalar', ru: '📋 Задачи' }, 'tasks'],
@@ -297,7 +281,6 @@ const MENU: Record<string, [Record<Lang, string>, string][]> = {
     [{ uz: '📦 Ombor', ru: '📦 Склад' }, 'projects'],
     [{ uz: '📊 Qoldiq', ru: '📊 Остатки' }, 'balances'],
     [{ uz: '⚠️ Kam qolgan materiallar', ru: '⚠️ Мало на складе' }, 'low_stock'],
-    [{ uz: '📋 Material so‘rovlari', ru: '📋 Запросы материалов' }, 'material_requests'],
     [{ uz: '🔔 Bildirishnomalar', ru: '🔔 Уведомления' }, 'notifications'],
     [{ uz: '👤 Profil', ru: '👤 Профиль' }, 'profile'],
   ],
@@ -422,23 +405,12 @@ export async function handleUpdate(pool: pg.Pool, update: Update) {
   if (!identity) return reply(chat, t(lang, 'not_linked'));
   if (identity.error) return reply(chat, t(lang, identity.error as Key), { remove_keyboard: true });
   const { user } = identity;
-  // 2a) Ko'p qadamli oqim davom etayotgan bo'lsa (material so'rovi), javob shu oqimga ketadi.
+  // 2a) Ko'p qadamli oqim davom etayotgan bo'lsa (kunlik hisobot), javob shu oqimga ketadi.
   const state = await loadState(pool, from.id);
   const action = actionFor(user.role, text);
-  if (
-    hasFlow(state) &&
-    !(
-      action &&
-      action !== 'material_request' &&
-      action !== 'progress' &&
-      COMMANDS[text.split(' ')[0]!]
-    )
-  ) {
+  if (hasFlow(state) && !(action && action !== 'progress' && COMMANDS[text.split(' ')[0]!])) {
     try {
-      const answer =
-        (state as { flow?: string }).flow === 'progress'
-          ? await continueProgressFlow(pool, user, state, text, lang, photo)
-          : await continueFlow(pool, user, state, text, lang);
+      const answer = await continueProgressFlow(pool, user, state, text, lang, photo);
       return reply(chat, answer, keyboard(user.role, lang));
     } catch (error: any) {
       const key = error?.code as Key;
@@ -450,10 +422,9 @@ export async function handleUpdate(pool: pg.Pool, update: Update) {
     }
   }
   if (!action) return reply(chat, t(lang, 'unknown'), keyboard(user.role, lang));
-  if (action === 'material_request' || action === 'progress') {
+  if (action === 'progress') {
     try {
-      const start = action === 'progress' ? startProgressReport : startMaterialRequest;
-      return reply(chat, await start(pool, user, lang), keyboard(user.role, lang));
+      return reply(chat, await startProgressReport(pool, user, lang), keyboard(user.role, lang));
     } catch (error: any) {
       const key = error?.code as Key;
       return reply(
@@ -465,9 +436,7 @@ export async function handleUpdate(pool: pg.Pool, update: Update) {
   }
   try {
     const answer = await transaction(pool, user.tenant_id ?? null, (db) =>
-      action === 'material_requests'
-        ? listMaterialRequests(db, user, lang)
-        : runAction(db, user, action, lang),
+      runAction(db, user, action, lang),
     );
     return reply(chat, answer, keyboard(user.role, lang));
   } catch (error: any) {
@@ -592,7 +561,7 @@ async function runAction(db: Db, user: Row, action: string, lang: Lang): Promise
            LEFT JOIN warehouses w ON w.id=a.warehouse_id LEFT JOIN users u ON u.id=a.custodian_id
            WHERE b.tenant_id=$1 AND ($2 OR b.quantity-b.reserved<b.minimum_quantity)
              AND ($3='tenant_admin' OR EXISTS(SELECT 1 FROM project_assignments pa WHERE pa.tenant_id=a.tenant_id AND pa.project_id=a.project_id AND pa.user_id=$4))
-             AND ($3<>'brigadier' OR a.custodian_id=$4)
+             AND ($3<>'foreman' OR a.custodian_id IS NULL OR a.custodian_id=$4)
              AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments wa WHERE wa.tenant_id=a.tenant_id AND wa.warehouse_id=a.warehouse_id AND wa.user_id=$4))
            ORDER BY p.name,m.name LIMIT 25`,
           [user.tenant_id, action === 'balances', user.role, user.id],

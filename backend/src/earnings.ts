@@ -25,12 +25,6 @@ export const autoRateSql = `CASE WHEN l.kind='material' OR (l.norm IS NOT NULL A
   WHEN l.kind='labor' AND l.norm IS NULL AND gr.has_labor AND l.unit_price=0
     THEN CASE WHEN gr.labor_cost>0 AND gr.work_quantity>0 THEN round(gr.labor_cost/gr.work_quantity*p.brigade_percent/100,2) END
   ELSE round(l.unit_price*p.brigade_percent/100,2) END`;
-/** Qatorning amaldagi stavkasi: qo'lda yozilgan `labor_rate`, bo'lmasa avtomatik; material qatorida null. */
-export const lineRateSql = `CASE WHEN l.kind='material' THEN NULL ELSE coalesce(l.labor_rate,${autoRateSql}) END`;
-/** Bitta qator guruhi (`l` ning o'z reviziyasi — arxivlangan qatorlar bir vaqtda arxivlanadi). */
-export const lineGroupJoinSql = `LEFT JOIN LATERAL (SELECT ${rateGroupSql} FROM estimate_lines g
-  WHERE g.tenant_id=l.tenant_id AND g.estimate_id=l.estimate_id AND g.category=l.category AND g.zone_id IS NOT DISTINCT FROM l.zone_id
-    AND g.archived_at IS NOT DISTINCT FROM l.archived_at) gr ON true`;
 /** Davrga kirgan summa (`progress_payroll`, append-only): progress yozuvi bo'yicha yig'indi. */
 export const payrollAmountSql = `coalesce((SELECT sum(x.amount) FROM progress_payroll x WHERE x.tenant_id=pe.tenant_id AND x.progress_entry_id=pe.id),0)`;
 /** Davrga hali kirmagan qism: joriy summa − davrga yozilgan summa (to'lovdan keyingi tuzatishlar ham shu yerda). */
