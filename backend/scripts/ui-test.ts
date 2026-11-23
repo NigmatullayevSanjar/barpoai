@@ -397,8 +397,8 @@ try {
   await row1.getByLabel('Birlik', { exact: true }).selectOption('m3');
   await row1.getByLabel('Miqdor', { exact: true }).fill('120');
   await row1.getByLabel('Birlik narxi').fill('250000');
-  // V-C (D23): ish qatoriga brigada stavkasi (so'm/m3)
-  await row1.getByLabel('Brigada stavkasi').fill('100000');
+  // Brigadir va akkord yo'q (2026-11-23): muharrirda brigada stavkasi ustuni yo'q
+  assert.equal(await row1.getByLabel('Brigada stavkasi').count(), 0);
   await adminPage.getByRole('button', { name: 'Qator qo‘shish' }).click();
   const row2 = adminPage.locator('table.grid-editor tbody tr').nth(1);
   await row2.getByLabel('Turi', { exact: true }).selectOption('material');

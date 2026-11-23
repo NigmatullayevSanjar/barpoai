@@ -366,8 +366,8 @@ function LinesTable({
       else next.add(c);
       return next;
     });
-  // Ustunlar: 8 asosiy (shifr bilan) + narx, stavka, jami (narx ko'rinsa) + fakt, oylar, izoh. Jami summasi «Jami» ustuni ostida.
-  const colSpan = pricesVisible ? 14 : 11;
+  // Ustunlar: 8 asosiy (shifr bilan) + narx, jami (narx ko'rinsa) + fakt, oylar, izoh. Jami summasi «Jami» ustuni ostida.
+  const colSpan = pricesVisible ? 13 : 11;
   // Har kategoriya bitta guruh (birinchi uchragan tartibda): bir ish bir necha qavatda takrorlansa ham guruh bitta,
   // ostidagi jami (serverdagi kategoriya jami) shu guruh qatorlariga teng.
   const groups: { category: string; lines: EstimateLine[] }[] = [];
@@ -397,7 +397,6 @@ function LinesTable({
             <th className="num">{t('est.col.quantity')}</th>
             <th className="num">{t('est.col.effective')}</th>
             {pricesVisible && <th className="num">{t('est.col.unit_price')}</th>}
-            {pricesVisible && <th className="num">{t('est.col.labor_rate')}</th>}
             {pricesVisible && <th className="num">{t('est.col.total')}</th>}
             <th className="num">{t('est.col.fact')}</th>
             <th>{t('est.col.months')}</th>
@@ -455,19 +454,6 @@ function LinesTable({
                 {pricesVisible && <td className="num">{formatMoney(l.unit_price, lang, false)}</td>}
                 {pricesVisible && (
                   <td className="num">
-                    {l.labor_rate ? (
-                      formatMoney(l.labor_rate, lang, false)
-                    ) : l.auto_labor_rate ? (
-                      <span className="muted" title={t('est.labor_rate_auto_hint')}>
-                        {formatMoney(l.auto_labor_rate, lang, false)} <small>{t('est.labor_rate_auto')}</small>
-                      </span>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                )}
-                {pricesVisible && (
-                  <td className="num">
                     <b>{formatMoney(l.total, lang, false)}</b>
                   </td>
                 )}
@@ -502,7 +488,7 @@ function LinesTable({
         {pricesVisible && total !== undefined && (
           <tfoot>
             <tr className="est-grand">
-              <td colSpan={10} style={{ textAlign: 'right' }}>
+              <td colSpan={9} style={{ textAlign: 'right' }}>
                 {t('est.total')}
               </td>
               <td className="num">{formatMoney(total, lang, false)}</td>
@@ -551,11 +537,11 @@ function FragmentRow({
       {children}
       {subtotal !== undefined && (
         <tr className="est-subtotal">
-          <td colSpan={10} style={{ textAlign: 'right' }}>
+          <td colSpan={9} style={{ textAlign: 'right' }}>
             {subtotalLabel}
           </td>
           <td className="num">{formatMoney(subtotal, lang, false)}</td>
-          <td colSpan={colSpan - 11} />
+          <td colSpan={colSpan - 10} />
         </tr>
       )}
     </>

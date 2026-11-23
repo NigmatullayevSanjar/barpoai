@@ -43,7 +43,6 @@ import {
 import { createStock, transitionStock, reverseStock, reconcileStock, similarMaterials } from './inventory.js';
 import { postFinance, reverseFinance, accountingMonthSql, journalWithDocSql } from './finance.js';
 import { money } from './money.js';
-import { autoRateSql, rateGroupSql } from './earnings.js';
 import { estimatePriceSummary } from './estimate-price.js';
 /** Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; smeta muharriridagi "Yangi material" ham. */
 async function canCreateMaterial(db: Db, actor: Row) {
@@ -460,7 +459,6 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           by_zone: pick('zone'),
           by_section: pick('section'),
         },
-        // D32: `auto_labor_rate` — avtomatik akkord stavkasi; guruh ko'rsatkichlari bir marta hisoblanadi (4 000+ qator)
         lines: (
           await db.query(
             `SELECT l.*,m.name material_name,z.name zone_name,
@@ -470,14 +468,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
                  ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) END fact_quantity,
                CASE WHEN l.kind='material'
                  THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory')
-                 ELSE NULL END fact_value,
-               (${autoRateSql})::text auto_labor_rate
+                 ELSE NULL END fact_value
              FROM estimate_lines l LEFT JOIN materials m ON m.id=l.material_id LEFT JOIN zones z ON z.id=l.zone_id
-               JOIN projects p ON p.tenant_id=l.tenant_id AND p.id=l.project_id
-               LEFT JOIN (SELECT g.category,coalesce(g.zone_id::text,'') zone_key,${rateGroupSql} FROM estimate_lines g
-                          WHERE g.tenant_id=$1 AND g.estimate_id=$2 AND g.archived_at IS NULL AND g.category IS NOT NULL
-                          GROUP BY g.category,coalesce(g.zone_id::text,'')) gr
-                 ON gr.category=l.category AND gr.zone_key=coalesce(l.zone_id::text,'')
              WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL ORDER BY l.position,l.id`,
             [actor.tenant_id, params.id],
           )

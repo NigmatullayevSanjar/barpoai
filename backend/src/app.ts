@@ -9,7 +9,6 @@ import { companyExtraRoutes } from './routes-company-extra.js';
 import { estimateExtraRoutes } from './routes-estimates-extra.js';
 import { stockExtraRoutes } from './routes-stock-extra.js';
 import { financeExtraRoutes, tableExportRoutes } from './routes-finance-extra.js';
-import { earningsRoutes } from './earnings.js';
 import { workExtraRoutes } from './routes-work-extra.js';
 import { permissionRoutes } from './routes-permissions.js';
 import { operationRoutes } from './routes-operations.js';
@@ -46,7 +45,6 @@ export async function buildApp(pool: pg.Pool, logging = false) {
   estimateExtraRoutes(add);
   stockExtraRoutes(add);
   financeExtraRoutes(add);
-  earningsRoutes(add);
   tableExportRoutes(add);
   workExtraRoutes(add);
   permissionRoutes(add);

@@ -3190,42 +3190,35 @@ try {
   passed.push(
     'Estimate revision keeps work identity (D26–D28): same kind/name/unit/zone/category matched in order even when lines shift, the task and accepted progress follow the line (task card, estimate, plan-actual), the floor matrix splits same-named resources by work code',
   );
-  // ---- Ishbay yo'q (2026-11-23, brigadir roli olib tashlandi): qabul qilingan hisobot stavkasiz, akkord hisobi bo'sh
+  // ---- Ishbay yo'q (2026-11-23, brigadir roli olib tashlandi): stavka maydonlari va akkord hisobi API'da yo'q
   const pxNow = await call('GET', pxUrl, undefined, adminAgain);
-  await call('PATCH', pxUrl, { version: pxNow.version, name: pxNow.name, brigade_percent: '20' }, adminAgain);
-  const pieceEst = await call(
+  assert.equal(pxNow.brigade_percent, undefined);
+  await call('PATCH', pxUrl, { version: pxNow.version, name: pxNow.name, brigade_percent: '20' }, adminAgain, undefined, 400);
+  const pieceLine = { kind: 'labor', description: 'Gipsokarton', unit_id: 'm2', quantity: '50', unit_price: '100000' };
+  await call('POST', '/v1/estimates', { project_id: px.id, name: 'Akkord smetasi', lines: [{ ...pieceLine, labor_rate: '20000' }] }, adminAgain, undefined, 400);
+  const pieceEst = await call('POST', '/v1/estimates', { project_id: px.id, name: 'Akkord smetasi', lines: [pieceLine] }, adminAgain);
+  assert.equal(pieceEst.lines[0].labor_rate, undefined);
+  const pieceDetail = await call('GET', `/v1/estimates/${pieceEst.id}`, undefined, adminAgain);
+  assert.deepEqual([pieceDetail.lines[0].labor_rate, pieceDetail.lines[0].auto_labor_rate], [undefined, undefined]);
+  const pieceReport = await call(
     'POST',
-    '/v1/estimates',
-    {
-      project_id: px.id,
-      name: 'Akkord smetasi',
-      lines: [
-        { kind: 'labor', description: 'Gipsokarton', unit_id: 'm2', quantity: '50', unit_price: '100000', labor_rate: '20000' },
-        { kind: 'labor', description: 'Boyoq', unit_id: 'm2', quantity: '30', unit_price: '50000' },
-      ],
-    },
-    adminAgain,
+    '/v1/reports',
+    { project_id: px.id, kind: 'daily', report_date: '2026-10-05', content: 'Akkord ishi', estimate_line_id: pieceEst.lines[0].id, progress_quantity: '10' },
+    foreman2Again2,
   );
-  for (const [lineId, qty] of [[pieceEst.lines[0].id, '10'], [pieceEst.lines[1].id, '4']]) {
-    const r = await call(
-      'POST',
-      '/v1/reports',
-      { project_id: px.id, kind: 'daily', report_date: '2026-10-05', content: 'Akkord ishi', estimate_line_id: lineId, progress_quantity: qty },
-      foreman2Again2,
-    );
-    await call('POST', `/v1/reports/${r.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
-    const accepted = await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain);
-    assert.deepEqual([accepted.progress.quantity, accepted.progress.labor_rate, accepted.progress.labor_amount], [`${qty}.000000`, null, null]);
-  }
-  // D20: prorab hajmni ko'radi, summani emas
+  await call('POST', `/v1/reports/${pieceReport.id}/review`, { version: 1, action: 'accepted', reason: 'Tekshirildi' }, adminAgain);
+  const accepted = await call('GET', `/v1/reports/${pieceReport.id}`, undefined, adminAgain);
+  assert.deepEqual([accepted.progress.quantity, accepted.progress.labor_rate, accepted.progress.labor_amount], ['10.000000', undefined, undefined]);
   await call('POST', `/v1/employees/${foreman.id}/assignments`, { project_id: px.id }, adminAgain);
   const forePx = (await call('POST', '/v1/auth/login', { login: 'foreman', password: pass + '2' })).access_token;
-  assert.equal((await call('GET', '/v1/me/earnings', undefined, foreman2Again2)).totals.earned, '0.00');
+  await call('GET', '/v1/me/earnings', undefined, foreman2Again2, undefined, 404);
+  await call('GET', `/v1/employees/${foreman.id}/earnings`, undefined, adminAgain, undefined, 404);
   const piecePeriod = await call('POST', '/v1/finance/payroll/periods', { project_id: px.id, month: '2026-10-01' }, adminAgain);
   const piecePayroll = await call('GET', `/v1/finance/payroll?project_id=${px.id}`, undefined, adminAgain);
-  assert.deepEqual(piecePayroll.periods.find((p: any) => p.id === piecePeriod.id).piece_pending, []);
+  const piecePeriodRow = piecePayroll.periods.find((p: any) => p.id === piecePeriod.id);
+  assert.deepEqual([piecePeriodRow.piece_pending, piecePeriodRow.piece_total], [undefined, undefined]);
   passed.push(
-    'No piece rate since the brigadier role was removed: accepted reports carry no labor rate even with a line rate or a project percent, earnings stay zero and payroll has no pending piece-rate entries',
+    'No piece rate since the brigadier role was removed: projects and estimate lines reject rate fields, accepted reports carry no labor rate or amount, the earnings routes are gone (404) and payroll has no piece-rate fields',
   );
   // ---- G3: platforma ro'yxatidagi state filtri har bir kartadagi access_state bilan mos
   const pendingTenant = await call(
@@ -4773,27 +4766,16 @@ try {
   passed.push(
     'Form 5 workbook: sheets are listed, each chosen sheet previews as its own estimate (works, resources by norm, floors from sections, t ↔ kg, the Excel totals block compared row by row with the platform price chain; 21 % and VAT suggested as estimate settings — S3), row errors carry the sheet, and all sheets commit together or not at all (D29); a material whose quantity is «П» (taken from the project) is kept with quantity 0 and a warning (D35)',
   );
-  // ---- D32 (2026-11-05): Form 5 ish qatoriga akkord mehnat resurslaridan × obyekt foizi; resurs qatorlari stavkasiz;
-  // qo'lda stavka ustun; narx reviziyada o'zgarsa yangi hisobotga yangi stavka, qabul qilingani qotirilgan
-  const qNow = await call('GET', `/v1/projects/${projectQ.id}`, undefined, adminAgain);
-  await call('PATCH', `/v1/projects/${projectQ.id}`, { version: qNow.version, name: qNow.name, brigade_percent: '20' }, adminAgain);
+  // ---- Form 5 qatorlari akkordsiz (2026-11-23: brigadir va ishbay yo'q): stavka maydonlari yo'q, qabul qilingan hajm stavkasiz;
+  // narx reviziyasi qatorlarni saqlaydi
   const f5rated = await call('GET', `/v1/estimates/${f5saved.estimates[0].id}`, undefined, adminAgain);
   const f5row = (desc: string, zone: string, i = 0) =>
     f5rated.lines.filter((l: any) => l.description === desc && l.zone_name === zone)[i];
   const kladka = f5row('КЛАДКА ПЕРЕГОРОДОК', '1-qavat');
   const kladkaLabor = f5row('ЗАТРАТЫ ТРУДА РАБОЧИХ-СТРОИТЕЛЕЙ', '1-qavat');
   const karkas = f5row('УСТАНОВКА КАРКАСА', '2-qavat');
-  // kladka: 124,8 soat × 30 000 = 3 744 000 / 200 m2 × 20 % = 3 744; karkas: 10,65 × 3 200 = 34 080 / 3 seksiya × 20 % = 2 272
-  assert.deepEqual(
-    [
-      [kladka.unit_id, kladka.labor_rate, kladka.auto_labor_rate],
-      [kladkaLabor.auto_labor_rate, f5row('КРАНЫ НА АВТОМОБИЛЬНОМ ХОДУ', '1-qavat').auto_labor_rate],
-      [karkas.unit_id, karkas.auto_labor_rate],
-      f5row('Блоки газобетонные', '1-qavat').auto_labor_rate,
-    ],
-    [['m2', null, '3744.00'], [null, null], ['section', '2272.00'], null],
-  );
-  assert.equal((await call('GET', `/v1/estimates/${f5rated.id}`, undefined, forePx)).lines[0].auto_labor_rate, undefined);
+  assert.deepEqual([kladka.unit_id, karkas.unit_id], ['m2', 'section']);
+  assert.ok(f5rated.lines.every((l: any) => !('labor_rate' in l) && !('auto_labor_rate' in l)));
   const f5report = async (lineId: string, qty: string) => {
     const r = await call(
       'POST',
@@ -4805,12 +4787,11 @@ try {
     return { ...(await call('GET', `/v1/reports/${r.id}`, undefined, adminAgain)).progress, report: r.id };
   };
   const kladkaDone = await f5report(kladka.id, '10');
-  // Ishbay yo'q (2026-11-23): smetadagi stavka qoladi, qabul qilingan hajmga stavka yozilmaydi
-  assert.deepEqual([kladkaDone.labor_rate, kladkaDone.labor_amount], [null, null]);
+  assert.deepEqual([kladkaDone.quantity, kladkaDone.labor_rate, kladkaDone.labor_amount], ['10.000000', undefined, undefined]);
   const laborDone = await f5report(kladkaLabor.id, '5');
-  assert.deepEqual([laborDone.labor_rate, laborDone.labor_amount], [null, null]);
-  // reviziya: ishchi soati 40 000 → kladka 4 992 (avtomatik, yangi narxdan); karkasga qo'lda 2 500
-  const lineKeys = ['kind', 'description', 'zone_id', 'material_id', 'unit_id', 'quantity', 'labor_rate', 'norm', 'work_quantity', 'loss_percent', 'category', 'note', 'unit_price'];
+  assert.deepEqual([laborDone.labor_rate, laborDone.labor_amount], [undefined, undefined]);
+  // reviziya: ishchi soati 40 000 (narx o'zgaradi, qatorlar saqlanadi)
+  const lineKeys = ['kind', 'description', 'zone_id', 'material_id', 'unit_id', 'quantity', 'norm', 'work_quantity', 'loss_percent', 'category', 'note', 'unit_price'];
   const f5revised = await call(
     'PATCH',
     `/v1/estimates/${f5rated.id}`,
@@ -4822,7 +4803,6 @@ try {
         ...Object.fromEntries(lineKeys.filter((k) => l[k] !== null && l[k] !== undefined).map((k) => [k, String(l[k])])),
         position: l.position,
         ...(l.id === kladkaLabor.id ? { unit_price: '40000' } : {}),
-        ...(l.id === karkas.id ? { labor_rate: '2500' } : {}),
       })),
     },
     adminAgain,
@@ -4830,13 +4810,10 @@ try {
   const f5after = await call('GET', `/v1/estimates/${f5revised.id}`, undefined, adminAgain);
   const kladka2 = f5after.lines.find((l: any) => l.description === 'КЛАДКА ПЕРЕГОРОДОК');
   const karkas2 = f5after.lines.find((l: any) => l.description === 'УСТАНОВКА КАРКАСА');
-  assert.deepEqual(
-    [kladka2.auto_labor_rate, karkas2.labor_rate, karkas2.auto_labor_rate],
-    ['4992.00', '2500.00', '2272.00'],
-  );
+  assert.deepEqual([kladka2.labor_rate, karkas2.labor_rate], [undefined, undefined]);
   assert.deepEqual(
     [(await f5report(kladka2.id, '1')).labor_amount, (await f5report(karkas2.id, '1')).labor_amount],
-    [null, null],
+    [undefined, undefined],
   );
   // nakladnoy nomi farq qilsa: o'xshash smeta materiali taklif qilinadi, omborchi tasdiqlagan nom muqobil nom bo'ladi
   const blocks = f5row('Блоки газобетонные', '1-qavat').material_id;
@@ -4872,7 +4849,7 @@ try {
   const catalogUnits = (await call('GET', '/v1/catalog', undefined, whP)).units.map((u: any) => u.id);
   assert.ok(['l', 'section', 'boiler', 'cycle', 'end'].every((u) => catalogUnits.includes(u)), catalogUnits.join(','));
   passed.push(
-    'Form 5 piece rate (D32): the work line rate comes from its labor resources × the project percent and follows a price revision, resource lines get no automatic rate, a typed rate wins, accepted rates stay frozen; a differing invoice name is offered the similar estimate material (not other sizes) and saved as its alias by the warehouse role only, then found by search; Л, СЕКЦИЯ, КОТЕЛ, ЦИКЛ, КОНЕЦ are platform units',
+    'Form 5 without piece rates: lines carry no labor or automatic rate, accepted progress has no rate or amount, a price revision keeps the lines; a differing invoice name is offered the similar estimate material (not other sizes) and saved as its alias by the warehouse role only, then found by search; Л, СЕКЦИЯ, КОТЕЛ, ЦИКЛ, КОНЕЦ are platform units',
   );
   // ---- S2 (2026-11-07): qator kodlari va bo'lim, smeta sarlavhasi (D41), resurslar yig'masi
   // Form 5: ish qatorida to'liq shifr (qo'shimchasi bilan), resursda kod, hamma qatorda bo'lim; izohda kod takrorlanmaydi

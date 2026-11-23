@@ -4,7 +4,6 @@ import { one, audit, type Db, type Row } from './db.js';
 import { uuid, idParams, reason, pageQuery } from './schemas.js';
 import { projectScope, allowed } from './permissions.js';
 import { invariant } from './errors.js';
-import { earningSql } from './earnings.js';
 import { notify } from './notify.js';
 import { quantity } from './money.js';
 import { taskLineSql, taskLineJoinSql, sameWorkSql } from './estimates.js';
@@ -134,7 +133,6 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
       const progress = (
         await db.query(
           `SELECT pe.id,pe.quantity::text,coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c WHERE c.tenant_id=pe.tenant_id AND c.progress_entry_id=pe.id),0)::text corrected_delta,
-                  pe.labor_rate::text labor_rate,CASE WHEN pe.labor_rate IS NULL THEN NULL ELSE ${earningSql}::text END labor_amount,
                   coalesce((SELECT json_agg(json_build_object('id',c.id,'quantity_delta',c.quantity_delta::text,'reason',c.reason,'created_at',c.created_at,'created_by_name',cu.display_name) ORDER BY c.created_at)
                             FROM progress_corrections c JOIN users cu ON cu.id=c.created_by WHERE c.tenant_id=pe.tenant_id AND c.progress_entry_id=pe.id),'[]') corrections
            FROM progress_entries pe WHERE pe.tenant_id=$1 AND pe.report_id=$2`,
@@ -147,11 +145,6 @@ export function workExtraRoutes(add: (r: Endpoint) => void) {
           [actor.tenant_id, params.id],
         )
       ).rows;
-      // V-C: akkord summasi faqat muallif brigadir va narx huquqi bor rollarga (prorab hajmni ko'radi, summani emas — D20)
-      if (progress && report.author_id !== actor.id && !(await allowed(db, actor, 'prices.read'))) {
-        delete progress.labor_rate;
-        delete progress.labor_amount;
-      }
       return { ...report, files, progress: progress ?? null, history };
     },
   });

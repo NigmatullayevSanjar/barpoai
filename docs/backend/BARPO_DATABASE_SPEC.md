@@ -1221,6 +1221,16 @@ ALTER TABLE role_page_permissions ADD CONSTRAINT role_page_permissions_role_chec
 
 ```
 
+## 036_drop_piece_rate_inputs.sql
+
+```sql
+-- Brigadir va akkord yo'q (egasi, 2026-11-23): smeta qatori stavkasi va obyekt brigada foizi olib tashlanadi.
+-- progress_entries.labor_rate, payroll_entries.piece_rate va progress_payroll tarix (yopilgan ish haqi) uchun qoladi.
+ALTER TABLE estimate_lines DROP COLUMN labor_rate;
+ALTER TABLE projects DROP COLUMN brigade_percent;
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

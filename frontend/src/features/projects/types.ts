@@ -13,8 +13,6 @@ export type Project = {
   actual_end: string | null;
   forecast_end: string | null;
   area_m2: string | null;
-  /** V-C: brigada stavkasining standart foizi (smeta narxidan); narx huquqisiz kelmaydi */
-  brigade_percent?: string | null;
   image_file_id: string | null;
   archived_at: string | null;
   version: number;

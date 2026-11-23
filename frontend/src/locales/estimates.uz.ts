@@ -49,10 +49,6 @@ export const estimatesUz: Record<string, string> = {
   'est.col.effective': 'Hisobiy miqdor',
   'est.col.unit_price': 'Birlik narxi',
   'est.col.total': 'Jami',
-  'est.col.labor_rate': 'Brigada stavkasi',
-  'est.labor_rate_auto': 'avto',
-  'est.labor_rate_auto_hint':
-    'Avtomatik stavka: Form 5 ish qatorida mehnat resurslari narxi ÷ ish hajmi × obyekt brigada foizi, boshqa qatorlarda smeta narxi × foiz. Qo‘lda yozilgan stavka ustun; maydon bo‘sh bo‘lsa avtomatik qiymat ishlaydi.',
   'est.col.fact': 'Fakt',
   'est.col.note': 'Izoh',
   'est.col.months': 'Oylar',

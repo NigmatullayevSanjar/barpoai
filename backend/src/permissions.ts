@@ -413,9 +413,6 @@ export function redactPrices(value: any): any {
           ![
             'unit_price',
             'labor_rate',
-            'auto_labor_rate',
-            'labor_amount',
-            'brigade_percent',
             'unit_cost',
             'total',
             'material_total',
