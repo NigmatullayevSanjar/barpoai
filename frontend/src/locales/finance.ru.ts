@@ -47,7 +47,8 @@ export const financeRu: Record<string, string> = {
   'fin.description': 'Описание',
   'fin.matched_receipt': 'Связанный приход на склад',
   'fin.matched_receipt_hint':
-    'Сумма счёта должна равняться стоимости прихода (корректировка цены пока недоступна).',
+    'Сумма счёта становится фактической ценой прихода: разница относится на остаток материала, израсходованная часть — в затраты.',
+  'fin.receipt_provisional': 'Кладовщик не указал цену, ориентировочная стоимость (по смете)',
   'fin.allocated_invoice': 'Какой документ оплачивается',
   'fin.outstanding': 'Остаток',
   'fin.paid': 'Оплачено',
@@ -314,6 +315,7 @@ export const financeRu: Record<string, string> = {
   'error.RECEIPT_MATCH_REQUIRED': 'Для счёта поставщика выберите приход на склад.',
   'error.RECEIPT_MISMATCH': 'Выбранный приход не относится к объекту или не проведён.',
   'error.RECEIPT_REVERSED': 'Выбранный приход сторнирован.',
+  'error.STOCK_ALREADY_MOVED': 'Материал, на который отнесена разница цены, уже ушёл со склада: сначала сторнируйте движения.',
   'error.PAYMENT_ALLOCATION_REQUIRED': 'Укажите, какой документ оплачивается.',
   'error.OVERPAYMENT_USE_ADVANCE': 'Сумма превышает остаток документа. Излишек оформите авансом.',
   'error.INVOICE_MISMATCH': 'Документ не соответствует контрагенту или объекту.',

@@ -581,10 +581,8 @@ try {
     .getByRole('dialog')
     .getByLabel(/^Miqdor/)
     .fill('1000');
-  await warehousePage
-    .getByRole('dialog')
-    .getByLabel(/Birlik tannarxi/)
-    .fill('1200');
+  // Omborchi kirimda narx yozmaydi (2026-11-23): tannarx maydoni yo'q
+  assert.equal(await warehousePage.getByRole('dialog').getByLabel(/Birlik tannarxi/).count(), 0);
   await warehousePage.getByRole('dialog').getByLabel(/Sabab/).fill('Yetkazib beruvchidan kirim');
   await warehousePage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
   await warehousePage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
@@ -592,7 +590,13 @@ try {
     .getByRole('cell', { name: /Sement M500/ })
     .first()
     .waitFor();
-  checks.push('Warehouse receipt posts stock and inventory value from the UI');
+  const receiptRow = (
+    await owner.query("SELECT unit_cost::text,cost_provisional FROM stock_commands WHERE kind='receipt' AND quantity=1000")
+  ).rows[0];
+  assert.equal(receiptRow.cost_provisional, true);
+  checks.push(
+    'Warehouse receipt has no unit cost field; it posts stock at a provisional cost (estimate price) for the accountant to price later',
+  );
   // Kirimda manba hisob yo'q: mavjud qoldiqdan katta miqdor «qoldiq yetarli emas» demaydi
   await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
   await pickOption(warehousePage.getByRole('dialog'), 'Material', 'Sement', /Sement M500/);
@@ -664,7 +668,8 @@ try {
       "SELECT (SELECT coalesce(sum(amount),0)::text FROM journal_entries WHERE account='expense') expense,(SELECT quantity::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.warehouse_id IS NOT NULL) warehouse_qty,(SELECT (quantity-reserved)::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.custodian_id IS NOT NULL AND b.quantity>0) custody_available",
     )
   ).rows[0];
-  assert.equal(stockState.expense, '180000.00');
+  // sarf taxminiy tannarxda (smeta narxi); haqiqiy narx invoysda
+  assert.equal(stockState.expense, (Number(receiptRow.unit_cost) * 150).toFixed(2));
   assert.equal(stockState.warehouse_qty, '800.000000');
   assert.equal(stockState.custody_available, '50.000000');
   // Hech kim tasdiqlamaydi: boshqa prorabda ham «Tasdiqlash» tugmasi yo'q; talabnomalar yorlig'i yo'q
@@ -673,7 +678,7 @@ try {
   await foremanPage.waitForLoadState('networkidle');
   assert.equal(await foremanPage.getByRole('button', { name: 'Tasdiqlash', exact: true }).count(), 0);
   checks.push(
-    'Consumption posts at once (expense 150 x 1200, warehouse 800 with 100 still reserved, foreman 50) with no review button',
+    'Consumption posts at once (expense 150 x provisional cost, warehouse 800 with 100 still reserved, foreman 50) with no review button',
   );
   assert.equal(await foremanPage.getByRole('tab', { name: /So‘rovlar/ }).count(), 0);
   assert.equal(await warehousePage.locator('.sidebar').getByRole('link', { name: /Talabnoma/ }).count(), 0);
@@ -716,6 +721,9 @@ try {
   await dialog().getByLabel('Turi').selectOption('supplier_invoice');
   await pickOption(dialog(), /^Kontragent/, 'Qurilish', /Qurilish Savdo/);
   await pickOption(dialog(), /Bog‘lanadigan ombor kirimi/, '', /Sement M500/);
+  // narxsiz kirim: summa oldindan to'ldirilmaydi, taxminiy qiymat izohda; buxgalter haqiqiy narxni yozadi
+  await dialog().getByText(/Omborchi narx yozmagan/).waitFor();
+  await dialog().getByLabel(/^Summa/).fill('1200000');
   await dialog().getByLabel('To‘lov muddati').fill('2026-10-20');
   await dialog().getByLabel('Tavsif').fill('Sement M500 uchun invoys');
   await dialog().getByRole('button', { name: 'Saqlash', exact: true }).click();
@@ -735,8 +743,15 @@ try {
   assert.equal(fin1.debt, '0.00');
   assert.equal(fin1.cash, '-1200000.00');
   assert.equal(fin1.clearing, '0.00');
+  // 1 200 000 haqiqiy narx: qoldiqdagi 850 kg qiymati 1 020 000, sarflangan 150 kg xarajati jami 180 000 bo'ladi
+  const priced = (
+    await owner.query(
+      "SELECT (SELECT sum(value)::text FROM stock_balances) stock_value,(SELECT sum(amount)::text FROM journal_entries WHERE account='expense') expense",
+    )
+  ).rows[0];
+  assert.deepEqual([priced.stock_value, priced.expense], ['1020000.00', '180000.00']);
   checks.push(
-    'Supplier invoice matched to the receipt clears GR/IR; payment settles the debt and reduces cash',
+    'Supplier invoice priced by the accountant on an unpriced receipt clears GR/IR, revalues stock on hand (1 020 000) and books the consumed share so the expense is 150 x 1200; payment settles the debt and reduces cash',
   );
   await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Hujjat yaratish' }).first().click();

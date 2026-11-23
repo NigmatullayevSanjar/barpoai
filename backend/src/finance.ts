@@ -2,7 +2,7 @@ import { type Db, type Row, one, audit } from './db.js';
 import { permit, projectScope, financialPages, pageAllowed } from './permissions.js';
 import { invariant } from './errors.js';
 import { dec, money } from './money.js';
-import { journal } from './inventory.js';
+import { journal, revalueReceipt, reverseRevaluation } from './inventory.js';
 /**
  * Hisob sanasi (O12, 2026-10-27): moliya hujjati — `document_date`; ombor sarfida hujjat sanasi yo'q — yozuvning
  * Toshkent sanasi. `j` — journal_entries, `f` — LEFT JOIN finance_documents. Oylik fakt hamma joyda (dashboard,
@@ -168,7 +168,6 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
       [actor.tenant_id, receipt.id],
     );
     receiptValue = value.amount;
-    invariant(dec(receiptValue!).eq(input.amount), 'PRICE_ADJUSTMENT_REQUIRED');
   }
   const doc = await one(
     db,
@@ -203,9 +202,22 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
   });
   const entries: ReturnType<typeof e>[] = [];
   switch (input.kind) {
-    case 'supplier_invoice':
-      entries.push(e('clearing', positive), e('payable', negative));
+    case 'supplier_invoice': {
+      // Invoys kirim qiymatidan farq qilsa (narxsiz yoki taxminiy kirim, 2026-11-23): farq qoldiqqa va sarflangan qismi xarajatga
+      const diff = dec(input.amount).minus(receiptValue!);
+      const receipt = await one(db, 'SELECT * FROM stock_commands WHERE tenant_id=$1 AND id=$2', [
+        actor.tenant_id,
+        input.matched_receipt_id,
+      ]);
+      const toStock = await revalueReceipt(db, actor, receipt, doc.id, money(diff));
+      entries.push(
+        e('clearing', money(receiptValue!)),
+        e('inventory', toStock),
+        e('expense', money(diff.minus(toStock))),
+        e('payable', negative),
+      );
       break;
+    }
     case 'opening_debt':
       entries.push(e('opening_equity', positive), e('payable', negative));
       break;
@@ -263,6 +275,7 @@ export async function reverseFinance(db: Db, actor: Row, id: string, reason: str
     ).rowCount,
     'REVERSE_PAYMENTS_FIRST',
   );
+  if (original.kind === 'supplier_invoice') await reverseRevaluation(db, actor, id);
   const reversal = await one(
     db,
     `INSERT INTO finance_documents(tenant_id,project_id,counterparty_id,kind,amount,reverses_id,description,document_date,created_by) VALUES($1,$2,$3,'reversal',$4,$5,$6,current_date,$7) RETURNING *`,

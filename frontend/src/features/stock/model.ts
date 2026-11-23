@@ -52,6 +52,8 @@ export type StockCommand = {
   accepted_quantity: string;
   remaining_quantity: string;
   unit_cost?: string | null;
+  /** Narxsiz kirim: tannarx taxminiy (smeta yoki oxirgi kirim), haqiqiysi invoys bilan */
+  cost_provisional?: boolean;
   /** Kirim/ochilish: omborga kirgan qiymat (serverda, ledger); yetkazib beruvchi invoysi summasi shunga teng bo'ladi */
   value?: string | null;
   estimate_line_id: string | null;
