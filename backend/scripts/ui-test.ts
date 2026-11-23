@@ -653,6 +653,7 @@ try {
     .locator('option')
     .nth(1)
     .waitFor({ state: 'attached' });
+  await brigadierPage.getByRole('dialog').getByLabel('Smeta qatori').selectOption({ index: 1 });
   await brigadierPage
     .getByRole('dialog')
     .getByLabel(/^Miqdor/)
@@ -750,8 +751,15 @@ try {
     )
   ).rows[0];
   assert.deepEqual([priced.stock_value, priced.expense], ['1020000.00', '180000.00']);
+  // sarflangan 150 kg narx farqi sarf buyrug'iga yozilgan: smeta qatori «Fakt»i 180 000
+  const lineFact = (
+    await owner.query(
+      "SELECT (-sum(j.amount))::text fact FROM journal_entries j JOIN stock_commands c ON c.id=j.stock_command_id WHERE c.kind='consumption' AND c.estimate_line_id IS NOT NULL AND j.account='inventory'",
+    )
+  ).rows[0];
+  assert.equal(lineFact.fact, '180000.00');
   checks.push(
-    'Supplier invoice priced by the accountant on an unpriced receipt clears GR/IR, revalues stock on hand (1 020 000) and books the consumed share so the expense is 150 x 1200; payment settles the debt and reduces cash',
+    'Supplier invoice priced by the accountant on an unpriced receipt clears GR/IR, revalues stock on hand (1 020 000) and books the consumed share on the consumption so the expense and the estimate line fact are 150 x 1200; payment settles the debt and reduces cash',
   );
   await adminPage.goto(webURL + '/app/finance/documents?project=' + projectUrl.split('/').pop());
   await adminPage.getByRole('button', { name: 'Hujjat yaratish' }).first().click();

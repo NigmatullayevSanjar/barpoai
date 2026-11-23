@@ -209,11 +209,18 @@ export async function postFinance(db: Db, actor: Row, input: Row) {
         actor.tenant_id,
         input.matched_receipt_id,
       ]);
-      const toStock = await revalueReceipt(db, actor, receipt, doc.id, money(diff));
+      const { toStock, toConsumption } = await revalueReceipt(
+        db,
+        actor,
+        receipt,
+        doc.id,
+        money(diff),
+      );
+      const toInventory = dec(toStock).plus(toConsumption);
       entries.push(
         e('clearing', money(receiptValue!)),
-        e('inventory', toStock),
-        e('expense', money(diff.minus(toStock))),
+        e('inventory', money(toInventory)),
+        e('expense', money(diff.minus(toInventory))),
         e('payable', negative),
       );
       break;
@@ -275,7 +282,8 @@ export async function reverseFinance(db: Db, actor: Row, id: string, reason: str
     ).rowCount,
     'REVERSE_PAYMENTS_FIRST',
   );
-  if (original.kind === 'supplier_invoice') await reverseRevaluation(db, actor, id);
+  if (original.kind === 'supplier_invoice')
+    await reverseRevaluation(db, actor, id, original.project_id);
   const reversal = await one(
     db,
     `INSERT INTO finance_documents(tenant_id,project_id,counterparty_id,kind,amount,reverses_id,description,document_date,created_by) VALUES($1,$2,$3,'reversal',$4,$5,$6,current_date,$7) RETURNING *`,

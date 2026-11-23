@@ -82,7 +82,6 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
   const [material, setMaterial] = useState(preset?.material_id ?? '');
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [qty, setQty] = useState('');
-  const [unitCost, setUnitCost] = useState('');
   const [reason, setReason] = useState('');
   const [line, setLine] = useState('');
   const [zone, setZone] = useState('');
@@ -108,8 +107,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
           ...(needsSource ? { from_account_id: from } : {}),
           ...(kind !== 'consumption' ? { to_account_id: to } : {}),
           quantity: normalizeNumber(qty),
-          // Kirimda narx yo'q (2026-11-23): narxni buxgalter yetkazuvchi invoysi bilan beradi
-          ...(kind === 'opening' ? { unit_cost: normalizeNumber(unitCost) } : {}),
+          // Omborchi narx yozmaydi (2026-11-23): kirim narxini buxgalter invoys bilan beradi, boshlang'ich qoldiq taxminiy narxda
           ...(line ? { estimate_line_id: line } : {}),
           ...(zone ? { zone_id: zone } : {}),
           reason: reason.trim(),
@@ -124,8 +122,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
     qty &&
     reason.trim().length >= 5 &&
     (!needsSource || from) &&
-    (kind === 'consumption' || to) &&
-    (kind !== 'opening' || unitCost);
+    (kind === 'consumption' || to);
   const hints: Record<string, string> = {
     transfer: 'stock.transfer_hint',
     consumption: 'stock.consumption_hint',
@@ -226,14 +223,6 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
                 : undefined
             }
           />
-          {kind === 'opening' && (
-            <Input
-              label={`${t('stock.unit_cost')} (UZS)`}
-              inputMode="decimal"
-              value={unitCost}
-              onChange={(e) => setUnitCost(e.target.value)}
-            />
-          )}
           {(kind === 'consumption' || kind === 'transfer') && lines.length > 0 && (
             <Select label={t('stock.estimate_line')} value={line} onChange={(e) => setLine(e.target.value)}>
               <option value="">—</option>
@@ -296,12 +285,8 @@ export function ReconcileModal({
   const [material, setMaterial] = useState(balances[0]?.material_id ?? '');
   const [selectedName, setSelectedName] = useState('');
   const [counted, setCounted] = useState('');
-  const [unitCost, setUnitCost] = useState('');
   const [reason, setReason] = useState('');
   const current = balances.find((b) => b.material_id === material);
-  const increase = current
-    ? Number(normalizeNumber(counted)) > Number(current.quantity)
-    : Number(normalizeNumber(counted)) > 0;
   const save = useStockMutation(
     () =>
       api(`/v1/stock/accounts/${account.id}/reconcile`, {
@@ -309,7 +294,6 @@ export function ReconcileModal({
         body: {
           material_id: material,
           counted_quantity: normalizeNumber(counted),
-          ...(increase ? { unit_cost: normalizeNumber(unitCost) } : {}),
           reason: reason.trim(),
         },
       }),
@@ -329,7 +313,7 @@ export function ReconcileModal({
           <Button
             onClick={() => save.mutate(undefined)}
             loading={save.isPending}
-            disabled={!material || !counted || reason.trim().length < 5 || (increase && !unitCost)}
+            disabled={!material || !counted || reason.trim().length < 5}
           >
             {t('common.save')}
           </Button>
@@ -365,14 +349,6 @@ export function ReconcileModal({
             value={counted}
             onChange={(e) => setCounted(e.target.value)}
           />
-          {increase && (
-            <Input
-              label={`${t('stock.unit_cost')} (UZS)`}
-              inputMode="decimal"
-              value={unitCost}
-              onChange={(e) => setUnitCost(e.target.value)}
-            />
-          )}
         </div>
         <Textarea
           label={t('stock.reason')}
