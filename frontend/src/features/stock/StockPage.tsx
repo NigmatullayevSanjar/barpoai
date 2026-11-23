@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
-  ArrowLeftRight,
+  ArrowUpFromLine,
   Flame,
   History,
   Plus,
@@ -162,7 +162,7 @@ export function StockPage() {
               {has('stock.send') && (
                 <Button
                   variant="secondary"
-                  icon={<ArrowLeftRight />}
+                  icon={<ArrowUpFromLine />}
                   onClick={() => setModal({ kind: 'transfer' })}
                 >
                   {t('stock.transfer')}

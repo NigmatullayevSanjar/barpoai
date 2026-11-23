@@ -516,17 +516,23 @@ try {
   await adminPage.goto(stockUrl);
   await adminPage.getByRole('tab', { name: /Qoldiqlar|Harakatlar/ }).first().waitFor();
   assert.equal(await adminPage.getByRole('button', { name: 'Kirim', exact: true }).count(), 0);
-  assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish', exact: true }).count(), 0);
+  assert.equal(await adminPage.getByRole('button', { name: 'Chiqim', exact: true }).count(), 0);
   checks.push('Tenant admin sees the stock page without any action buttons (read-only warehouse and materials)');
-  await warehousePage.goto(stockUrl);
-  // D42: smetadagi, hali kelmagan material qoldiqlarda reja bilan va «Kirim yo'q» holatida
-  await warehousePage.getByRole('columnheader', { name: 'Reja (smeta)' }).waitFor();
-  await warehousePage
+  // D42: smetadagi, hali kelmagan material qoldiqlarda reja bilan va «Kirim yo'q» holatida (smetani ko'ruvchiga)
+  await adminPage.getByRole('columnheader', { name: 'Reja (smeta)' }).waitFor();
+  await adminPage
     .getByRole('row')
     .filter({ hasText: 'Sement M500' })
     .getByText('Kirim yo‘q', { exact: true })
     .waitFor();
   checks.push('Warehouse balances list an estimate material before any receipt with its plan and the “no receipt” state (D42)');
+  // Omborchi smetani ko'rmaydi (2026-11-23): reja ustuni ham, kelmagan smeta materiali ham yo'q
+  await warehousePage.goto(stockUrl);
+  await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).waitFor();
+  await warehousePage.waitForLoadState('networkidle');
+  assert.equal(await warehousePage.getByRole('columnheader', { name: 'Reja (smeta)' }).count(), 0);
+  assert.equal(await warehousePage.getByRole('row').filter({ hasText: 'Sement M500' }).count(), 0);
+  checks.push('The warehouse manager sees no estimate plan column and no not-yet-received estimate materials');
   await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
   await pickOption(warehousePage.getByRole('dialog'), 'Material', 'Tosh 118', /Tosh 118/);
   assert.equal(
@@ -587,7 +593,15 @@ try {
     .first()
     .waitFor();
   checks.push('Warehouse receipt posts stock and inventory value from the UI');
-  await warehousePage.getByRole('button', { name: 'Jo‘natish', exact: true }).first().click();
+  // Kirimda manba hisob yo'q: mavjud qoldiqdan katta miqdor «qoldiq yetarli emas» demaydi
+  await warehousePage.getByRole('button', { name: 'Kirim', exact: true }).click();
+  await pickOption(warehousePage.getByRole('dialog'), 'Material', 'Sement', /Sement M500/);
+  await warehousePage.getByRole('dialog').getByLabel(/^Miqdor/).fill('5000');
+  assert.equal(await warehousePage.getByRole('dialog').getByText('Mavjud qoldiq yetarli emas', { exact: false }).count(), 0);
+  await warehousePage.getByRole('dialog').getByRole('button', { name: 'Bekor qilish' }).click();
+  await warehousePage.getByRole('dialog').waitFor({ state: 'detached' });
+  checks.push('A receipt larger than the current balance shows no “insufficient stock” error');
+  await warehousePage.getByRole('button', { name: 'Chiqim', exact: true }).first().click();
   await warehousePage
     .getByRole('dialog')
     .getByLabel('Qayerga')

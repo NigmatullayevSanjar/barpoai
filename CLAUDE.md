@@ -111,7 +111,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 - `backend`: `npm run build`, `npm test`, `npm run test:integration`, `npm run test:roles`, `npm run test:ui` (the last three each start a disposable PostgreSQL 17 in Docker; run at most two at a time), `npm run docs` after route or schema changes.
 - `frontend`: `pnpm typecheck`, `pnpm build`.
 - On a running local stack: `npm run qa:smoke` then confirm no `QA-` company is left; post-pull procedure for Claude Code: `docs/tests/CLAUDE_CODE_PULL_TEKSHIRUVI.md`.
-- Last recorded counts (2026-11-20): unit 41, integration 111 checks, UI 67 checks, role matrix 10 roles with no findings. Counts only grow; a lower count means a removed check and needs an explanation.
+- Last recorded counts (2026-11-23): unit 41, integration 111 checks, UI 69 checks, role matrix 10 roles with no findings. Counts only grow; a lower count means a removed check and needs an explanation.
 
 ## Deployment
 
@@ -138,7 +138,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 - Secrets stay in `backend/.env` and `deploy/.env` (gitignored). Never commit tokens, never write passwords to files or chat.
 - Code comments and docs for the owner are in Uzbek; commit messages and this file are in English.
 
-## Project status (2026-11-22)
+## Project status (2026-11-23)
 
 Everything below is merged into `main` (latest: PR #25, 2026-11-21).
 
@@ -146,7 +146,7 @@ Everything below is merged into `main` (latest: PR #25, 2026-11-21).
 - PR #9–#15: advance offset and «Subpudratchi» (D22), grouped number inputs, button visibility and font size, atomic 2FA check, server-side sums (O3), accounting by document date (O12), UTC+5 dates (O17), role matrix coverage.
 - Video-analysis ideas (D23): project finance card, tasks linked to estimate lines (migration 025), multi-line material requests (026), floor × work matrix, brigade piece rate with payroll and advances (027). PR #20: `qa:smoke`, `qa:cleanup`, owner guides.
 - Estimates from external companies (D24–D34): Form 5 import, revision identity (028), piece rate from labor resources, material aliases, units (029), auto-block of unpaid companies (030, D33), linked workbooks accepted, macros rejected (D34).
-- Estimate correction S1–S5 (D35–D41): «П» rows, line codes and sections, header and resource summary (031), price chain, customer materials and settings (032), F-2 and F-3 acts, customer materials report (S5); re-upload as a revision with the warehouse showing the estimate plan (D42, `031_import_target.sql`). Two `031_*` files are intentional: renaming one would re-run it.
+- Estimate correction S1–S5 (D35–D41): «П» rows, line codes and sections, header and resource summary (031), price chain, customer materials and settings (032), F-2 and F-3 acts, customer materials report (S5); re-upload as a revision with the warehouse showing the estimate plan (D42, `031_import_target.sql`). Since 2026-11-23 the estimate plan, over-plan flag and estimate lines in stock are visible only with `estimates.read` or `stock.consume`: the warehouse manager sees no estimate data. Two `031_*` files are intentional: renaming one would re-run it.
 - Company domain login, unique login per company, `LOGIN_TAKEN`/`PHONE_TAKEN`, trial companies are not debtors, invoices start after the trial, unarchive button (D43, migration 033). Notifications open their source page. Ids without `crypto.randomUUID` over plain http. Hetzner and Railway deploy setups. Logout works from any origin.
 
 **Open items** (fix only when the owner says):
@@ -157,6 +157,7 @@ Everything below is merged into `main` (latest: PR #25, 2026-11-21).
 - K-1: estimate line «Fakt» and the «Umumiy» tab ignore stock reversals, unlike acts and S5 (owner to decide whether they should subtract them).
 - Login on the Docker stack over a LAN IP (`http://10.x.x.x:5173`): the API runs with `NODE_ENV=production`, so the `Secure` cookie is dropped over http. Proposed: `Secure` only for https requests.
 - Owner questions: the stock «Materiallar» tab as a company catalog vs following the estimate; freezing a signed act (acts are recomputed from the current revision); labor re-pricing at MHTEKM × 5 % for VMQ 583; N-03 unpriced general-contractor rows; archived companies in the debtors list; whether the first invoice should wait until the trial actually ends; the 1 500 000 invoices issued during trial on the local DB.
+- Warehouse manager enters no price at receipt (owner, 2026-11-23): receipts are priced by the accountant when the supplier invoice is matched. Needs a separate redesign: today `unit_cost` is required and the invoice must equal the receipt value (`PRICE_ADJUSTMENT_REQUIRED`).
 - Two computers on the same LAN running the same Telegram bot token cause «Conflict: terminated by other getUpdates request»: one bot token per running stack.
 
 ## Working rules learned in this project

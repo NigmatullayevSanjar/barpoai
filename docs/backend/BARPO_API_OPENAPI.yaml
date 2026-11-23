@@ -5231,7 +5231,8 @@ paths:
   /v1/stock/estimate-lines:
     get:
       summary: Jo‘natish va sarfda tanlash uchun obyektning joriy smetalaridagi shu materialning qatorlari (barcha
-        arxivlanmagan smetalar); narxsiz, `estimates.read` talab qilinmaydi (brigadir, ombor mudiri)
+        arxivlanmagan smetalar); narxsiz; `estimates.read` yoki `stock.consume` (brigadir) bilan, aks holda (ombor
+        mudiri) bo‘sh ro‘yxat
       operationId: get_v1_stock_estimate_lines
       security:
         - bearerAuth: []

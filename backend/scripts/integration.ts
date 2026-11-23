@@ -4586,8 +4586,9 @@ try {
   const rEstimate = await call('POST', `/v1/estimate-imports/${d35v1.id}/commit`, { digest: d35v1.digest }, adminAgain);
   const rMat = async (name: string) => (await admin!.query('SELECT id FROM materials WHERE name=$1', [name])).rows[0].id;
   const [sement, qum, gips] = [await rMat('D35 Sement'), await rMat('D35 Qum'), await rMat('D35 Gips')];
-  const rOverview = async () =>
-    (await call('GET', `/v1/stock/overview?project_id=${projectR.id}`, undefined, whP)).balances.filter((b: any) => b.material_name.startsWith('D35 '));
+  // smeta rejasi smetani ko'ruvchiga (admin); omborchi smetani ko'rmaydi (2026-11-23)
+  const rOverview = async (as = adminAgain) =>
+    (await call('GET', `/v1/stock/overview?project_id=${projectR.id}`, undefined, as)).balances.filter((b: any) => b.material_name.startsWith('D35 '));
   // smetadagi, hali kelmagan materiallar asosiy omborda 0 qoldiq va reja bilan
   assert.deepEqual(
     (await rOverview()).map((b: any) => [b.material_name, b.account_id, b.plan_quantity, b.received_quantity, b.quantity, b.over_plan]),
@@ -4596,6 +4597,15 @@ try {
       ['D35 Qum', rMain.account_id, '5.000000', '0.000000', '0.000000', false],
       ['D35 Sement', rMain.account_id, '100.000000', '0.000000', '0.000000', false],
     ],
+  );
+  assert.deepEqual(await rOverview(whP), []);
+  assert.deepEqual(
+    (await call('GET', `/v1/stock/estimate-lines?project_id=${projectR.id}&material_id=${sement}`, undefined, whP)).items,
+    [],
+  );
+  assert.equal(
+    (await call('GET', `/v1/stock/estimate-lines?project_id=${projectR.id}&material_id=${sement}`, undefined, adminAgain)).items.length,
+    1,
   );
   const rReceipt = (material_id: string, quantity: string) =>
     call('POST', '/v1/stock/commands', { project_id: projectR.id, kind: 'receipt', material_id, to_account_id: rMain.account_id, quantity, unit_cost: '10', reason: 'D35 kirim' }, whP);
@@ -4641,10 +4651,18 @@ try {
     ],
   );
   assert(!(await rOverview()).some((b: any) => b.material_id === qum));
+  // omborchida reja va «rejadan oshgan» yo'q, kirim va qoldiq bor
+  assert.deepEqual(
+    (await rOverview(whP)).map((b: any) => [b.material_id, b.plan_quantity, b.received_quantity, b.over_plan]),
+    [
+      [gips, null, '2.000000', false],
+      [sement, null, '120.000000', false],
+    ],
+  );
   // boshqa obyekt smetasi yoki arxivlangan smeta — maqsad bo'lmaydi
   await d35Preview(d35v2File, { estimate_id: qEstimate.id }, 404);
   passed.push(
-    'D42: an Excel file uploaded into an existing estimate becomes its next revision (plan replaced, line identity and facts kept, alias names matched, stale previews rejected); the warehouse lists every estimate material with plan and received quantity, new ones at zero, received or stocked ones unchanged, over-plan receipts flagged',
+    'D42: an Excel file uploaded into an existing estimate becomes its next revision (plan replaced, line identity and facts kept, alias names matched, stale previews rejected); the warehouse lists every estimate material with plan and received quantity, new ones at zero, received or stocked ones unchanged, over-plan receipts flagged; the warehouse manager sees no plan, over-plan flag or estimate lines',
   );
   // Mijoz admini adminlikni topshira olmaydi (faqat platforma o'tkazadi); jadvalni xlsx qilish
   await call('POST', '/v1/company/ownership', { new_admin_id: foreman.id, previous_admin_role: 'manager', reason: 'Endi mumkin emas' }, adminAgain, undefined, 404);

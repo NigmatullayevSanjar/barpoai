@@ -93,7 +93,7 @@ export const stockUz: Record<string, string> = {
   'stock.no_balances': 'Qoldiqlar yo‘q. Kirim bilan boshlang.',
   'stock.receipt': 'Kirim',
   'stock.opening': 'Boshlang‘ich qoldiq',
-  'stock.transfer': 'Jo‘natish',
+  'stock.transfer': 'Chiqim',
   'stock.consumption': 'Sarf',
   'stock.return': 'Qaytarish',
   'stock.reconcile': 'Inventarizatsiya',

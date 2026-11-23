@@ -588,6 +588,7 @@ export function dashboardRoutes(add: (r: Endpoint) => void) {
       const project = await projectScope(db, actor, query.project_id);
       const prices = await allowed(db, actor, 'prices.read');
       const d = await stockOverview(db, actor, query.project_id);
+      const plan = d.balances.some((b) => b.plan_quantity !== null);
       await audit(db, actor, 'export.stock', query.project_id);
       return xlsxFile(
         [
@@ -597,9 +598,10 @@ export function dashboardRoutes(add: (r: Endpoint) => void) {
               { header: 'Hisob', key: 'account', width: 26 },
               { header: 'Material', key: 'material_name', width: 32 },
               { header: 'Birlik', key: 'unit_id', width: 8 },
-              { header: 'Reja (smeta)', key: 'plan_quantity' },
+              // Smeta ko'rinmasa (omborchi) reja ustunlari chiqmaydi
+              ...(plan ? [{ header: 'Reja (smeta)', key: 'plan_quantity' }] : []),
               { header: 'Kirim', key: 'received_quantity' },
-              { header: 'Rejadan oshgan', key: 'over_plan', width: 14 },
+              ...(plan ? [{ header: 'Rejadan oshgan', key: 'over_plan', width: 14 }] : []),
               { header: 'Miqdor', key: 'quantity' },
               { header: 'Band', key: 'reserved' },
               { header: 'Mavjud', key: 'available' },
