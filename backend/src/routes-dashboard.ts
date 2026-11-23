@@ -26,8 +26,8 @@ const todaySql = (col: string) =>
 // `workFactSql` endi estimates.ts da (vazifalar marshruti ham ishlatadi; dashboard ↔ work aylanma importi bo'lmasin).
 export { workFactSql } from './estimates.js';
 import { workFactSql } from './estimates.js';
-/** Rol doirasidagi stock hisoblari (ombor mudiri — biriktirilgan omborlar, brigadir — o'z hisobi). */
-const accountScopeSql = `($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
+/** Rol doirasidagi stock hisoblari (ombor mudiri — biriktirilgan omborlar, prorab — omborlar va o'z hisobi). */
+const accountScopeSql = `($3<>'foreman' OR a.custodian_id IS NULL OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4))`;
 /** Xarajat yozuvlari ($1 tenant, $2 obyektlar): tur va hisob sanasi. Hujjat — `document_date`, ombor sarfida hujjat sanasi yo'q,
  *  shuning uchun yozuvning Toshkent sanasi. Storno asl hujjat turida hisoblanadi. Yetkazib beruvchi invoysi xarajat emas (clearing). */
 const expenseSql = `SELECT j.amount,CASE WHEN j.stock_command_id IS NOT NULL THEN 'material' ELSE coalesce(o.kind,f.kind) END kind,
@@ -185,7 +185,6 @@ async function dashboard(db: Db, actor: Row, query: Row) {
        SELECT (SELECT count(*)::int FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id IN (SELECT id FROM acc) AND b.minimum_quantity>0 AND b.quantity-b.reserved<b.minimum_quantity) low,
               (SELECT count(DISTINCT b.material_id)::int FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id IN (SELECT id FROM acc) AND b.quantity>0) materials,
               (SELECT coalesce(sum(b.value),0)::text FROM stock_balances b WHERE b.tenant_id=$1 AND b.account_id IN (SELECT id FROM acc) AND b.quantity>0) inventory_value,
-              (SELECT count(DISTINCT r.group_id)::int FROM material_requests r WHERE r.tenant_id=$1 AND r.project_id=ANY($2::uuid[]) AND r.status='pending') pending_requests,
               (SELECT count(*)::int FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]) AND c.kind='transfer' AND c.status IN ('pending','partial','disputed')) pending_transfers,
               (SELECT count(*)::int FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]) AND c.kind='receipt' AND c.status='posted' AND ${todaySql('c.created_at')}) today_receipts,
               (SELECT count(*)::int FROM stock_commands c WHERE c.tenant_id=$1 AND c.project_id=ANY($2::uuid[]) AND c.kind='consumption' AND c.status IN ('posted','partial') AND ${todaySql('c.created_at')}) today_consumptions`,

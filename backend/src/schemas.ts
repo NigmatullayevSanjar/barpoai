@@ -39,8 +39,6 @@ export const estimateLine = z.strictObject({
   unit_id: text,
   quantity: qty,
   unit_price: amount,
-  // V-C (D23): brigada stavkasi (so'm/birlik), faqat ish qatorlari; null — obyekt foizi ishlaydi
-  labor_rate: amount.nullable().optional(),
   norm: qty.optional(),
   work_quantity: qty.optional(),
   loss_percent: qty.optional(),

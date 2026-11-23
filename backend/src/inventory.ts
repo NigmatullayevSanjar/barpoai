@@ -170,7 +170,7 @@ export async function createStock(db: Db, actor: Row, input: Row) {
   if (kind === 'transfer') {
     invariant(from?.warehouse_id && to?.custodian_id, 'WAREHOUSE_TO_CUSTODIAN_REQUIRED', 400);
     const user = await assignedUser(db, actor.tenant_id, input.project_id, to.custodian_id);
-    invariant(user.role === 'brigadier', 'BRIGADIER_REQUIRED');
+    invariant(user.role === 'foreman', 'FOREMAN_REQUIRED');
   }
   if (kind === 'consumption')
     invariant(from?.custodian_id && !to, 'CUSTODY_CONSUMPTION_REQUIRED', 400);
@@ -195,6 +195,7 @@ export async function createStock(db: Db, actor: Row, input: Row) {
       'INSUFFICIENT_AVAILABLE_STOCK',
     );
   }
+  // Sarf (prorab, 2026-11-23) tasdiqsiz darhol xarajatga yoziladi; jo'natish va qaytarish qabulni kutadi.
   const pending = ['transfer', 'consumption', 'return'].includes(kind);
   const command = await one(
     db,
@@ -235,12 +236,12 @@ export async function createStock(db: Db, actor: Row, input: Row) {
       command.id,
     ]);
   }
+  if (kind === 'consumption') await postMovement(db, actor, command, input.quantity);
   await audit(db, actor, `stock.${kind}`, command.id);
-  // Jo'natish → brigadirga; sarf/qaytarish taklifi → prorablar va tenant adminga xabar.
-  if (pending) {
+  // Chiqim → qabul qiluvchi prorabga; qaytarish → omborchiga xabar.
+  if (kind === 'transfer' || kind === 'return') {
     const labels: Record<string, [string, string]> = {
       transfer: ['📦 Sizga material jo‘natildi', 'Qabul qilish uchun platformaga kiring.'],
-      consumption: ['📝 Material sarfi taklifi', 'Tekshirish va tasdiqlash kutilmoqda.'],
       return: ['↩️ Material qaytarish', 'Omborga qabul qilish kutilmoqda.'],
     };
     const [title, hint] = labels[kind]!;
@@ -251,7 +252,7 @@ export async function createStock(db: Db, actor: Row, input: Row) {
             db,
             actor.tenant_id,
             input.project_id,
-            kind === 'consumption' ? ['foreman'] : ['warehouse_manager'],
+            ['warehouse_manager'],
             actor.id,
           );
     for (const user of recipients)
@@ -287,21 +288,9 @@ export async function transitionStock(db: Db, actor: Row, id: string, input: Row
         'FORBIDDEN',
         403,
       );
-  } else if (input.action === 'review') {
-    await permit(db, actor, 'stock.review');
-    invariant(command.kind === 'consumption', 'INVALID_TRANSITION');
-    invariant(actor.id !== command.created_by, 'SELF_REVIEW_FORBIDDEN', 403);
   } else {
-    await permit(
-      db,
-      actor,
-      command.kind === 'transfer'
-        ? 'stock.send'
-        : command.kind === 'return'
-          ? 'stock.consume'
-          : 'stock.review',
-      'update',
-    );
+    invariant(['transfer', 'return'].includes(command.kind), 'INVALID_TRANSITION');
+    await permit(db, actor, command.kind === 'transfer' ? 'stock.send' : 'stock.consume', 'update');
     await accountScope(db, actor, command.from_account_id);
   }
   await balances(
@@ -324,37 +313,45 @@ export async function transitionStock(db: Db, actor: Row, id: string, input: Row
       id,
     ]);
   } else {
-    const qty = input.action === 'review' ? quantity(remaining) : input.quantity;
-    invariant(qty && dec(qty).gt(0) && dec(qty).lte(remaining), 'INVALID_ACCEPTANCE_QUANTITY', 400);
-    const value = await stockCost(db, actor, command.from_account_id, command.material_id, qty);
-    await db.query(
-      'UPDATE stock_balances SET reserved=reserved-$4 WHERE tenant_id=$1 AND account_id=$2 AND material_id=$3',
-      [actor.tenant_id, command.from_account_id, command.material_id, qty],
+    invariant(
+      input.quantity && dec(input.quantity).gt(0) && dec(input.quantity).lte(remaining),
+      'INVALID_ACCEPTANCE_QUANTITY',
+      400,
     );
-    const effect = `${id}:${command.version}`;
-    await ledger(
-      db,
-      actor,
-      command,
-      command.from_account_id,
-      quantity(dec(qty).neg()),
-      money(dec(value).neg()),
-      effect,
-    );
-    if (command.to_account_id)
-      await ledger(db, actor, command, command.to_account_id, qty, value, effect);
-    else
-      await journal(db, actor, command.project_id, { stock: id }, [
-        { account: 'expense', amount: value },
-        { account: 'inventory', amount: money(dec(value).neg()) },
-      ]);
-    await db.query(
-      "UPDATE stock_commands SET accepted_quantity=accepted_quantity+$2,status=CASE WHEN accepted_quantity+$2=quantity THEN 'posted' ELSE 'partial' END,reviewed_by=$3,version=version+1 WHERE id=$1",
-      [id, qty, actor.id],
-    );
+    await postMovement(db, actor, command, input.quantity);
   }
   await audit(db, actor, `stock.${input.action}`, id, { reason: input.reason ?? null });
   return one(db, 'SELECT * FROM stock_commands WHERE id=$1', [id]);
+}
+/** Rezervdagi miqdorni manbadan o'tkazadi: qabul qiluvchi hisobga yoki (sarf) xarajatga. */
+async function postMovement(db: Db, actor: Row, command: Row, qty: string) {
+  const id = command.id;
+  const value = await stockCost(db, actor, command.from_account_id, command.material_id, qty);
+  await db.query(
+    'UPDATE stock_balances SET reserved=reserved-$4 WHERE tenant_id=$1 AND account_id=$2 AND material_id=$3',
+    [actor.tenant_id, command.from_account_id, command.material_id, qty],
+  );
+  const effect = `${id}:${command.version}`;
+  await ledger(
+    db,
+    actor,
+    command,
+    command.from_account_id,
+    quantity(dec(qty).neg()),
+    money(dec(value).neg()),
+    effect,
+  );
+  if (command.to_account_id)
+    await ledger(db, actor, command, command.to_account_id, qty, value, effect);
+  else
+    await journal(db, actor, command.project_id, { stock: id }, [
+      { account: 'expense', amount: value },
+      { account: 'inventory', amount: money(dec(value).neg()) },
+    ]);
+  await db.query(
+    "UPDATE stock_commands SET accepted_quantity=accepted_quantity+$2,status=CASE WHEN accepted_quantity+$2=quantity THEN 'posted' ELSE 'partial' END,reviewed_by=$3,version=version+1 WHERE id=$1",
+    [id, qty, actor.id],
+  );
 }
 export async function reverseStock(db: Db, actor: Row, id: string, reason: string) {
   await permit(db, actor, 'stock.reverse');

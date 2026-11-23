@@ -246,7 +246,7 @@ function CreateEmployeeModal({ open, onClose }: { open: boolean; onClose: () => 
     display_name: z.string().trim().min(2, t('common.required')).max(120),
     login: z.string().regex(/^[a-zA-Z0-9._-]{3,64}$/, t('auth.login_name')),
     phone: z.string().trim(),
-    role: z.enum(['foreman', 'brigadier', 'warehouse_manager', 'financier', 'accountant', 'manager']),
+    role: z.enum(['foreman', 'warehouse_manager', 'financier', 'accountant', 'manager']),
     position: z.string().trim().max(120),
     hired_at: z.string(),
     password: z.string().min(6, t('auth.password_rules')).max(128),

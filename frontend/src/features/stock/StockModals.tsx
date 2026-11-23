@@ -67,7 +67,7 @@ export function CommandModal({ kind, projectId, accounts, balances, preset, onCl
   const { me } = useAuth();
   const zones = useZones(projectId);
   const warehouses = accounts.filter((a) => a.kind === 'warehouse');
-  const custodies = accounts.filter((a) => a.kind === 'custody' && a.custodian_role === 'brigadier');
+  const custodies = accounts.filter((a) => a.kind === 'custody' && a.custodian_role === 'foreman');
   const myCustody = custodies.find((c) => c.custodian_id === me?.id);
   const [from, setFrom] = useState(
     preset?.from_account_id ??
@@ -429,14 +429,14 @@ export function MinimumModal({
   );
 }
 
-/** Jo'natishni qabul qilish (qisman), sarfni tasdiqlash, bekor qilish, kelishmovchilik, reversal */
+/** Chiqim yoki qaytarishni qabul qilish (qisman), bekor qilish, kelishmovchilik, reversal */
 export function CommandActionModal({
   command,
   action,
   onClose,
 }: {
   command: StockCommand;
-  action: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
+  action: 'accept' | 'cancel' | 'dispute' | 'reverse';
   onClose: () => void;
 }) {
   const { t } = useT();
@@ -459,7 +459,6 @@ export function CommandActionModal({
   );
   const titles = {
     accept: 'stock.accept',
-    review: 'stock.review',
     cancel: 'stock.cancel_rest',
     dispute: 'stock.dispute',
     reverse: 'stock.reverse',

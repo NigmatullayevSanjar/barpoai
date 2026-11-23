@@ -2,12 +2,12 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '@/lib/api';
 import { errorMessage, useT } from '@/lib/i18n';
-import { formatDate, formatMoney, formatQuantity } from '@/lib/format';
+import { formatDate, formatQuantity } from '@/lib/format';
 import { Alert, Badge, EmptyState, PageHeader, type Tone } from '@/components/ui';
 import { displayCurrency } from '@/lib/currency-store';
 import { monthLabel } from '@/features/finance/model';
 import { MonthlyChart } from './charts';
-import { pct, useDashboard, useMyEarnings, type Dashboard } from './model';
+import { pct, useDashboard, type Dashboard } from './model';
 import {
   Filters,
   KindsCard,
@@ -24,7 +24,7 @@ import {
   periodNote,
 } from './widgets';
 
-type DashRole = 'foreman' | 'manager' | 'brigadier' | 'warehouse_manager' | 'accountant' | 'financier';
+type DashRole = 'foreman' | 'manager' | 'warehouse_manager' | 'accountant' | 'financier';
 
 /**
  * Umumiy ramka: rolga xos sarlavha (Figma), obyekt/davr filtri, yuklanish va xato holati, pastda manba izohi.
@@ -96,13 +96,6 @@ function AttentionCard({ d }: { d: Dashboard }) {
       to: '/app/stock',
       tone: 'info',
     });
-  if (d.stock && d.stock.pending_requests > 0)
-    items.push({
-      key: 'requests',
-      text: t('dash.requests_pending_n', { n: d.stock.pending_requests }),
-      to: '/app/stock',
-      tone: 'info',
-    });
   return (
     <Section
       title={t('dash.sec.attention')}
@@ -168,10 +161,10 @@ export function ForemanDashboard() {
             )}
             {d.stock && (
               <Kpi
-                label={t('dash.kpi.requests')}
-                value={d.stock.pending_requests}
-                sub={t('dash.transfers_pending_n', { n: d.stock.pending_transfers })}
-                to="/app/stock"
+                label={t('dash.kpi.transfers')}
+                value={d.stock.pending_transfers}
+                sub={t('dash.kpi.transfers_sub')}
+                to="/app/stock?tab=movements&kind=transfer"
               />
             )}
           </div>
@@ -270,9 +263,9 @@ export function ManagerDashboard() {
               ) : (
                 d.stock && (
                   <Kpi
-                    label={t('dash.kpi.requests')}
-                    value={d.stock.pending_requests}
-                    sub={t('dash.transfers_pending_n', { n: d.stock.pending_transfers })}
+                    label={t('dash.kpi.transfers')}
+                    value={d.stock.pending_transfers}
+                    sub={t('dash.kpi.transfers_sub')}
                     to="/app/stock"
                   />
                 )
@@ -309,136 +302,6 @@ export function ManagerDashboard() {
                 <ProjectsTable items={d.projects.items} empty={t('dash.no_projects_admin')} />
               </Section>
             )}
-          </>
-        );
-      }}
-    </Frame>
-  );
-}
-
-/** V-C (D23): brigadirning akkord hisobi — faqat o'ziniki; summalar serverdan. */
-function EarningsCard() {
-  const { t, lang } = useT();
-  const query = useMyEarnings();
-  const e = query.data;
-  if (!e) return null;
-  const money = (v: string) => `${formatMoney(v, lang, false)} ${displayCurrency()}`;
-  return (
-    <Section title={t('dash.earn.title')} sub={t('dash.earn.sub')} pad>
-      <div className="grid-4" style={{ marginBottom: 12 }}>
-        <Kpi label={t('dash.earn.month')} value={money(e.totals.earned_month)} />
-        <Kpi
-          label={t('dash.earn.total')}
-          value={money(e.totals.earned)}
-          sub={`${t('dash.earn.in_payroll')}: ${money(e.totals.in_payroll)}`}
-        />
-        <Kpi
-          label={t('dash.earn.paid')}
-          value={money(e.totals.paid)}
-          sub={`${t('dash.earn.advances')}: ${money(e.totals.advances)}`}
-        />
-        <Kpi
-          label={t('dash.earn.balance')}
-          value={money(e.totals.balance)}
-          tone={Number(e.totals.balance) > 0 ? 'success' : undefined}
-        />
-      </div>
-      {e.entries.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>
-          {t('dash.earn.empty')}
-        </p>
-      ) : (
-        <div className="table-wrap">
-          <table className="table table-dense">
-            <thead>
-              <tr>
-                <th>{t('common.date')}</th>
-                <th>{t('dash.earn.project')}</th>
-                <th>{t('reports.col.work')}</th>
-                <th className="num">{t('reports.col.qty')}</th>
-                <th className="num">{t('reports.labor_amount')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {e.entries.slice(0, 10).map((r) => (
-                <tr key={r.id}>
-                  <td>{formatDate(r.report_date, lang)}</td>
-                  <td>{r.project_name}</td>
-                  <td>{r.description}</td>
-                  <td className="num">{formatQuantity(r.quantity, r.unit_id)}</td>
-                  <td className="num">
-                    {r.amount === null ? (
-                      <span className="muted">{t('dash.earn.rate_missing')}</span>
-                    ) : (
-                      money(r.amount)
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Section>
-  );
-}
-/** Brigadir paneli (Figma): o'z vazifalari, qabul kutayotgan jo'natmalar, talabnomalar. */
-export function BrigadierDashboard() {
-  const { t } = useT();
-  return (
-    <Frame role="brigadier">
-      {(d) => {
-        const onTime = d.tasks ? pct(d.tasks.open - d.tasks.overdue, d.tasks.open) : null;
-        return (
-          <>
-            <div className="grid-4">
-              {d.tasks && (
-                <Kpi
-                  label={t('dash.kpi.my_tasks')}
-                  value={d.tasks.my_open}
-                  sub={t('dash.kpi.my_tasks_sub', { overdue: d.tasks.overdue })}
-                  tone={d.tasks.overdue > 0 ? 'danger' : undefined}
-                  to="/app/tasks"
-                />
-              )}
-              {d.tasks && (
-                <Kpi
-                  label={t('dash.kpi.on_time')}
-                  value={onTime === null ? '—' : `${onTime}%`}
-                  sub={t('dash.kpi.on_time_sub')}
-                />
-              )}
-              {d.stock && (
-                <Kpi
-                  label={t('dash.kpi.transfers')}
-                  value={d.stock.pending_transfers}
-                  sub={t('dash.kpi.transfers_sub')}
-                  tone={d.stock.pending_transfers > 0 ? 'warning' : undefined}
-                  to="/app/stock"
-                />
-              )}
-              {d.stock && (
-                <Kpi
-                  label={t('dash.kpi.requests')}
-                  value={d.stock.pending_requests}
-                  sub={t('dash.kpi.requests_sub')}
-                  to="/app/stock"
-                />
-              )}
-            </div>
-            <EarningsCard />
-            <div className="grid-main">
-              {d.tasks && (
-                <Section title={t('dash.sec.recent_tasks')} to="/app/tasks">
-                  <TaskRows items={d.tasks.items} empty={t('dash.no_tasks')} />
-                </Section>
-              )}
-              {d.stock && (
-                <Section title={t('dash.sec.materials')} sub={t('dash.sec.materials_sub')} to="/app/stock">
-                  <LowItems items={d.stock.low_items} empty={t('dash.no_low')} />
-                </Section>
-              )}
-            </div>
           </>
         );
       }}
@@ -532,11 +395,6 @@ export function WarehouseDashboard() {
                         key: 'transfers',
                         text: t('dash.transfers_pending_n', { n: d.stock.pending_transfers }),
                         n: d.stock.pending_transfers,
-                      },
-                      {
-                        key: 'requests',
-                        text: t('dash.requests_pending_n', { n: d.stock.pending_requests }),
-                        n: d.stock.pending_requests,
                       },
                     ].map((it) => (
                       <li key={it.key} style={{ borderBottom: '1px solid var(--border)' }}>

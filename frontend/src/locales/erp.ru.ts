@@ -54,8 +54,6 @@ export const erpRu: Record<string, string> = {
   'projects.zones_empty': 'Зоны ещё не добавлены',
   'projects.area_m2': 'Площадь, м²',
   'projects.area_invalid': 'Положительное число, не более 2 знаков после точки (например 1250.50)',
-  'projects.brigade_percent': 'Ставка бригады, % (от сметной цены)',
-  'projects.brigade_percent_invalid': 'Число от 0 до 100, не более 2 знаков после точки',
   'projects.date_order': 'Дата окончания не может быть раньше начала',
   'projects.image': 'Фото объекта',
   'projects.image_pick': 'Выбрать фото',

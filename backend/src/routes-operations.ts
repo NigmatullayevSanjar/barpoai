@@ -43,7 +43,6 @@ import {
 import { createStock, transitionStock, reverseStock, reconcileStock, similarMaterials } from './inventory.js';
 import { postFinance, reverseFinance, accountingMonthSql, journalWithDocSql } from './finance.js';
 import { money } from './money.js';
-import { autoRateSql, rateGroupSql } from './earnings.js';
 import { estimatePriceSummary } from './estimate-price.js';
 /** Egasi qarori (2026-10-16): admin materiallarni faqat ko'radi; smeta muharriridagi "Yangi material" ham. */
 async function canCreateMaterial(db: Db, actor: Row) {
@@ -209,7 +208,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/stock/custody',
-    summary: 'Biriktirilgan brigadirning obyekt qoldiq hisobi',
+    summary: 'Biriktirilgan prorabning obyekt qoldiq hisobi',
     permission: 'employees.manage',
     action: 'create',
     body: z.strictObject({ project_id: uuid, custodian_id: uuid }),
@@ -218,7 +217,7 @@ export function operationRoutes(add: (r: Endpoint) => void) {
       await projectScope(db, actor, body.project_id);
       await one(
         db,
-        "SELECT u.id FROM users u JOIN project_assignments a ON a.tenant_id=u.tenant_id AND a.user_id=u.id WHERE u.tenant_id=$1 AND u.id=$2 AND u.role='brigadier' AND u.active AND a.project_id=$3",
+        "SELECT u.id FROM users u JOIN project_assignments a ON a.tenant_id=u.tenant_id AND a.user_id=u.id WHERE u.tenant_id=$1 AND u.id=$2 AND u.role='foreman' AND u.active AND a.project_id=$3",
         [actor.tenant_id, body.custodian_id, body.project_id],
       );
       return one(
@@ -231,14 +230,14 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'GET',
     path: '/v1/stock/accounts',
-    summary: 'Ruxsatli ombor va brigadir hisoblari',
+    summary: 'Ruxsatli ombor va prorab hisoblari',
     permission: 'stock.read',
     query: projectQuery,
     handler: async ({ db, actor, query }) => {
       await projectScope(db, actor, query.project_id);
       const rows = (
         await db.query(
-          `SELECT a.* FROM stock_accounts a WHERE a.tenant_id=$1 AND a.project_id=$2 AND ($3<>'brigadier' OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4)) ORDER BY a.id LIMIT $5 OFFSET $6`,
+          `SELECT a.* FROM stock_accounts a WHERE a.tenant_id=$1 AND a.project_id=$2 AND ($3<>'foreman' OR a.custodian_id IS NULL OR a.custodian_id=$4) AND ($3<>'warehouse_manager' OR a.warehouse_id IS NULL OR EXISTS(SELECT 1 FROM warehouse_assignments w WHERE w.tenant_id=a.tenant_id AND w.warehouse_id=a.warehouse_id AND w.user_id=$4)) ORDER BY a.id LIMIT $5 OFFSET $6`,
           [actor.tenant_id, query.project_id, actor.role, actor.id, query.limit, query.offset],
         )
       ).rows;
@@ -278,13 +277,13 @@ export function operationRoutes(add: (r: Endpoint) => void) {
   add({
     method: 'POST',
     path: '/v1/stock/commands/:id/actions',
-    summary: 'Qisman qabul, sarfni tekshirish, qoldiqni bekor qilish yoki dispute',
+    summary: 'Chiqim yoki qaytarishni qisman qabul qilish, qoldiqni bekor qilish yoki dispute (sarf tasdiqsiz)',
     page: 'stock',
     action: 'update',
     params: idParams,
     body: z.strictObject({
       version,
-      action: z.enum(['accept', 'review', 'cancel', 'dispute']),
+      action: z.enum(['accept', 'cancel', 'dispute']),
       quantity: qty.optional(),
       reason: reason.optional(),
     }),
@@ -460,7 +459,6 @@ export function operationRoutes(add: (r: Endpoint) => void) {
           by_zone: pick('zone'),
           by_section: pick('section'),
         },
-        // D32: `auto_labor_rate` — avtomatik akkord stavkasi; guruh ko'rsatkichlari bir marta hisoblanadi (4 000+ qator)
         lines: (
           await db.query(
             `SELECT l.*,m.name material_name,z.name zone_name,
@@ -470,14 +468,8 @@ export function operationRoutes(add: (r: Endpoint) => void) {
                  ELSE (SELECT (coalesce(sum(p.quantity),0)+coalesce((SELECT sum(c.quantity_delta) FROM progress_corrections c JOIN progress_entries pe ON pe.tenant_id=c.tenant_id AND pe.id=c.progress_entry_id WHERE pe.tenant_id=l.tenant_id AND ${sameWorkSql('pe.estimate_line_id')}),0))::text FROM progress_entries p WHERE p.tenant_id=l.tenant_id AND ${sameWorkSql('p.estimate_line_id')}) END fact_quantity,
                CASE WHEN l.kind='material'
                  THEN (SELECT coalesce(-sum(j.amount),0)::text FROM journal_entries j JOIN stock_commands c ON c.tenant_id=j.tenant_id AND c.id=j.stock_command_id WHERE j.tenant_id=l.tenant_id AND ${sameWorkSql('c.estimate_line_id')} AND c.kind='consumption' AND j.account='inventory')
-                 ELSE NULL END fact_value,
-               (${autoRateSql})::text auto_labor_rate
+                 ELSE NULL END fact_value
              FROM estimate_lines l LEFT JOIN materials m ON m.id=l.material_id LEFT JOIN zones z ON z.id=l.zone_id
-               JOIN projects p ON p.tenant_id=l.tenant_id AND p.id=l.project_id
-               LEFT JOIN (SELECT g.category,coalesce(g.zone_id::text,'') zone_key,${rateGroupSql} FROM estimate_lines g
-                          WHERE g.tenant_id=$1 AND g.estimate_id=$2 AND g.archived_at IS NULL AND g.category IS NOT NULL
-                          GROUP BY g.category,coalesce(g.zone_id::text,'')) gr
-                 ON gr.category=l.category AND gr.zone_key=coalesce(l.zone_id::text,'')
              WHERE l.tenant_id=$1 AND l.estimate_id=$2 AND l.archived_at IS NULL ORDER BY l.position,l.id`,
             [actor.tenant_id, params.id],
           )

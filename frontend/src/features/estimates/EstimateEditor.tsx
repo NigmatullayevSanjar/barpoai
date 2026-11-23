@@ -21,7 +21,6 @@ import {
   normalizeNumber,
   toApiLine,
   totalOf,
-  trimZeros,
   useUnits,
   useZones,
   validateLine,
@@ -187,9 +186,6 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                 {t('est.col.unit_price')} (UZS)
               </th>
               <th className="num" style={{ width: 150 }}>
-                {t('est.col.labor_rate')}
-              </th>
-              <th className="num" style={{ width: 150 }}>
                 {t('est.col.total')}
               </th>
               <th style={{ width: 160 }}>{t('est.col.note')}</th>
@@ -199,7 +195,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
           <tbody>
             {lines.length === 0 && (
               <tr>
-                <td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 24 }}>
+                <td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>
                   {t('est.no_lines')}
                 </td>
               </tr>
@@ -400,20 +396,6 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
                     />
                     {e.unit_price && <span className="cell-error">{e.unit_price}</span>}
                   </td>
-                  <td>
-                    {l.kind !== 'material' && (
-                      // V-C (D23): brigada stavkasi, so'm/birlik; bo'sh — avtomatik stavka (D32, placeholder'da) ishlaydi
-                      <NumericInput
-                        className="input num"
-                        inputMode="decimal"
-                        value={l.labor_rate}
-                        placeholder={l.auto_labor_rate ? trimZeros(l.auto_labor_rate) : undefined}
-                        title={l.auto_labor_rate ? t('est.labor_rate_auto_hint') : undefined}
-                        aria-label={t('est.col.labor_rate')}
-                        onChange={(ev) => update(l.key, { labor_rate: ev.target.value })}
-                      />
-                    )}
-                  </td>
                   <td className="cell-calc">{formatMoney(totalOf(l), lang, false, 'UZS')}</td>
                   <td>
                     <input
@@ -465,7 +447,7 @@ function Editor({ projectId, existing }: { projectId: string; existing: Estimate
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={11} style={{ textAlign: 'right' }}>
+              <td colSpan={10} style={{ textAlign: 'right' }}>
                 {t('est.total')}
               </td>
               <td className="cell-calc">{formatMoney(total, lang, true, 'UZS')}</td>

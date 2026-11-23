@@ -57,10 +57,6 @@ export type EstimateLine = {
   /** S3: material kim beradi (buyurtmachi — faqat material qatorida) */
   supplied_by: SuppliedBy;
   unit_price?: string;
-  /** V-C: brigada stavkasi (so'm/birlik), faqat ish qatorlari; narx huquqisiz kelmaydi */
-  labor_rate?: string | null;
-  /** D32: avtomatik stavka (Form 5 ish qatori mehnat resurslaridan yoki narx × obyekt foizi); narx huquqisiz kelmaydi */
-  auto_labor_rate?: string | null;
   total?: string;
   months: { month: string; quantity: string }[];
   fact_quantity: string;
@@ -146,9 +142,6 @@ export type LineDraft = {
   work_quantity: string;
   loss_percent: string;
   unit_price: string;
-  labor_rate: string;
-  /** D32: serverdagi avtomatik stavka — faqat ko'rsatish uchun, yuborilmaydi */
-  auto_labor_rate: string;
   note: string;
   months: { month: string; quantity: string }[];
 };
@@ -172,8 +165,6 @@ export const newLine = (partial: Partial<LineDraft> = {}): LineDraft => ({
   work_quantity: '',
   loss_percent: '',
   unit_price: '',
-  labor_rate: '',
-  auto_labor_rate: '',
   note: '',
   months: [],
   ...partial,
@@ -198,8 +189,6 @@ export const fromLine = (l: EstimateLine): LineDraft => ({
   work_quantity: l.work_quantity !== null ? trimZeros(l.work_quantity) : '',
   loss_percent: Number(l.loss_percent) ? trimZeros(l.loss_percent) : '',
   unit_price: l.unit_price !== undefined ? trimZeros(l.unit_price) : '',
-  labor_rate: l.labor_rate ? trimZeros(l.labor_rate) : '',
-  auto_labor_rate: l.auto_labor_rate ?? '',
   note: l.note ?? '',
   months: l.months.map((m) => ({ month: m.month.slice(0, 10), quantity: trimZeros(m.quantity) })),
 });
@@ -251,7 +240,6 @@ export function toApiLine(d: LineDraft, position: number) {
     description: d.description.trim(),
     unit_id: d.unit_id,
     unit_price: normalizeNumber(d.unit_price),
-    ...(d.kind !== 'material' && d.labor_rate.trim() ? { labor_rate: normalizeNumber(d.labor_rate) } : {}),
     position,
     ...(d.category.trim() ? { category: d.category.trim() } : {}),
     ...(d.norm_code.trim() ? { norm_code: d.norm_code.trim() } : {}),

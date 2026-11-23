@@ -31,7 +31,7 @@ export type Balance = {
 export type Overview = {
   accounts: StockAccount[];
   balances: Balance[];
-  pending: { transfers: number; consumptions: number; returns: number; requests: number };
+  pending: { transfers: number; returns: number };
 };
 export type CommandKind =
   'opening' | 'receipt' | 'transfer' | 'consumption' | 'return' | 'adjustment' | 'reversal';
@@ -81,44 +81,6 @@ export type LedgerRow = {
   actor_name: string | null;
   running_quantity: string;
 };
-export type MaterialRequest = {
-  id: string;
-  project_id: string;
-  material_id: string;
-  material_name: string;
-  unit_id: string;
-  zone_id: string | null;
-  zone_name: string | null;
-  requested_by: string;
-  requested_by_name: string;
-  quantity: string;
-  needed_by: string | null;
-  note: string | null;
-  status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
-  reviewed_by_name: string | null;
-  review_note: string | null;
-  fulfilled_command_id: string | null;
-  version: number;
-  created_at: string;
-  group_id: string;
-  position: number;
-};
-/** V-B (D23): talabnoma — umumiy `group_id` bilan birlashgan qatorlar; holati qatorlardan (serverda) hisoblanadi. */
-export type MaterialRequestGroup = {
-  group_id: string;
-  project_id: string;
-  status: MaterialRequest['status'];
-  created_at: string;
-  requested_by: string;
-  requested_by_name: string;
-  zone_id: string | null;
-  zone_name: string | null;
-  needed_by: string | null;
-  note: string | null;
-  lines: MaterialRequest[];
-};
-/** GET /v1/stock/requests `summary` — Figma talabnomalar KPI: talabnomalar soni holat bo'yicha (ro'yxat doirasida). */
-export type RequestsSummary = { total: number; pending: number; fulfilled: number; rejected: number };
 export const statusTone: Record<CommandStatus, Tone> = {
   pending: 'warning',
   partial: 'info',
@@ -154,20 +116,10 @@ export const useCommands = (
       ),
     enabled: Boolean(projectId),
   });
-export const useRequests = (projectId: string, page: { offset: number; limit: number }) =>
-  useQuery({
-    queryKey: ['stock-requests', projectId, page.offset, page.limit],
-    queryFn: () =>
-      api<ListResponse<MaterialRequestGroup> & { summary?: RequestsSummary }>(
-        `/v1/stock/requests${qs({ project_id: projectId, limit: page.limit, offset: page.offset })}`,
-      ),
-    enabled: Boolean(projectId),
-  });
 export const stockKeys = [
   'stock-overview',
   'customer-materials',
   'stock-commands',
-  'stock-requests',
   'stock-ledger',
   'notifications',
   'estimate',

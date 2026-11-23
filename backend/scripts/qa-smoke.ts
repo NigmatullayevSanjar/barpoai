@@ -135,23 +135,17 @@ try {
 
   // 2. Xodimlar (har rol), birinchi kirishda parol almashtirish
   const foreman = await employee(admin, 'foreman', 'QA Prorab');
-  const brigadier = await employee(admin, 'brigadier', 'QA Brigadir');
   const warehouse = await employee(admin, 'warehouse_manager', 'QA Omborchi');
   const financier = await employee(admin, 'financier', 'QA Finansist');
   const accountant = await employee(admin, 'accountant', 'QA Buxgalter');
   const manager = await employee(admin, 'manager', 'QA Bosh muhandis');
   await call('GET', '/v1/auth/me', undefined, foreman.token);
   passed.push(
-    '6 rol xodimi yaratildi; birinchi kirishda parol almashtirildi (eski sessiyalar bekor), yangi sessiya ishlaydi',
+    '5 rol xodimi yaratildi; birinchi kirishda parol almashtirildi (eski sessiyalar bekor), yangi sessiya ishlaydi',
   );
 
   // 3. Obyekt, zonalar, biriktirish, standart ombor
-  const project = await call(
-    'POST',
-    '/v1/projects',
-    { name: `QA obyekt ${STAMP}`, brigade_percent: '20' },
-    admin,
-  );
+  const project = await call('POST', '/v1/projects', { name: `QA obyekt ${STAMP}` }, admin);
   const block = await call(
     'POST',
     `/v1/projects/${project.id}/zones`,
@@ -169,7 +163,7 @@ try {
   ).items;
   assert.equal(warehouses.length, 1, 'obyekt bilan "Asosiy ombor" yaratiladi');
   const whAccount = warehouses[0].account_id as string;
-  for (const u of [foreman, brigadier, financier, accountant, manager])
+  for (const u of [foreman, financier, accountant, manager])
     await call('POST', `/v1/employees/${u.id}/assignments`, { project_id: project.id }, admin);
   await call(
     'POST',
@@ -177,9 +171,7 @@ try {
     { project_id: project.id, warehouse_id: warehouses[0].id },
     admin,
   );
-  passed.push(
-    'Obyekt (brigada foizi 20%), blok va qavat zonasi, standart ombor, xodimlar biriktirildi',
-  );
+  passed.push('Obyekt, blok va qavat zonasi, standart ombor, xodimlar biriktirildi');
 
   // 4. Material va kirim (ombor mudiri); admin material yarata olmaydi (D18)
   await call('POST', '/v1/materials', { name: 'QA Sement admin', unit_id: 'kg' }, admin, 403);
@@ -209,7 +201,7 @@ try {
   assert.equal(whBalance.quantity, '1000.000000');
   passed.push('Ombor mudiri material yaratdi va 1000 kg kirim qildi (admin 403); qoldiq 1000');
 
-  // 5. Smeta (bosh muhandis): ish qatori qavatga, brigada stavkasi 100 000; material qatori
+  // 5. Smeta (bosh muhandis): ish qatori qavatga; material qatori
   await call(
     'POST',
     '/v1/estimates',
@@ -234,7 +226,6 @@ try {
           unit_id: 'm3',
           quantity: '100',
           unit_price: '250000',
-          labor_rate: '100000',
           zone_id: floor.id,
         },
         {
@@ -262,11 +253,11 @@ try {
     'Smeta: jami 25 600 000 serverdan; prorabga narx ustunlari kelmaydi; omborchi smeta yarata olmaydi',
   );
 
-  // 6. Jo'natish → brigadir qabuli → sarf → prorab tasdig'i → xarajat 120 000
+  // 6. Chiqim (so'rovsiz) → prorab qabuli → prorab sarfi tasdiqsiz xarajat 120 000
   const custody = await call(
     'POST',
     '/v1/stock/custody',
-    { project_id: project.id, custodian_id: brigadier.id },
+    { project_id: project.id, custodian_id: foreman.id },
     admin,
   );
   const transfer = await call(
@@ -279,7 +270,7 @@ try {
       from_account_id: whAccount,
       to_account_id: custody.id,
       quantity: '300',
-      reason: 'QA jo‘natish',
+      reason: 'QA chiqim',
     },
     warehouse.token,
   );
@@ -287,7 +278,7 @@ try {
     'POST',
     `/v1/stock/commands/${transfer.id}/actions`,
     { version: 1, action: 'accept', quantity: '300' },
-    brigadier.token,
+    foreman.token,
   );
   const consumption = await call(
     'POST',
@@ -302,70 +293,34 @@ try {
       zone_id: floor.id,
       reason: 'QA sarf',
     },
-    brigadier.token,
-  );
-  await call(
-    'POST',
-    `/v1/stock/commands/${consumption.id}/actions`,
-    { version: 1, action: 'review' },
-    brigadier.token,
-    403,
-  );
-  await call(
-    'POST',
-    `/v1/stock/commands/${consumption.id}/actions`,
-    { version: 1, action: 'review' },
     foreman.token,
+  );
+  await call(
+    'POST',
+    `/v1/stock/commands/${consumption.id}/actions`,
+    { version: 2, action: 'review' },
+    foreman.token,
+    400,
   );
   const dash1 = await call('GET', `/v1/projects/${project.id}/dashboard`, undefined, admin);
   assert.equal(dash1.actual_cost, '120000.00');
   passed.push(
-    'Jo‘natish 300 kg qabul qilindi, 100 kg sarf prorab tasdig‘i bilan 120 000 xarajat bo‘ldi; brigadir o‘z sarfini tasdiqlay olmaydi',
+    'Chiqim 300 kg prorab tomonidan qabul qilindi, 100 kg sarf tasdiqsiz 120 000 xarajat bo‘ldi (tasdiqlash amali yo‘q)',
   );
 
-  // 7. Ko'p qatorli talabnoma → ombor mudiri bajaradi
-  const request = await call(
-    'POST',
-    '/v1/stock/requests',
-    {
-      project_id: project.id,
-      lines: [{ material_id: material.id, quantity: '50' }],
-      note: 'QA talabnoma',
-    },
-    brigadier.token,
-  );
-  await call(
-    'POST',
-    `/v1/stock/requests/${request.lines[0].id}/actions`,
-    { version: 1, action: 'fulfill', from_account_id: whAccount },
-    admin,
-    403,
-  );
-  const fulfilled = await call(
-    'POST',
-    `/v1/stock/requests/${request.lines[0].id}/actions`,
-    { version: 1, action: 'fulfill', from_account_id: whAccount },
-    warehouse.token,
-  );
-  assert.equal(fulfilled.status, 'fulfilled');
-  const requests = await call(
-    'GET',
-    `/v1/stock/requests?project_id=${project.id}`,
-    undefined,
-    admin,
-  );
-  assert.equal(requests.items[0].status, 'fulfilled');
-  passed.push('Talabnoma ombor mudiri tomonidan jo‘natish bilan bajarildi (admin 403)');
+  // 7. Talabnomalar olib tashlangan
+  await call('GET', `/v1/stock/requests?project_id=${project.id}`, undefined, admin, 404);
+  passed.push('Talabnomalar yo‘q: /v1/stock/requests 404');
 
-  // 8. Vazifa: smeta qatoriga bog'langan, brigadir bajaradi, prorab qabul qiladi
+  // 8. Vazifa: smeta qatoriga bog'langan, prorab bajaradi, bosh muhandis qabul qiladi
   const task = await call(
     'POST',
     '/v1/tasks',
     {
       project_id: project.id,
       title: 'QA beton quyish',
-      assignee_id: brigadier.id,
-      reviewer_id: foreman.id,
+      assignee_id: foreman.id,
+      reviewer_id: manager.id,
       priority: 'high',
       estimate_line_id: laborLine.id,
       planned_start: today,
@@ -376,34 +331,34 @@ try {
     'POST',
     `/v1/tasks/${task.id}/transition`,
     { version: 1, status: 'in_progress' },
-    brigadier.token,
+    foreman.token,
   );
   await call(
     'POST',
     `/v1/tasks/${task.id}/transition`,
     { version: 2, status: 'submitted' },
-    brigadier.token,
-  );
-  await call(
-    'POST',
-    `/v1/tasks/${task.id}/transition`,
-    { version: 3, status: 'accepted' },
-    brigadier.token,
-    403,
+    foreman.token,
   );
   await call(
     'POST',
     `/v1/tasks/${task.id}/transition`,
     { version: 3, status: 'accepted' },
     foreman.token,
+    403,
+  );
+  await call(
+    'POST',
+    `/v1/tasks/${task.id}/transition`,
+    { version: 3, status: 'accepted' },
+    manager.token,
   );
   const taskDetail = await call('GET', `/v1/tasks/${task.id}`, undefined, admin);
   assert.deepEqual([taskDetail.status, taskDetail.estimate_line_name], ['accepted', 'QA Beton']);
   passed.push(
-    'Vazifa smeta qatori bilan yaratildi; brigadir boshladi va topshirdi, prorab qabul qildi (brigadir o‘zini qabul qila olmaydi)',
+    'Vazifa smeta qatori bilan yaratildi; prorab boshladi va topshirdi, bosh muhandis qabul qildi (prorab o‘zini qabul qila olmaydi)',
   );
 
-  // 9. Kunlik hisobot → qabul → progress, akkord, tuzatish, qavat matritsasi
+  // 9. Kunlik hisobot (prorab) → qabul (bosh muhandis) → progress, tuzatish, qavat matritsasi
   const report = await call(
     'POST',
     '/v1/reports',
@@ -416,28 +371,35 @@ try {
       estimate_line_id: laborLine.id,
       zone_id: floor.id,
     },
-    brigadier.token,
+    foreman.token,
   );
   await call(
     'POST',
     `/v1/reports/${report.id}/review`,
     { version: 1, action: 'accepted', reason: 'QA tekshirildi' },
     foreman.token,
-  );
-  const reportBrig = await call('GET', `/v1/reports/${report.id}`, undefined, brigadier.token);
-  assert.deepEqual(
-    [reportBrig.progress.labor_rate, reportBrig.progress.labor_amount],
-    ['100000.00', '4000000.00'],
-  );
-  assert.equal(
-    (await call('GET', `/v1/reports/${report.id}`, undefined, foreman.token)).progress.labor_amount,
-    undefined,
+    403,
   );
   await call(
     'POST',
-    `/v1/progress-entries/${reportBrig.progress.id}/corrections`,
+    `/v1/reports/${report.id}/review`,
+    { version: 1, action: 'accepted', reason: 'QA tekshirildi' },
+    manager.token,
+  );
+  const reportDone = await call('GET', `/v1/reports/${report.id}`, undefined, manager.token);
+  assert.deepEqual(
+    [
+      reportDone.progress.quantity,
+      reportDone.progress.labor_rate,
+      reportDone.progress.labor_amount,
+    ],
+    ['40.000000', undefined, undefined],
+  );
+  await call(
+    'POST',
+    `/v1/progress-entries/${reportDone.progress.id}/corrections`,
     { quantity_delta: '-5', reason: 'QA qayta o‘lchash' },
-    foreman.token,
+    manager.token,
   );
   const matrix = await call(
     'GET',
@@ -450,7 +412,7 @@ try {
   );
   assert.deepEqual([cell.plan, cell.fact, cell.percent], ['100.000000', '35.000000', '35.0']);
   passed.push(
-    'Hisobot qabul qilindi: stavka 100 000 qotirildi (4 000 000), prorab summani ko‘rmaydi; tuzatish −5 → qavat matritsasida 35 / 100 (35 %)',
+    'Hisobot prorab yozdi, bosh muhandis qabul qildi (prorab 403), akkord yo‘q; tuzatish −5 → qavat matritsasida 35 / 100 (35 %)',
   );
 
   // 10. Moliya (buxgalter): kassa, tushum, yetkazuvchi invoysi kirimga bog'langan, to'lov
@@ -531,11 +493,17 @@ try {
     'Tushum 10 000 000, kirimga bog‘langan invoys 1 200 000 to‘landi: obyekt kartasida fakt 120 000, to‘langan 1 200 000, qarz 0; prorab moliyani ko‘rmaydi',
   );
 
-  // 11. Ish haqi: kutilayotgan akkord 3 500 000 → davr yopildi → avans 500 000 → to'lov (avans avval)
+  // 11. Ish haqi: prorab oklad 3 500 000 → davr yopildi → avans 500 000 → to'lov (avans avval)
   const period = await call(
     'POST',
     '/v1/finance/payroll/periods',
     { project_id: project.id, month: monthStart },
+    accountant.token,
+  );
+  await call(
+    'POST',
+    `/v1/finance/payroll/periods/${period.id}/entries`,
+    { employee_id: foreman.id, base_salary: '3500000' },
     accountant.token,
   );
   const payroll1 = await call(
@@ -544,10 +512,7 @@ try {
     undefined,
     accountant.token,
   );
-  assert.deepEqual(
-    payroll1.periods[0].piece_pending.map((p: any) => [p.employee_id, p.amount]),
-    [[brigadier.id, '3500000.00']],
-  );
+  assert.equal(payroll1.periods[0].piece_pending, undefined);
   // Davrni yopish va to'lash — payroll sahifasida 'update' ruxsati (standart siyosatda admin; buxgalterga admin Ruxsatlar sahifasidan beradi)
   await call(
     'POST',
@@ -568,11 +533,8 @@ try {
     undefined,
     accountant.token,
   );
-  const entry = payroll2.entries.find((e: any) => e.employee_id === brigadier.id);
-  assert.deepEqual(
-    [entry.piece_rate, entry.net, entry.status],
-    ['3500000.00', '3500000.00', 'posted'],
-  );
+  const entry = payroll2.entries.find((e: any) => e.employee_id === foreman.id);
+  assert.deepEqual([entry.net, entry.status], ['3500000.00', 'posted']);
   const laborDoc = (
     await call(
       'GET',
@@ -590,7 +552,7 @@ try {
       amount: '500000',
       counterparty_id: laborDoc.counterparty_id,
       cash_account_id: cash.id,
-      description: 'QA brigadirga avans',
+      description: 'QA prorabga avans',
       document_date: today,
     },
     accountant.token,
@@ -609,39 +571,23 @@ try {
     [paid.status, paid.advance_applied, paid.paid_cash],
     ['paid', '500000.00', '3000000.00'],
   );
-  const earnings = await call('GET', '/v1/me/earnings', undefined, brigadier.token);
-  assert.deepEqual(
-    [
-      earnings.totals.earned,
-      earnings.totals.in_payroll,
-      earnings.totals.paid,
-      earnings.totals.advances,
-      earnings.totals.balance,
-    ],
-    ['3500000.00', '3500000.00', '3500000.00', '0.00', '0.00'],
-  );
-  await call('GET', `/v1/employees/${brigadier.id}/earnings`, undefined, brigadier.token, 403);
-  assert.equal(
-    (await call('GET', `/v1/employees/${brigadier.id}/earnings`, undefined, accountant.token))
-      .totals.earned,
-    '3500000.00',
-  );
+  await call('GET', '/v1/me/earnings', undefined, foreman.token, 404);
   const fin2 = (await call('GET', `/v1/projects/${project.id}`, undefined, admin)).finance;
   assert.deepEqual([fin2.fact_total, fin2.paid, fin2.debt], ['3620000.00', '4700000.00', '0.00']);
   passed.push(
-    'Ish haqi davri (admin yopdi, buxgalter 403): akkord 3 500 000 avtomatik yozildi; avans 500 000 to‘lovda avval hisoblandi, 3 000 000 kassadan; brigadir balansi 0; obyekt fakti 3 620 000',
+    'Ish haqi davri (admin yopdi, buxgalter 403): prorab oklad 3 500 000; avans 500 000 to‘lovda avval hisoblandi, 3 000 000 kassadan; akkord hisobi yo‘q (404); obyekt fakti 3 620 000',
   );
 
   // 12. Dashboard va ruxsat chegaralari
   const adminDash = await call('GET', '/v1/dashboard', undefined, admin);
-  assert.equal(adminDash.stock.pending_requests, 0);
-  assert.equal((await call('GET', '/v1/dashboard', undefined, brigadier.token)).finance, null);
+  assert.equal(adminDash.stock.pending_requests, undefined);
+  assert.equal((await call('GET', '/v1/dashboard', undefined, foreman.token)).finance, null);
   assert.equal(
-    (await call('GET', `/v1/projects/${project.id}`, undefined, brigadier.token)).finance,
+    (await call('GET', `/v1/projects/${project.id}`, undefined, foreman.token)).finance,
     null,
   );
   await call('GET', '/v1/audit', undefined, foreman.token, 403);
-  passed.push('Dashboard: admin to‘liq, brigadir moliyasiz; prorab auditni ko‘rmaydi');
+  passed.push('Dashboard: admin to‘liq, prorab moliyasiz va auditni ko‘rmaydi');
 
   // 13. Tozalash
   let cleanup: unknown = 'QA_KEEP=1 — ma‘lumot saqlandi';

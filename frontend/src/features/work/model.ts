@@ -88,9 +88,6 @@ export type ReportDetail = Report & {
     id: string;
     quantity: string;
     corrected_delta: string;
-    /** V-C: qotirilgan stavka va summa — faqat muallif va narx huquqi bor rollarga keladi */
-    labor_rate?: string | null;
-    labor_amount?: string | null;
     corrections: {
       id: string;
       quantity_delta: string;

@@ -165,7 +165,7 @@ export const uz: Record<string, string> = {
   'auth.to_login': 'Kirish sahifasiga',
   'auth.side_text': 'Obyektlar, smeta, ombor, moliya, vazifalar va hisobotlar — rahbar uchun bitta ekranda.',
   'auth.feature_1': 'Obyekt, smeta va budjet bitta joyda',
-  'auth.feature_2': 'Ombor harakati va brigadir materiallari nazoratda',
+  'auth.feature_2': 'Ombor harakati va prorab materiallari nazoratda',
   'auth.feature_3': 'Vazifalar, hisobotlar va Telegram bildirishnomalar',
   'auth.feature_4': 'Rol va sahifa bo‘yicha aniq ruxsatlar',
   'auth.blocked_title': 'Kompaniya hisobi bloklangan',

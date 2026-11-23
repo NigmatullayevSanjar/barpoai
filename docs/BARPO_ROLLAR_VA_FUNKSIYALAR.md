@@ -2,6 +2,8 @@
 
 > Sana: 2026-10-28. Holat: `main` (PR #19 gacha). Hujjat egasi uchun qisqa qo‘llanma: kim nima qila oladi, qaysi amal qaysi natijani beradi. Qoidalarning to‘liq manbasi — `docs/backend/BARPO_BUSINESS_RULES.md`, egasi qarorlari — `docs/TZ_VA_NARX_REJASI.md` (D1–D23).
 
+> **2026-11-23 o‘zgarish (PR #27):** brigadir roli olib tashlandi. Ombor mudiri materialni so‘rovsiz prorabga beradi («Chiqim»), prorab qabul qiladi va sarfni tasdiqsiz yozadi (darhol xarajat). Kunlik hisobotni prorab yozadi, bosh muhandis yoki mijoz admini qabul qiladi. Talabnomalar, akkord va brigadir avanslari yo‘q. Quyida brigadir haqidagi bandlar tarix uchun qoldi.
+
 ## 1. Tizim tuzilishi
 
 - **Platforma darajasi** — BARPO AI egasi va texnik jamoasi. Kompaniyalarni ochadi, tariflar va to‘lovlarni yuritadi, murojaatlarga javob beradi, xatolarni tuzatadi.

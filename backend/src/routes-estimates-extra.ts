@@ -414,7 +414,6 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
           ...(l.zone_id ? { zone_id: l.zone_id } : {}),
           ...(l.material_id ? { material_id: l.material_id } : {}),
           ...(l.norm !== null ? { norm: l.norm, work_quantity: l.work_quantity } : {}),
-          ...(l.labor_rate !== null ? { labor_rate: l.labor_rate } : {}),
           category: l.category,
           note: l.note,
           norm_code: l.norm_code,

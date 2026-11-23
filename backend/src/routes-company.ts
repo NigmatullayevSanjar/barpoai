@@ -89,12 +89,6 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     planned_start: date.nullable().optional(),
     planned_end: date.nullable().optional(),
     area_m2: area.nullable().optional(),
-    // V-C (D23): brigada stavkasining standart foizi (smeta birlik narxidan), 0..100
-    brigade_percent: z
-      .string()
-      .regex(/^(100|\d{1,2})(\.\d{1,2})?$/)
-      .nullable()
-      .optional(),
   });
   // Tugash boshlanishdan oldin bo'lmasin (ISO sanalar matn sifatida solishtiriladi); baza CHECK'i 409 o'rniga 400.
   const dateOrder = (start?: string | null, end?: string | null) =>
@@ -110,7 +104,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       dateOrder(body.planned_start, body.planned_end);
       const row = await one(
         db,
-        'INSERT INTO projects(tenant_id,name,code,address,customer_name,description,status,planned_start,planned_end,area_m2,brigade_percent) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+        'INSERT INTO projects(tenant_id,name,code,address,customer_name,description,status,planned_start,planned_end,area_m2) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [
           actor.tenant_id,
           body.name,
@@ -122,7 +116,6 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.planned_start ?? null,
           body.planned_end ?? null,
           body.area_m2 ?? null,
-          body.brigade_percent ?? null,
         ],
       );
       await db.query('INSERT INTO project_assignments VALUES($1,$2,$3)', [
@@ -183,7 +176,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       const row = await one(
         db,
         `UPDATE projects SET name=$3,code=$4,address=$5,customer_name=$6,description=$7,status=$8,planned_start=$9,planned_end=$10,
-           forecast_end=$11,actual_start=$12,actual_end=$13,area_m2=$14,image_file_id=$15,brigade_percent=$16,version=version+1 WHERE id=$1 AND version=$2 RETURNING *`,
+           forecast_end=$11,actual_start=$12,actual_end=$13,area_m2=$14,image_file_id=$15,version=version+1 WHERE id=$1 AND version=$2 RETURNING *`,
         [
           params.id,
           body.version,
@@ -200,7 +193,6 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           body.actual_end ?? null,
           body.area_m2 ?? null,
           body.image_file_id ?? null,
-          body.brigade_percent ?? null,
         ],
       );
       await audit(db, actor, 'project.update', row.id);
@@ -429,7 +421,6 @@ export function companyRoutes(add: (r: Endpoint) => void) {
   });
   const employeeRole = z.enum([
     'foreman',
-    'brigadier',
     'warehouse_manager',
     'financier',
     'accountant',
@@ -475,7 +466,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
           projectId,
           row.id,
         ]);
-        if (body.role === 'brigadier')
+        if (body.role === 'foreman')
           await db.query(
             'INSERT INTO stock_accounts(tenant_id,project_id,custodian_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
             [actor.tenant_id, projectId, row.id],
@@ -547,6 +538,12 @@ export function companyRoutes(add: (r: Endpoint) => void) {
       // Rol yoki faollik o'zgarsa sessiyalar bekor qilinadi; ism/telefon tahriri xodimni chiqarib yubormaydi.
       if (!body.active || user.role !== body.role)
         await db.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
+      // Prorabga aylangan xodim uchun biriktirilgan obyektlarda shaxsiy material hisobi
+      if (body.role === 'foreman' && user.role !== 'foreman')
+        await db.query(
+          'INSERT INTO stock_accounts(tenant_id,project_id,custodian_id) SELECT tenant_id,project_id,user_id FROM project_assignments WHERE tenant_id=$1 AND user_id=$2 ON CONFLICT DO NOTHING',
+          [actor.tenant_id, user.id],
+        );
       await audit(db, actor, 'employee.update', user.id);
       return row;
     },
@@ -571,8 +568,8 @@ export function companyRoutes(add: (r: Endpoint) => void) {
         body.project_id,
         params.id,
       ]);
-      // Brigadir uchun obyektdagi shaxsiy material hisobi avtomatik ochiladi.
-      if (target.role === 'brigadier')
+      // Prorab uchun obyektdagi shaxsiy material hisobi avtomatik ochiladi.
+      if (target.role === 'foreman')
         await db.query(
           'INSERT INTO stock_accounts(tenant_id,project_id,custodian_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
           [actor.tenant_id, body.project_id, params.id],

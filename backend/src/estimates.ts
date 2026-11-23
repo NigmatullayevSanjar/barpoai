@@ -207,8 +207,8 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
     const position = line.position ?? input.lines.indexOf(line);
     const row = await one(
       db,
-      `INSERT INTO estimate_lines(tenant_id,project_id,estimate_id,zone_id,material_id,kind,description,unit_id,quantity,norm,work_quantity,loss_percent,effective_quantity,unit_price,total,category,note,position,labor_rate,lineage_id,norm_code,resource_code,section_name,supplied_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,coalesce($20::uuid,gen_random_uuid()),$21,$22,$23,$24) RETURNING *`,
+      `INSERT INTO estimate_lines(tenant_id,project_id,estimate_id,zone_id,material_id,kind,description,unit_id,quantity,norm,work_quantity,loss_percent,effective_quantity,unit_price,total,category,note,position,lineage_id,norm_code,resource_code,section_name,supplied_by)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,coalesce($19::uuid,gen_random_uuid()),$20,$21,$22,$23) RETURNING *`,
       [
         actor.tenant_id,
         input.project_id,
@@ -228,7 +228,6 @@ export async function writeEstimate(db: Db, actor: Row, input: Row, existing?: R
         line.category || null,
         line.note || null,
         position,
-        line.kind === 'material' ? null : (line.labor_rate ?? null),
         lineage.get(line) ?? null,
         line.norm_code || null,
         line.resource_code || null,

@@ -91,10 +91,8 @@ export function companyExtraRoutes(add: (r: Endpoint) => void) {
             [actor.tenant_id, params.id],
           )
         : null;
-      // V-C: brigada foizi — pul ko'rsatkichi, faqat narx huquqi bilan (prorab ko'rmaydi, D20)
       return {
         ...project,
-        brigade_percent: prices ? project.brigade_percent : undefined,
         zones,
         members,
         warehouses,

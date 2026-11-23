@@ -26,7 +26,6 @@ const userParams = z.strictObject({ id: uuid, user_id: uuid });
 const docParams = z.strictObject({ id: uuid, doc_id: uuid });
 const tenantRoleEnum = z.enum([
   'foreman',
-  'brigadier',
   'warehouse_manager',
   'financier',
   'accountant',

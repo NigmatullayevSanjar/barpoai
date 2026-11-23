@@ -9,7 +9,6 @@ import {
   Plus,
   RotateCcw,
   ClipboardCheck,
-  X,
 } from 'lucide-react';
 import { api, ApiError, qs, type ListResponse } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -19,7 +18,6 @@ import {
   Alert,
   Badge,
   Button,
-  Input,
   Modal,
   PageHeader,
   SearchInput,
@@ -27,27 +25,22 @@ import {
   Select,
   Stat,
   Tabs,
-  Textarea,
   useListState,
 } from '@/components/ui';
-import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ProjectSelect, useProjectSelection } from '@/features/common/ProjectSelect';
 import { ExportButton } from '@/features/common/ExportButton';
 import { CustomerMaterialsTab } from './CustomerMaterialsTab';
 import { NewMaterialModal } from '@/features/estimates/EstimateEditor';
-import { normalizeNumber, useZones, type Material } from '@/features/estimates/model';
+import { type Material } from '@/features/estimates/model';
 import {
   kindTone,
   statusTone,
   useCommands,
   useOverview,
-  useRequests,
   type Balance,
   type CommandKind,
   type LedgerRow,
-  type MaterialRequest,
-  type MaterialRequestGroup,
   type StockAccount,
   type StockCommand,
 } from './model';
@@ -56,11 +49,10 @@ import {
   CommandModal,
   MinimumModal,
   ReconcileModal,
-  useStockMutation,
 } from './StockModals';
 
-type Tab = 'balances' | 'movements' | 'requests' | 'materials' | 'customer';
-const TABS: readonly Tab[] = ['balances', 'movements', 'requests', 'materials', 'customer'];
+type Tab = 'balances' | 'movements' | 'materials' | 'customer';
+const TABS: readonly Tab[] = ['balances', 'movements', 'materials', 'customer'];
 const isTab = (v: string | null): v is Tab => TABS.includes(v as Tab);
 /** Menyu bandi (?tab=…&kind=…&inventory=1) qaysi Figma bo'limini ochadi — sarlavha shu bo'yicha. */
 type Section =
@@ -69,8 +61,6 @@ type Section =
   | 'inventory'
   | 'movements'
   | 'transfers'
-  | 'accept'
-  | 'requests'
   | 'materials'
   | 'customer';
 export function StockPage() {
@@ -78,7 +68,7 @@ export function StockPage() {
   const { me, permissions } = useAuth();
   const sel = useProjectSelection();
   const overview = useOverview(sel.projectId);
-  // Brigadir va ombor mudiri menyusi sahifaning ichki bo'limiga so'rov parametri bilan keladi (F4, D17).
+  // Ombor mudiri menyusi sahifaning ichki bo'limiga so'rov parametri bilan keladi (F4, D17).
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
   const tab: Tab = isTab(tabParam) ? tabParam : 'balances';
@@ -91,8 +81,8 @@ export function StockPage() {
     n.delete('inventory');
     setParams(n, { replace: true });
   };
-  // Brigadir va ombor mudirida tablar yo'q: har bo'lim yon menyuning alohida bandi (permissions.ts roleNav).
-  const tabless = me?.role === 'brigadier' || me?.role === 'warehouse_manager';
+  // Ombor mudirida tablar yo'q: har bo'lim yon menyuning alohida bandi (permissions.ts roleNav).
+  const tabless = me?.role === 'warehouse_manager';
   const section: Section | null = !tabParam
     ? null
     : tab === 'balances'
@@ -103,9 +93,7 @@ export function StockPage() {
           : 'warehouses'
       : tab === 'movements'
         ? kindParam === 'transfer'
-          ? me?.role === 'brigadier'
-            ? 'accept'
-            : 'transfers'
+          ? 'transfers'
           : 'movements'
         : tab;
   const has = (p: string) => Boolean(permissions?.permissions.includes(p));
@@ -133,14 +121,9 @@ export function StockPage() {
             tone={low > 0 ? 'danger' : undefined}
           />
           <Stat
-            label={t('stock.kpi.requests')}
-            value={pending?.requests ?? 0}
-            sub={t('stock.pending_requests', { n: pending?.requests ?? 0 })}
-          />
-          <Stat
             label={t('stock.kpi.transfers')}
             value={pending?.transfers ?? 0}
-            sub={`${t('stock.pending_transfers', { n: pending?.transfers ?? 0 })} · ${t('stock.pending_consumptions', { n: pending?.consumptions ?? 0 })}`}
+            sub={t('stock.pending_transfers', { n: pending?.transfers ?? 0 })}
           />
         </div>
       )}
@@ -201,7 +184,6 @@ export function StockPage() {
           items={[
             { key: 'balances', label: t('stock.tab.balances') },
             { key: 'movements', label: t('stock.tab.movements') },
-            { key: 'requests', label: t('stock.tab.requests'), count: pending?.requests },
             { key: 'materials', label: t('stock.tab.materials') },
             { key: 'customer', label: t('stock.tab.customer') },
           ]}
@@ -218,9 +200,6 @@ export function StockPage() {
       )}
       {tab === 'movements' && sel.projectId && (
         <MovementsTab key={`${sel.projectId}:${kindParam}`} projectId={sel.projectId} initialKind={kindParam} />
-      )}
-      {tab === 'requests' && sel.projectId && d && (
-        <RequestsTab key={sel.projectId} projectId={sel.projectId} accounts={d.accounts} />
       )}
       {tab === 'materials' && <MaterialsTab />}
       {tab === 'customer' && sel.projectId && (
@@ -579,16 +558,16 @@ function LedgerModal({
 type Direction = '' | 'in' | 'out';
 function MovementsTab({ projectId, initialKind = '' }: { projectId: string; initialKind?: string }) {
   const { t, lang } = useT();
-  const { me, permissions } = useAuth();
+  const { permissions } = useAuth();
   const has = (p: string) => Boolean(permissions?.permissions.includes(p));
   const [status, setStatus] = useState<string>('open');
-  // Menyudagi "Transferlar"/"Material qabul" bandi kind=transfer bilan keladi
+  // Menyudagi "Transferlar" bandi kind=transfer bilan keladi
   const [kind, setKind] = useState<string>(initialKind);
   // Figma "Kirim/Chiqim" segmenti (Barchasi/Kirimlar/Chiqimlar) — serverda `direction` filtri
   const [direction, setDirection] = useState<Direction>('');
   const [action, setAction] = useState<{
     command: StockCommand;
-    action: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
+    action: 'accept' | 'cancel' | 'dispute' | 'reverse';
   } | null>(null);
   const list = useListState();
   const query = useCommands(
@@ -598,7 +577,7 @@ function MovementsTab({ projectId, initialKind = '' }: { projectId: string; init
   );
   const actionsFor = (c: StockCommand) => {
     const out: {
-      key: 'accept' | 'review' | 'cancel' | 'dispute' | 'reverse';
+      key: 'accept' | 'cancel' | 'dispute' | 'reverse';
       label: string;
       variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
     }[] = [];
@@ -607,13 +586,10 @@ function MovementsTab({ projectId, initialKind = '' }: { projectId: string; init
       out.push({ key: 'accept', label: t('stock.accept'), variant: 'primary' });
     if (open && c.kind === 'return' && has('stock.receive'))
       out.push({ key: 'accept', label: t('stock.accept'), variant: 'primary' });
-    if (open && c.kind === 'consumption' && has('stock.review') && c.created_by !== me?.id)
-      out.push({ key: 'review', label: t('stock.review'), variant: 'primary' });
     if (
       open &&
       ((c.kind === 'transfer' && has('stock.send')) ||
-        (c.kind === 'return' && has('stock.consume')) ||
-        (c.kind === 'consumption' && has('stock.review')))
+        (c.kind === 'return' && has('stock.consume')))
     ) {
       out.push({ key: 'cancel', label: t('stock.cancel_rest'), variant: 'ghost' });
       if (c.status !== 'disputed') out.push({ key: 'dispute', label: t('stock.dispute'), variant: 'ghost' });
@@ -774,350 +750,6 @@ function MovementsTab({ projectId, initialKind = '' }: { projectId: string; init
         <CommandActionModal command={action.command} action={action.action} onClose={() => setAction(null)} />
       )}
     </div>
-  );
-}
-
-function RequestsTab({ projectId, accounts }: { projectId: string; accounts: StockAccount[] }) {
-  const { t, lang } = useT();
-  const { me, permissions, can } = useAuth();
-  const has = (p: string) => Boolean(permissions?.permissions.includes(p));
-  // Talabnoma yaratish serverda ombor sahifasining "create" ruxsati bilan (brigadir, ombor mudiri); prorab, bosh
-  // muhandis va admin faqat ko'radi. Admin ruxsatlar yuklanguncha ham tugmani ko'rmasin.
-  const canRequest = me?.role !== 'tenant_admin' && can('stock', 'create');
-  const list = useListState();
-  const query = useRequests(projectId, list);
-  const [create, setCreate] = useState(false);
-  const [act, setAct] = useState<{
-    request: MaterialRequest;
-    action: 'fulfill' | 'reject' | 'cancel';
-  } | null>(null);
-  const statusBadge = (status: MaterialRequest['status']) => (
-    <Badge tone={status === 'pending' ? 'warning' : status === 'fulfilled' ? 'success' : 'neutral'}>
-      {t(`stock.request_status.${status}`)}
-    </Badge>
-  );
-  // V-B (D23): talabnoma — bir nechta qator; bajarish, rad etish va bekor qilish qatorma-qator.
-  const columns: Column<MaterialRequestGroup>[] = [
-    {
-      key: 'date',
-      header: t('common.date'),
-      sortValue: (g) => g.created_at,
-      render: (g) => formatDateTime(g.created_at, lang),
-    },
-    {
-      key: 'request',
-      header: t('stock.request_no'),
-      render: (g) => (
-        <>
-          <div className="cell-main">№ {g.group_id.slice(0, 8).toUpperCase()}</div>
-          <div className="cell-sub">{[g.requested_by_name, g.zone_name].filter(Boolean).join(' · ')}</div>
-        </>
-      ),
-    },
-    {
-      key: 'lines',
-      header: t('stock.request_lines'),
-      render: (g) => (
-        <div className="stack" style={{ gap: 4 }}>
-          {g.lines.map((r) => (
-            <div key={r.id} className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
-              <span>
-                {r.material_name} — {formatQuantity(r.quantity, r.unit_id)}
-                {r.review_note ? <span className="muted text-xs"> → {r.review_note}</span> : null}
-              </span>
-              <span className="row" style={{ gap: 4 }}>
-                {g.lines.length > 1 && statusBadge(r.status)}
-                {r.status === 'pending' && has('stock.send') && (
-                  <Button size="sm" onClick={() => setAct({ request: r, action: 'fulfill' })}>
-                    {t('stock.fulfill')}
-                  </Button>
-                )}
-                {r.status === 'pending' && has('stock.send') && (
-                  <Button size="sm" variant="ghost" onClick={() => setAct({ request: r, action: 'reject' })}>
-                    {t('stock.reject')}
-                  </Button>
-                )}
-                {r.status === 'pending' && r.requested_by === me?.id && (
-                  <Button size="sm" variant="ghost" onClick={() => setAct({ request: r, action: 'cancel' })}>
-                    {t('common.cancel')}
-                  </Button>
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
-      ),
-    },
-    { key: 'needed', header: t('stock.request_needed_by'), render: (g) => (g.needed_by ? g.needed_by : '—') },
-    { key: 'status', header: t('common.status'), render: (g) => statusBadge(g.status) },
-    {
-      key: 'note',
-      header: t('stock.request_note'),
-      render: (g) => <span className="muted text-xs">{g.note}</span>,
-    },
-  ];
-  const summary = query.data?.summary;
-  return (
-    <div className="stack" style={{ gap: 12 }}>
-      {summary && (
-        <div className="grid-4">
-          <Stat label={t('stock.kpi.req_total')} value={summary.total} />
-          <Stat
-            label={t('stock.kpi.req_pending')}
-            value={summary.pending}
-            tone={summary.pending > 0 ? 'warning' : undefined}
-          />
-          <Stat label={t('stock.kpi.req_fulfilled')} value={summary.fulfilled} tone="success" />
-          <Stat
-            label={t('stock.kpi.req_rejected')}
-            value={summary.rejected}
-            tone={summary.rejected > 0 ? 'danger' : undefined}
-          />
-        </div>
-      )}
-      {canRequest && (
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <Button icon={<Plus />} onClick={() => setCreate(true)}>
-            {t('stock.request_new')}
-          </Button>
-        </div>
-      )}
-      <DataTable
-        columns={columns}
-        rows={query.data?.items}
-        rowKey={(g) => g.group_id}
-        loading={query.isLoading}
-        error={
-          query.error
-            ? errorMessage(t, (query.error as ApiError).code, (query.error as ApiError).status)
-            : null
-        }
-        onRetry={query.refetch}
-        empty={{ title: t('stock.requests_empty') }}
-        pagination={list.pagination}
-      />
-      {create && <RequestModal projectId={projectId} onClose={() => setCreate(false)} />}
-      {act && (
-        <RequestActionModal
-          request={act.request}
-          action={act.action}
-          accounts={accounts}
-          onClose={() => setAct(null)}
-        />
-      )}
-    </div>
-  );
-}
-type RequestLineForm = { material: string; label: string; unit: string; qty: string };
-const emptyRequestLine = (): RequestLineForm => ({ material: '', label: '', unit: '', qty: '' });
-function RequestModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
-  const { t } = useT();
-  const zones = useZones(projectId);
-  // V-B (D23): bir nechta material qatori; zona, sana va izoh talabnoma bo'yicha umumiy.
-  const [lines, setLines] = useState<RequestLineForm[]>([emptyRequestLine()]);
-  const [zone, setZone] = useState('');
-  const [needed, setNeeded] = useState('');
-  const [note, setNote] = useState('');
-  const setLine = (i: number, patch: Partial<RequestLineForm>) =>
-    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-  const ready = lines.every((l) => l.material && l.qty);
-  const save = useStockMutation(
-    () =>
-      api('/v1/stock/requests', {
-        method: 'POST',
-        body: {
-          project_id: projectId,
-          lines: lines.map((l) => ({ material_id: l.material, quantity: normalizeNumber(l.qty) })),
-          ...(zone ? { zone_id: zone } : {}),
-          ...(needed ? { needed_by: needed } : {}),
-          ...(note.trim() ? { note: note.trim() } : {}),
-        },
-      }),
-    onClose,
-  );
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={t('stock.request_new')}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button onClick={() => save.mutate(undefined)} loading={save.isPending} disabled={!ready}>
-            {t('common.confirm')}
-          </Button>
-        </>
-      }
-    >
-      <div className="stack">
-        {lines.map((line, i) => (
-          <div
-            key={i}
-            role="group"
-            aria-label={`${t('stock.request_line')} ${i + 1}`}
-            className="row"
-            style={{ gap: 8, alignItems: 'flex-end' }}
-          >
-            <SearchSelect<Material>
-              wrapClassName="grow"
-              path="/v1/materials"
-              label={t('stock.material')}
-              value={line.material}
-              valueLabel={line.label || undefined}
-              onChange={(id, m) => setLine(i, { material: id, label: m?.name ?? '', unit: m?.unit_id ?? '' })}
-              getId={(m) => m.id}
-              getLabel={(m) => m.name}
-              getSub={(m) => [unitLabel(m.unit_id), m.alias].filter(Boolean).join(' · ')}
-            />
-            <Input
-              wrapClassName="grow"
-              label={t('stock.request_qty')}
-              suffix={line.unit ? unitLabel(line.unit) : undefined}
-              inputMode="decimal"
-              value={line.qty}
-              onChange={(e) => setLine(i, { qty: e.target.value })}
-            />
-            {lines.length > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<X />}
-                aria-label={t('stock.request_remove_line')}
-                onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
-              />
-            )}
-          </div>
-        ))}
-        <div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Plus />}
-            onClick={() => setLines((ls) => [...ls, emptyRequestLine()])}
-          >
-            {t('stock.request_add_line')}
-          </Button>
-        </div>
-        <div className="form-grid">
-          <Input
-            type="date"
-            label={t('stock.request_needed_by')}
-            value={needed}
-            onChange={(e) => setNeeded(e.target.value)}
-          />
-          <Select label={t('stock.zone')} value={zone} onChange={(e) => setZone(e.target.value)}>
-            <option value="">—</option>
-            {(zones.data?.items ?? []).map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <Textarea label={t('stock.request_note')} value={note} onChange={(e) => setNote(e.target.value)} />
-      </div>
-    </Modal>
-  );
-}
-function RequestActionModal({
-  request,
-  action,
-  accounts,
-  onClose,
-}: {
-  request: MaterialRequest;
-  action: 'fulfill' | 'reject' | 'cancel';
-  accounts: StockAccount[];
-  onClose: () => void;
-}) {
-  const { t } = useT();
-  const warehouses = accounts.filter((a) => a.kind === 'warehouse');
-  const custodies = accounts.filter((a) => a.kind === 'custody' && a.custodian_role === 'brigadier');
-  const requesterCustody = custodies.find((c) => c.custodian_id === request.requested_by);
-  const [from, setFrom] = useState(warehouses[0]?.id ?? '');
-  const [to, setTo] = useState(requesterCustody?.id ?? '');
-  const [qty, setQty] = useState(request.quantity);
-  const [note, setNote] = useState('');
-  const save = useStockMutation(
-    () =>
-      api(`/v1/stock/requests/${request.id}/actions`, {
-        method: 'POST',
-        body: {
-          version: request.version,
-          action,
-          ...(action === 'fulfill'
-            ? { from_account_id: from, ...(to ? { to_account_id: to } : {}), quantity: normalizeNumber(qty) }
-            : {}),
-          ...(note.trim() ? { note: note.trim() } : {}),
-        },
-      }),
-    onClose,
-  );
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={
-        action === 'fulfill'
-          ? t('stock.fulfill')
-          : action === 'reject'
-            ? t('stock.reject')
-            : t('common.cancel')
-      }
-      description={`${request.material_name} · ${formatQuantity(request.quantity, request.unit_id)} · ${request.requested_by_name}`}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            variant={action === 'fulfill' ? 'primary' : 'danger'}
-            onClick={() => save.mutate(undefined)}
-            loading={save.isPending}
-            disabled={action === 'fulfill' && (!from || !qty)}
-          >
-            {t('common.confirm')}
-          </Button>
-        </>
-      }
-    >
-      <div className="stack">
-        {action === 'fulfill' && (
-          <>
-            <Select label={t('stock.fulfill_from')} value={from} onChange={(e) => setFrom(e.target.value)}>
-              <option value="">—</option>
-              {warehouses.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label={t('stock.fulfill_to')}
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              hint={!requesterCustody ? t('error.TO_ACCOUNT_REQUIRED') : undefined}
-            >
-              <option value="">{requesterCustody ? '—' : t('erp.select_project')}</option>
-              {custodies.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              label={`${t('stock.request_qty')} (${unitLabel(request.unit_id)})`}
-              inputMode="decimal"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-            />
-          </>
-        )}
-        <Textarea label={t('stock.request_note')} value={note} onChange={(e) => setNote(e.target.value)} />
-      </div>
-    </Modal>
   );
 }
 

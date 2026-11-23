@@ -24,7 +24,6 @@ import {
   accountingMonthSql,
   journalWithDocSql,
 } from './finance.js';
-import { pendingEarningSql } from './earnings.js';
 import { notify, projectRecipients } from './notify.js';
 import { dec, money } from './money.js';
 
@@ -678,7 +677,6 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
                   (SELECT coalesce(sum(e.net),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) total,
                   (SELECT coalesce(sum(e.net) FILTER(WHERE e.status='paid'),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) paid,
                   (SELECT coalesce(sum(e.base_salary+e.bonus+e.piece_rate),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) gross,
-                  (SELECT coalesce(sum(e.piece_rate),0)::numeric(20,2)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) piece_total,
                   (SELECT coalesce(sum(e.net) FILTER(WHERE e.status<>'paid'),0)::text FROM payroll_entries e WHERE e.tenant_id=pp.tenant_id AND e.period_id=pp.id) due
            FROM payroll_periods pp LEFT JOIN users u ON u.id=pp.posted_by WHERE pp.tenant_id=$1 AND pp.project_id=$2 ORDER BY pp.month DESC`,
           [actor.tenant_id, query.project_id],
@@ -695,20 +693,6 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
           [actor.tenant_id, query.project_id],
         )
       ).rows;
-      // V-C (D23): ochiq davr uchun kutilayotgan akkord — brigadir bo'yicha, davr oyi oxirigacha qabul qilingan, davrga kirmagan summa
-      for (const period of periods)
-        period.piece_pending =
-          period.status === 'open'
-            ? (
-                await db.query(
-                  `SELECT r.author_id employee_id,u.display_name employee_name,sum(${pendingEarningSql})::text amount
-                   FROM progress_entries pe JOIN reports r ON r.tenant_id=pe.tenant_id AND r.id=pe.report_id JOIN users u ON u.id=r.author_id
-                   WHERE pe.tenant_id=$1 AND r.project_id=$2 AND pe.labor_rate IS NOT NULL AND r.report_date<=($3::date+interval '1 month'-interval '1 day')::date
-                   GROUP BY r.author_id,u.display_name HAVING sum(${pendingEarningSql})>0 ORDER BY u.display_name`,
-                  [actor.tenant_id, query.project_id, period.month],
-                )
-              ).rows
-            : [];
       return { periods, entries };
     },
   });
@@ -829,31 +813,6 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
       await projectScope(db, actor, period.project_id);
       invariant(period.version === body.version, 'VERSION_CONFLICT');
       invariant(period.status === 'open', 'PAYROLL_PERIOD_CLOSED');
-      // V-C (D23): akkord — davr oyi oxirigacha qabul qilingan va davrga hali kirmagan summa (to'lovdan keyingi
-      // tuzatishlar ham), brigadir bo'yicha; yozuv bo'lmasa avtomatik qo'shiladi (oklad 0). Manfiy jami keyingi davrga qoladi.
-      const pending = (
-        await db.query(
-          `SELECT r.author_id employee_id,array_agg(pe.id) ids,sum(${pendingEarningSql}) amount
-           FROM progress_entries pe JOIN reports r ON r.tenant_id=pe.tenant_id AND r.id=pe.report_id
-           WHERE pe.tenant_id=$1 AND r.project_id=$2 AND pe.labor_rate IS NOT NULL AND r.report_date<=($3::date+interval '1 month'-interval '1 day')::date
-             AND ${pendingEarningSql}<>0
-           GROUP BY r.author_id HAVING sum(${pendingEarningSql})>0`,
-          [actor.tenant_id, period.project_id, period.month],
-        )
-      ).rows;
-      for (const p of pending) {
-        const entry = await one(
-          db,
-          `INSERT INTO payroll_entries(tenant_id,period_id,employee_id,piece_rate) VALUES($1,$2,$3,$4)
-           ON CONFLICT(tenant_id,period_id,employee_id) DO UPDATE SET piece_rate=excluded.piece_rate,version=payroll_entries.version+1 RETURNING id`,
-          [actor.tenant_id, params.id, p.employee_id, money(p.amount)],
-        );
-        await db.query(
-          `INSERT INTO progress_payroll(tenant_id,progress_entry_id,payroll_entry_id,amount)
-           SELECT $1,pe.id,$2,${pendingEarningSql} FROM progress_entries pe WHERE pe.tenant_id=$1 AND pe.id=ANY($3::uuid[]) AND ${pendingEarningSql}<>0`,
-          [actor.tenant_id, entry.id, p.ids],
-        );
-      }
       const entries = (
         await db.query(
           'SELECT * FROM payroll_entries WHERE tenant_id=$1 AND period_id=$2 AND net>0 ORDER BY created_at',
@@ -869,7 +828,7 @@ export function financeExtraRoutes(add: (r: Endpoint) => void) {
           kind: 'labor',
           amount: money(e.net),
           counterparty_id: counterparty.id,
-          description: `Ish haqi ${monthLabel}: oklad ${money(e.base_salary)}, bonus ${money(e.bonus)}, akkord ${money(e.piece_rate)}, ushlanma ${money(e.deduction)}`,
+          description: `Ish haqi ${monthLabel}: oklad ${money(e.base_salary)}, bonus ${money(e.bonus)}, ushlanma ${money(e.deduction)}`,
           document_date: body.document_date ?? new Date().toISOString().slice(0, 10),
           reference: `PAYROLL-${monthLabel}`,
         });

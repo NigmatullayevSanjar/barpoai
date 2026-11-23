@@ -49,10 +49,6 @@ export const estimatesRu: Record<string, string> = {
   'est.col.effective': 'Расчётное кол-во',
   'est.col.unit_price': 'Цена за ед.',
   'est.col.total': 'Сумма',
-  'est.col.labor_rate': 'Ставка бригады',
-  'est.labor_rate_auto': 'авто',
-  'est.labor_rate_auto_hint':
-    'Автоматическая ставка: в строке работы формы 5 — стоимость трудовых ресурсов ÷ объём работы × процент бригады объекта, в остальных строках — цена сметы × процент. Введённая вручную ставка важнее; при пустом поле действует автоматическая.',
   'est.col.fact': 'Факт',
   'est.col.note': 'Примечание',
   'est.col.months': 'Месяцы',

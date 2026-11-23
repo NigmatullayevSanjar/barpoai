@@ -162,9 +162,6 @@ export type PayrollPeriod = {
   /** Oklad + bonus (ish haqi fondi) va to'lanmagan qoldiq — serverda */
   gross: string;
   due: string;
-  /** V-C: akkord jami va ochiq davrda kutilayotgan akkord (brigadir bo'yicha) — serverda */
-  piece_total: string;
-  piece_pending?: { employee_id: string; employee_name: string; amount: string }[];
   version: number;
 };
 export type PayrollEntry = {
@@ -177,7 +174,6 @@ export type PayrollEntry = {
   base_salary: string;
   bonus: string;
   deduction: string;
-  piece_rate: string;
   net: string;
   /** posted yozuvda: avansdan hisoblanadigan va kassadan to'lanadigan qism — serverda */
   advance_available?: string | null;

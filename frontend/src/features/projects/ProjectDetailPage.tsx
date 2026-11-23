@@ -388,7 +388,6 @@ function EditProjectModal({
       planned_start: d.planned_start?.slice(0, 10) ?? '',
       planned_end: d.planned_end?.slice(0, 10) ?? '',
       area_m2: d.area_m2 ?? '',
-      brigade_percent: d.brigade_percent ?? '',
       forecast_end: d.forecast_end?.slice(0, 10) ?? '',
       actual_start: d.actual_start?.slice(0, 10) ?? '',
       actual_end: d.actual_end?.slice(0, 10) ?? '',

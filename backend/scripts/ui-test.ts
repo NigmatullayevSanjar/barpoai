@@ -326,16 +326,16 @@ try {
   await adminPage.goto(webURL + '/app/employees');
   await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).first().click();
   const dlg = adminPage.getByRole('dialog');
-  await dlg.getByLabel('Ism va familiya').fill('Sinov brigadiri');
-  await dlg.locator('input[name=login]').fill('ui.brigadier');
-  await dlg.locator('select[name=role]').selectOption('brigadier');
+  await dlg.getByLabel('Ism va familiya').fill('Sinov prorabi');
+  await dlg.locator('input[name=login]').fill('ui.prorab');
+  await dlg.locator('select[name=role]').selectOption('foreman');
   await dlg.getByLabel('Navoiy 28 turar-joy').check();
   await dlg.getByRole('button', { name: 'Yaratish', exact: true }).click();
-  await dlg.getByText('Login: ui.brigadier').waitFor();
+  await dlg.getByText('Login: ui.prorab').waitFor();
   const brigadierPassword = (await dlg.locator('code').textContent())!.split('Parol: ')[1]!.trim();
   await dlg.getByRole('button', { name: 'Yopish' }).click();
-  await adminPage.getByRole('cell', { name: /Sinov brigadiri/ }).waitFor();
-  await adminPage.getByRole('cell', { name: /Sinov brigadiri/ }).click();
+  await adminPage.getByRole('cell', { name: /Sinov prorabi/ }).waitFor();
+  await adminPage.getByRole('cell', { name: /Sinov prorabi/ }).click();
   await adminPage
     .getByRole('dialog')
     .getByText('Navoiy 28 turar-joy', { exact: true })
@@ -344,7 +344,7 @@ try {
   await adminPage.getByRole('dialog').getByRole('button', { name: 'close' }).click();
   await adminPage.goto(projectUrl);
   await adminPage.getByRole('tab', { name: /Xodimlar/ }).click();
-  await adminPage.getByRole('cell', { name: 'Sinov brigadiri' }).waitFor();
+  await adminPage.getByRole('cell', { name: 'Sinov prorabi' }).waitFor();
   checks.push(
     'Employee created from the UI with project assignment; project members tab and employee card agree',
   );
@@ -397,8 +397,8 @@ try {
   await row1.getByLabel('Birlik', { exact: true }).selectOption('m3');
   await row1.getByLabel('Miqdor', { exact: true }).fill('120');
   await row1.getByLabel('Birlik narxi').fill('250000');
-  // V-C (D23): ish qatoriga brigada stavkasi (so'm/m3)
-  await row1.getByLabel('Brigada stavkasi').fill('100000');
+  // Brigadir va akkord yo'q (2026-11-23): muharrirda brigada stavkasi ustuni yo'q
+  assert.equal(await row1.getByLabel('Brigada stavkasi').count(), 0);
   await adminPage.getByRole('button', { name: 'Qator qo‘shish' }).click();
   const row2 = adminPage.locator('table.grid-editor tbody tr').nth(1);
   await row2.getByLabel('Turi', { exact: true }).selectOption('material');
@@ -605,7 +605,7 @@ try {
   await warehousePage
     .getByRole('dialog')
     .getByLabel('Qayerga')
-    .selectOption({ label: 'Sinov brigadiri' });
+    .selectOption({ label: 'Sinov prorabi' });
   await warehousePage
     .getByRole('dialog')
     .getByLabel('Material', { exact: true })
@@ -614,22 +614,20 @@ try {
     .getByRole('dialog')
     .getByLabel(/^Miqdor/)
     .fill('300');
-  await warehousePage.getByRole('dialog').getByLabel(/Sabab/).fill('Brigadirga jo‘natish');
+  await warehousePage.getByRole('dialog').getByLabel(/Sabab/).fill('Prorabga chiqim');
   await warehousePage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
   await warehousePage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
   const brigadierPage = await newPage();
-  await login(brigadierPage, 'ui.brigadier', brigadierPassword);
+  await login(brigadierPage, 'ui.prorab', brigadierPassword);
   await brigadierPage.locator('input[name=current_password]').fill(brigadierPassword);
   await brigadierPage.locator('input[name=new_password]').fill(password + '3');
   await brigadierPage.locator('input[name=repeat]').fill(password + '3');
   await brigadierPage.getByRole('button', { name: 'Saqlash' }).click();
   await brigadierPage.getByText('Parol yangilandi').waitFor();
-  await login(brigadierPage, 'ui.brigadier', password + '3');
+  await login(brigadierPage, 'ui.prorab', password + '3');
   await brigadierPage.locator('.sidebar').getByRole('link', { name: 'Bosh sahifa' }).waitFor();
-  // Brigadirda ombor sahifasi tablarsiz: bo'limlar yon menyuning alohida bandlari ("Material qabul" va h.k.)
+  // Brigadir roli yo'q (2026-11-23): omborchi chiqimini prorab qabul qiladi va o'zi sarf qiladi (tasdiqsiz)
   await brigadierPage.goto(stockUrl + '&tab=movements&kind=transfer');
-  await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().waitFor();
-  assert.equal(await brigadierPage.getByRole('tab').count(), 0, 'brigadier stock page has no tabs');
   await brigadierPage.getByRole('button', { name: 'Qabul qilish' }).first().click();
   await brigadierPage
     .getByRole('dialog')
@@ -645,7 +643,6 @@ try {
     .getByRole('dialog')
     .getByLabel('Material', { exact: true })
     .selectOption({ index: 1 });
-  // Brigadirda estimates.read yo'q: smeta qatorlari ombor ruxsati bilan (/v1/stock/estimate-lines) keladi
   await brigadierPage
     .getByRole('dialog')
     .getByLabel('Smeta qatori')
@@ -658,83 +655,29 @@ try {
     .fill('150');
   await brigadierPage.getByRole('dialog').getByLabel(/Sabab/).fill('Poydevor betoni uchun sarf');
   await brigadierPage.getByRole('dialog').getByRole('button', { name: 'Saqlash' }).click();
-  await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
+  await brigadierPage.getByRole('dialog').waitFor({ state: 'detached' });
   checks.push(
-    'Brigadier stock sections open without tabs; brigadier accepts a transfer partially and submits a consumption proposal; the estimate line select lists lines without estimates.read',
+    'The foreman accepts the warehouse issue partially and records a consumption against an estimate line from the stock page',
   );
-  // Sarf taklifini prorab tasdiqlaydi (stock.review); admin faqat ko'radi
-  await foremanPage.goto(stockUrl);
-  await foremanPage.getByRole('tab', { name: /Harakatlar/ }).click();
-  await foremanPage.getByRole('button', { name: 'Tasdiqlash', exact: true }).first().click();
-  await foremanPage
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Tasdiqlash', exact: true })
-    .click();
-  await foremanPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
   const stockState = (
     await owner.query(
-      "SELECT (SELECT coalesce(sum(amount),0)::text FROM journal_entries WHERE account='expense') expense,(SELECT quantity::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.warehouse_id IS NOT NULL) warehouse_qty,(SELECT (quantity-reserved)::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.custodian_id IS NOT NULL) custody_available",
+      "SELECT (SELECT coalesce(sum(amount),0)::text FROM journal_entries WHERE account='expense') expense,(SELECT quantity::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.warehouse_id IS NOT NULL) warehouse_qty,(SELECT (quantity-reserved)::text FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.custodian_id IS NOT NULL AND b.quantity>0) custody_available",
     )
   ).rows[0];
   assert.equal(stockState.expense, '180000.00');
   assert.equal(stockState.warehouse_qty, '800.000000');
   assert.equal(stockState.custody_available, '50.000000');
+  // Hech kim tasdiqlamaydi: boshqa prorabda ham «Tasdiqlash» tugmasi yo'q; talabnomalar yorlig'i yo'q
+  await foremanPage.goto(stockUrl + '&tab=movements');
+  await foremanPage.getByRole('tab', { name: /Harakatlar/ }).waitFor();
+  await foremanPage.waitForLoadState('networkidle');
+  assert.equal(await foremanPage.getByRole('button', { name: 'Tasdiqlash', exact: true }).count(), 0);
   checks.push(
-    'Consumption review posts expense 150 x 1200 and leaves warehouse 800 (100 still reserved) and custody 50',
+    'Consumption posts at once (expense 150 x 1200, warehouse 800 with 100 still reserved, foreman 50) with no review button',
   );
-  await brigadierPage.goto(stockUrl + '&tab=requests');
-  await brigadierPage.getByRole('button', { name: 'Material so‘rash' }).click();
-  // V-B (D23): bitta talabnomada ikki qator; ombor mudiri qatorma-qator bajaradi yoki rad etadi
-  const requestDialog = brigadierPage.getByRole('dialog');
-  const requestLine = (n: number) => requestDialog.getByRole('group', { name: `Qator ${n}` });
-  await pickOption(requestLine(1), 'Material', 'Sement', /Sement M500/);
-  await requestLine(1).getByLabel('Miqdor', { exact: true }).fill('100');
-  await requestDialog.getByRole('button', { name: 'Qator qo‘shish' }).click();
-  await pickOption(requestLine(2), 'Material', 'Tosh 001', /Tosh 001/);
-  await requestLine(2).getByLabel('Miqdor', { exact: true }).fill('5');
-  await requestDialog.getByRole('button', { name: 'Tasdiqlash', exact: true }).click();
-  await brigadierPage.getByRole('status').filter({ hasText: 'Harakat saqlandi' }).first().waitFor();
-  await brigadierPage.getByText(/Tosh 001 — 5 kg/).waitFor();
-  // Talabnomani faqat ombor mudiri bajaradi (2026-10-16)
-  // Ombor mudirida ham tablar yo'q: "Talabnomalar" menyu bandi bilan bir xil manzil
-  await warehousePage.goto(stockUrl + '&tab=requests');
-  await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().waitFor();
-  assert.equal(await warehousePage.getByRole('tab').count(), 0, 'warehouse manager stock page has no tabs');
-  // 1-qator (Sement) jo'natish bilan bajariladi — talabnoma hali kutilmoqda (2-qator ochiq)
-  await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).first().click();
-  await warehousePage
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Tasdiqlash', exact: true })
-    .click();
-  // Ikkinchi "bajarish" tugmasi yo'qolguncha kutiladi (ro'yxat yangilanadi); talabnoma holati — kutilmoqda
-  await warehousePage
-    .getByRole('button', { name: 'Jo‘natish bilan bajarish' })
-    .nth(1)
-    .waitFor({ state: 'detached' });
-  await warehousePage.getByRole('cell', { name: 'Kutilmoqda', exact: true }).waitFor();
-  assert.equal(await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 1);
-  // 2-qator (Tosh) rad etiladi — bir qatori bajarilgan talabnoma "Bajarildi"
-  await warehousePage.getByRole('button', { name: 'Rad etish' }).first().click();
-  await warehousePage
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Tasdiqlash', exact: true })
-    .click();
-  await warehousePage.getByRole('button', { name: 'Rad etish' }).first().waitFor({ state: 'detached' });
-  await warehousePage.getByRole('cell', { name: 'Bajarildi', exact: true }).waitFor();
-  assert.equal(await warehousePage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 0);
-  await adminPage.goto(stockUrl);
-  await adminPage.getByRole('tab', { name: /So‘rovlar/ }).click();
-  await adminPage.getByRole('cell', { name: 'Bajarildi', exact: true }).waitFor();
-  assert.equal(await adminPage.getByRole('button', { name: 'Jo‘natish bilan bajarish' }).count(), 0);
-  // Talabnomani faqat brigadir va ombor mudiri yaratadi (server: ombor 'create'); admin va prorabda tugma yo'q.
-  assert.equal(await adminPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
-  await foremanPage.goto(stockUrl);
-  await foremanPage.getByRole('tab', { name: /So‘rovlar/ }).click();
-  await foremanPage.getByRole('cell', { name: 'Bajarildi', exact: true }).waitFor();
-  assert.equal(await foremanPage.getByRole('button', { name: 'Material so‘rash' }).count(), 0);
-  checks.push(
-    'Two-line material request from the brigadier: the warehouse manager fulfils one line via a transfer and rejects the other line by line; the admin and the foreman only read requests (no request button)',
-  );
+  assert.equal(await foremanPage.getByRole('tab', { name: /So‘rovlar/ }).count(), 0);
+  assert.equal(await warehousePage.locator('.sidebar').getByRole('link', { name: /Talabnoma/ }).count(), 0);
+  checks.push('Material requests are gone: no requests tab on the stock page and no requests item in the warehouse menu');
   // S5: «Buyurtmachi materiallari» yorlig'i — davr boshqaruvi, bo'sh holat yoki jadval, Excel yuklab olish
   await adminPage.goto(stockUrl);
   await adminPage.getByRole('tab', { name: 'Buyurtmachi materiallari', exact: true }).click();
@@ -860,7 +803,7 @@ try {
   await adminPage.getByRole('button', { name: 'Xodim qo‘shish' }).click();
   const brigadierOption = await dialog()
     .getByLabel('Xodim', { exact: true })
-    .locator('option', { hasText: 'Sinov brigadiri' })
+    .locator('option', { hasText: 'Sinov prorabi' })
     .getAttribute('value');
   await dialog().getByLabel('Xodim', { exact: true }).selectOption(brigadierOption!);
   await dialog().getByLabel('Oklad').fill('3000000');
@@ -954,7 +897,7 @@ try {
     .fill('Poydevor armaturasini bog‘lash');
   const assigneeOption = await dialog()
     .getByLabel(/^Bajaruvchi/)
-    .locator('option', { hasText: 'Sinov brigadiri' })
+    .locator('option', { hasText: 'Sinov prorabi' })
     .getAttribute('value');
   await dialog()
     .getByLabel(/^Bajaruvchi/)
@@ -1049,7 +992,7 @@ try {
     .setInputFiles({ name: 'foto.png', mimeType: 'image/png', buffer: png });
   await brigadierPage.getByRole('status').filter({ hasText: 'Foto yuklandi' }).first().waitFor();
   await brigadierPage.getByRole('dialog').getByRole('button', { name: 'foto.png' }).waitFor();
-  checks.push('Brigadier submits a daily report with work progress and uploads a photo');
+  checks.push('The foreman submits a daily report with work progress and uploads a photo; the admin reviews it');
   await adminPage.goto(webURL + '/app/reports?project=' + projectUrl.split('/').pop());
   await adminPage.getByText('Beton quyish ishlari bajarildi').first().click();
   await adminPage
@@ -1129,23 +1072,22 @@ try {
 
   // 6b. 09-bosqich: dashboard bloklari, sozlamalar, bildirishnomalar, audit, fayllar, eksport, texnik panel
   const projectId = projectUrl.split('/').pop()!;
-  // Figma (D17): admin bosh muhandis panelini ko'radi (smeta summasi, davr xarajati), brigadir o'z panelini (xarajatsiz)
+  // Figma (D17): admin bosh muhandis panelini ko'radi (smeta summasi, davr xarajati), prorab o'z panelini (xarajatsiz)
   await adminPage.goto(webURL + '/app');
   await adminPage.getByRole('heading', { name: 'Boshqaruv paneli' }).waitFor();
   await adminPage.getByText('Jami smeta summasi', { exact: true }).waitFor();
   await adminPage.getByText('Davr xarajati', { exact: true }).waitFor();
   await adminPage.getByRole('heading', { name: 'Yaqindagi vazifalar' }).waitFor();
   assert.equal(await adminPage.getByRole('heading', { name: 'So‘nggi bildirishnomalar' }).count(), 0);
+  // Brigadir yo'q (2026-11-23): prorab panelida ishbay hisobi yo'q, chiqimni qabul qilish ko'rsatkichi bor
   await brigadierPage.goto(webURL + '/app');
-  await brigadierPage.getByRole('heading', { name: 'Brigadir paneli' }).waitFor();
-  await brigadierPage.getByText('Mening vazifalarim', { exact: true }).waitFor();
-  // V-C (D23): brigadir paneli — qabul qilingan 35 m3 × 100 000 = 3 500 000 ishlab topilgan
-  await brigadierPage.getByText('Mening hisobim').first().waitFor();
-  await brigadierPage.getByText(/3[\s\u00a0]500[\s\u00a0]000/).first().waitFor();
-  checks.push('Brigadier dashboard shows the piece-rate earnings card with the accepted quantity times the line rate');
+  await brigadierPage.getByRole('heading', { name: 'Prorab operativ paneli' }).waitFor();
+  await brigadierPage.getByText('Kutilayotgan jo‘natmalar', { exact: true }).waitFor();
+  assert.equal(await brigadierPage.getByText('Mening hisobim').count(), 0);
+  checks.push('The foreman dashboard shows issues waiting for acceptance and no piece-rate earnings card');
   assert.equal(await brigadierPage.getByText('Davr xarajati', { exact: true }).count(), 0);
   checks.push(
-    'Role dashboards follow permissions in the browser: admin sees cost blocks, brigadier does not; no notifications card on home pages',
+    'Role dashboards follow permissions in the browser: admin sees cost blocks, the foreman does not; no notifications card on home pages',
   );
   // 1.4: grafiklar va filtrlar — davr va obyekt tanlansa server javobi bilan qayta chiziladi
   await adminPage.getByRole('heading', { name: /Xarajatlar taqsimoti/ }).waitFor();
@@ -1162,7 +1104,7 @@ try {
   await adminPage.getByText('Hozirgi holat', { exact: false }).first().waitFor();
   assert.equal(await brigadierPage.getByRole('heading', { name: /Xarajatlar taqsimoti/ }).count(), 0);
   checks.push(
-    'Dashboard charts: expense kinds, plan/budget/fact by month, over-budget and overdue lists render; period and project filters refetch from the server; brigadier sees no finance charts',
+    'Dashboard charts: expense kinds, plan/budget/fact by month, over-budget and overdue lists render; period and project filters refetch from the server; the foreman sees no finance charts',
   );
   // D (D23): obyekt sahifasida moliya kartasi — admin ko'radi, brigadir (narx huquqisiz) ko'rmaydi
   await adminPage.goto(projectUrl);
@@ -1172,7 +1114,7 @@ try {
   await brigadierPage.goto(projectUrl);
   await brigadierPage.getByText('Ochiq vazifalar', { exact: true }).waitFor();
   assert.equal(await brigadierPage.getByRole('heading', { name: 'Obyekt moliyasi' }).count(), 0);
-  checks.push('Project page finance card (plan, fact, paid, debt, advances, income) renders for the admin and is absent for the brigadier');
+  checks.push('Project page finance card (plan, fact, paid, debt, advances, income) renders for the admin and is absent for the foreman');
   // E (D23): qavat × ish jadvali — 3-qavat qatori, "Beton quyish" ustuni, qabul qilingan 35 m3 (tuzatishdan keyin); brigadir ham hajmlarni ko'radi
   await adminPage.goto(projectUrl);
   await adminPage.getByRole('tab', { name: /Qavatlar progressi/ }).click();
@@ -1182,7 +1124,7 @@ try {
   await brigadierPage.goto(projectUrl);
   await brigadierPage.getByRole('tab', { name: /Qavatlar progressi/ }).click();
   await brigadierPage.getByRole('cell', { name: /35 m3/ }).first().waitFor();
-  checks.push('Floor × work progress matrix on the project page shows the accepted report quantity on the floor zone for the admin and the brigadier');
+  checks.push('Floor × work progress matrix on the project page shows the accepted report quantity on the floor zone for the admin and the foreman');
   await adminPage.goto(webURL + '/app/settings');
   await adminPage.getByLabel('Kompaniya nomi').fill('UI Sinov Qurilish MCHJ');
   await adminPage.getByLabel('Telefon').fill('+998 71 200 00 11');
@@ -1418,8 +1360,8 @@ try {
   const tenantRow = (
     await owner.query('SELECT id FROM tenants WHERE registration_key=$1', ['UI-TEST-001'])
   ).rows[0];
-  // Brigadir va ombor mudiri menyusi ombor sahifasining bo'limlari (?tab=…) — sidebar faolligi shu yerda tekshiriladi.
-  for (const role of ['foreman', 'brigadier', 'warehouse_manager', 'financier', 'accountant']) {
+  // Ombor mudiri menyusi ombor sahifasining bo'limlari (?tab=…) — sidebar faolligi shu yerda tekshiriladi.
+  for (const role of ['foreman', 'warehouse_manager', 'financier', 'accountant']) {
     const loginName = `ui_${role}`;
     const u = (
       await owner.query(
@@ -1499,7 +1441,7 @@ try {
     ['/admin/tenants'],
   );
   checks.push(
-    'Foreman, brigadier, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions, exactly one menu item is active on every allowed page, and every page renders without errors; the support tenants table aligns numeric headers and values',
+    'Foreman, warehouse manager, financier, accountant and support log in; the sidebar equals server permissions, exactly one menu item is active on every allowed page, and every page renders without errors; the support tenants table aligns numeric headers and values',
   );
 
   // 7a. 100 tadan ortiq obyekt: ProjectSelect barcha sahifalarni (apiAll) yuklaydi
