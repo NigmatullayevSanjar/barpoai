@@ -68,13 +68,13 @@ export async function journal(
   db: Db,
   actor: Row,
   project: string,
-  source: { stock?: string; finance?: string },
+  source: { stock?: string; finance?: string; price?: string },
   entries: { account: string; amount: string; cash?: string | null; party?: string | null }[],
 ) {
   for (const entry of entries) {
     if (dec(entry.amount).isZero()) continue;
     await db.query(
-      'INSERT INTO journal_entries(tenant_id,project_id,finance_document_id,stock_command_id,account,amount,cash_account_id,counterparty_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+      'INSERT INTO journal_entries(tenant_id,project_id,finance_document_id,stock_command_id,account,amount,cash_account_id,counterparty_id,price_document_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
       [
         actor.tenant_id,
         project,
@@ -84,6 +84,7 @@ export async function journal(
         entry.amount,
         entry.cash ?? null,
         entry.party ?? null,
+        source.price ?? null,
       ],
     );
   }
@@ -152,7 +153,9 @@ async function provisionalUnitCost(db: Db, tenant: string, project: string, mate
 /**
  * Yetkazuvchi invoysi kirimga bog'langanda (2026-11-23): farq (invoys − kirim qiymati) materialning obyektdagi joriy
  * qoldig'iga (ombor va prorablar qo'li, miqdorga mutanosib) va allaqachon sarflangan qismi xarajatga yoziladi.
- * Ledger yozuvlari kirim buyrug'iga `price:<invoys>` kaliti bilan qo'shiladi. Qaytaradi: inventarga yozilgan summa.
+ * Ledger yozuvlari kirim buyrug'iga `price:<invoys>` kaliti bilan qo'shiladi. Sarflangan qism (egasi: «Faktga qo'shilsin»)
+ * kirimdan keyingi shu material sarflariga miqdorga mutanosib — sarf buyrug'iga jurnal juftligi (`price_document_id`),
+ * shunda smeta qatori «Fakt»iga tushadi. Qaytaradi: qoldiqqa va sarflarga yozilgan summalar.
  */
 export async function revalueReceipt(
   db: Db,
@@ -161,7 +164,7 @@ export async function revalueReceipt(
   documentId: string,
   diff: string,
 ) {
-  if (dec(diff).isZero()) return '0.00';
+  if (dec(diff).isZero()) return { toStock: '0.00', toConsumption: '0.00' };
   const rows = (
     await db.query(
       `SELECT b.account_id,b.quantity::text,b.value::text FROM stock_balances b JOIN stock_accounts a ON a.tenant_id=b.tenant_id AND a.id=b.account_id
@@ -200,10 +203,54 @@ export async function revalueReceipt(
     );
     applied = applied.plus(part);
   }
-  return money(applied);
+  const consumed = dec(diff).minus(applied);
+  const consumptions = consumed.isZero()
+    ? []
+    : (
+        await db.query(
+          `SELECT c.id,c.accepted_quantity::text quantity FROM stock_commands c
+           WHERE c.tenant_id=$1 AND c.project_id=$2 AND c.material_id=$3 AND c.kind='consumption' AND c.status IN ('posted','partial')
+             AND c.created_at>=$4 AND NOT EXISTS(SELECT 1 FROM stock_commands r WHERE r.tenant_id=c.tenant_id AND r.reverses_id=c.id)
+           ORDER BY c.created_at,c.id`,
+          [actor.tenant_id, receipt.project_id, receipt.material_id, receipt.created_at],
+        )
+      ).rows;
+  const consumedQty = consumptions.reduce((sum, c) => sum.plus(c.quantity), dec('0'));
+  let toConsumption = dec('0');
+  for (const [i, c] of consumptions.entries()) {
+    const part =
+      i === consumptions.length - 1
+        ? consumed.minus(toConsumption)
+        : dec(money(consumed.mul(c.quantity).div(consumedQty)));
+    toConsumption = toConsumption.plus(part);
+    await journal(db, actor, receipt.project_id, { stock: c.id, price: documentId }, [
+      { account: 'inventory', amount: money(part.neg()) },
+      { account: 'expense', amount: money(part) },
+    ]);
+  }
+  return { toStock: money(applied), toConsumption: money(toConsumption) };
 }
-/** Invoys stornosida narx farqi ledgerdan teskari yoziladi; material qiymati allaqachon chiqib ketgan bo'lsa — rad. */
-export async function reverseRevaluation(db: Db, actor: Row, documentId: string) {
+/**
+ * Invoys stornosida narx farqi ledgerdan va sarflar jurnalidan teskari yoziladi; material qiymati allaqachon
+ * chiqib ketgan bo'lsa — rad.
+ */
+export async function reverseRevaluation(db: Db, actor: Row, documentId: string, project: string) {
+  const priced = (
+    await db.query(
+      'SELECT stock_command_id,account,amount FROM journal_entries WHERE tenant_id=$1 AND price_document_id=$2 ORDER BY created_at,id',
+      [actor.tenant_id, documentId],
+    )
+  ).rows;
+  for (const id of new Set(priced.map((e) => e.stock_command_id as string)))
+    await journal(
+      db,
+      actor,
+      project,
+      { stock: id, price: documentId },
+      priced
+        .filter((e) => e.stock_command_id === id)
+        .map((e) => ({ account: e.account, amount: money(dec(e.amount).neg()) })),
+    );
   const rows = (
     await db.query(
       'SELECT * FROM stock_ledger WHERE tenant_id=$1 AND effect_key=$2 ORDER BY account_id',
@@ -259,11 +306,7 @@ export async function createStock(db: Db, actor: Row, input: Row) {
     'ACCOUNT_PROJECT_MISMATCH',
   );
   if (kind === 'receipt' || kind === 'opening')
-    invariant(
-      !from && to?.warehouse_id && (kind === 'receipt' || input.unit_cost !== undefined),
-      'WAREHOUSE_RECEIPT_REQUIRED',
-      400,
-    );
+    invariant(!from && to?.warehouse_id, 'WAREHOUSE_RECEIPT_REQUIRED', 400);
   if (kind === 'transfer') {
     invariant(from?.warehouse_id && to?.custodian_id, 'WAREHOUSE_TO_CUSTODIAN_REQUIRED', 400);
     const user = await assignedUser(db, actor.tenant_id, input.project_id, to.custodian_id);
@@ -292,8 +335,9 @@ export async function createStock(db: Db, actor: Row, input: Row) {
       'INSUFFICIENT_AVAILABLE_STOCK',
     );
   }
-  // Narxsiz kirim (2026-11-23): taxminiy tannarx; haqiqiy narx buxgalter invoysni bog'laganda (revalueReceipt)
-  const provisional = kind === 'receipt' && input.unit_cost === undefined;
+  // Narxsiz kirim va boshlang'ich qoldiq (2026-11-23): taxminiy tannarx; kirimning haqiqiy narxi buxgalter
+  // invoysni bog'laganda (revalueReceipt)
+  const provisional = (kind === 'receipt' || kind === 'opening') && input.unit_cost === undefined;
   const unitCost = provisional
     ? await provisionalUnitCost(db, actor.tenant_id, input.project_id, input.material_id)
     : input.unit_cost;
@@ -521,12 +565,14 @@ export async function reverseStock(db: Db, actor: Row, id: string, reason: strin
       money(dec(entry.value).neg()),
       reversal.id,
     );
-  const je = (
-    await db.query('SELECT * FROM journal_entries WHERE tenant_id=$1 AND stock_command_id=$2', [
-      actor.tenant_id,
-      id,
-    ])
-  ).rows;
+  const je =
+    // invoys narx farqi juftliklari (price_document_id) sarf stornosida qaytmaydi: ular invoys stornosiga tegishli
+    (
+      await db.query(
+        'SELECT * FROM journal_entries WHERE tenant_id=$1 AND stock_command_id=$2 AND price_document_id IS NULL',
+        [actor.tenant_id, id],
+      )
+    ).rows;
   await journal(
     db,
     actor,
@@ -546,10 +592,15 @@ export async function reconcileStock(db: Db, actor: Row, accountId: string, inpu
   const delta = dec(input.counted_quantity).minus(current.quantity);
   invariant(!delta.isZero(), 'NO_ADJUSTMENT_REQUIRED');
   const increase = delta.gt(0);
-  invariant(!increase || input.unit_cost !== undefined, 'UNIT_COST_REQUIRED', 400);
+  // Ortiqcha topilsa narx so'ralmaydi (2026-11-23): hisobdagi o'rtacha tannarx, qoldiq bo'lmasa taxminiy narx
+  const unitCost =
+    input.unit_cost ??
+    (dec(current.quantity).gt(0)
+      ? dec(current.value).div(current.quantity).toFixed(6)
+      : await provisionalUnitCost(db, actor.tenant_id, account.project_id, input.material_id));
   const qty = quantity(delta.abs());
   const value = increase
-    ? money(delta.mul(input.unit_cost))
+    ? money(delta.mul(unitCost))
     : money(dec(await stockCost(db, actor, accountId, input.material_id, qty)).neg());
   const command = await one(
     db,

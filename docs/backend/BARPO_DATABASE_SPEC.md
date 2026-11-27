@@ -1240,6 +1240,16 @@ ALTER TABLE stock_commands ADD COLUMN cost_provisional boolean NOT NULL DEFAULT 
 
 ```
 
+## 038_price_allocation_journal.sql
+
+```sql
+-- Invoys narx farqining sarflangan qismi (2026-11-23, egasi: «Faktga qo'shilsin»): sarf buyrug'iga jurnal juftligi
+-- (inventory −, expense +) yoziladi va qaysi invoysdan kelgani shu ustunda saqlanadi (storno uchun).
+ALTER TABLE journal_entries ADD COLUMN price_document_id uuid;
+ALTER TABLE journal_entries ADD CONSTRAINT journal_price_document_fk FOREIGN KEY(tenant_id,price_document_id) REFERENCES finance_documents(tenant_id,id);
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

@@ -3902,7 +3902,6 @@ try {
   const stockValue = async () =>
     (await admin!.query('SELECT sum(b.value)::text v FROM stock_balances b JOIN stock_accounts a ON a.id=b.account_id WHERE a.project_id=$1 AND b.material_id=$2', [project.id, material.id])).rows[0].v;
   const valueBefore = Number(await stockValue());
-  await call('POST', '/v1/stock/commands', { ...unpricedBody, kind: 'opening', reason: 'Narxsiz boshlang‘ich' }, whP, undefined, 400);
   const pricedInvoice = await call(
     'POST',
     '/v1/finance/documents',
@@ -3931,8 +3930,35 @@ try {
   );
   await call('POST', `/v1/finance/documents/${pricedInvoice.id}/reverse`, { reason: 'Narx xato yozilgan' }, adminAgain);
   assert.equal(Number(await stockValue()), valueBefore);
+  // Sarflangan qism smeta «Fakt»iga (egasi: «Faktga qo'shilsin»): yangi material, smetasiz — taxminiy narx 0;
+  // 10 kirim → prorabga 10 → 4 sarf; invoys 1000: qoldiq 6 ga 600, sarfga 400 (sarf buyrug'ining jurnalida)
+  const freshMaterial = await call('POST', '/v1/materials', { name: `Narxsiz material ${randomUUID().slice(0, 8)}`, unit_id: 'kg' }, whP);
+  const freshReceipt = await call('POST', '/v1/stock/commands', { project_id: project.id, kind: 'receipt', material_id: freshMaterial.id, to_account_id: warehouse.account.id, quantity: '10', reason: 'Narxsiz kirim' }, whP);
+  const freshIssue = await call('POST', '/v1/stock/commands', { project_id: project.id, kind: 'transfer', material_id: freshMaterial.id, from_account_id: warehouse.account.id, to_account_id: custody.id, quantity: '10', reason: 'Prorabga chiqim' }, whP);
+  const custodyToken = (await call('POST', '/v1/auth/login', { login: 'prorab2', password: pass + '2' })).access_token;
+  await call('POST', `/v1/stock/commands/${freshIssue.id}/actions`, { version: 1, action: 'accept', quantity: '10' }, custodyToken);
+  const freshUse = await call('POST', '/v1/stock/commands', { project_id: project.id, kind: 'consumption', material_id: freshMaterial.id, from_account_id: custody.id, quantity: '4', reason: 'Narxsiz sarf' }, custodyToken);
+  const consumptionInventory = async () =>
+    (await admin!.query("SELECT coalesce(sum(amount),0)::numeric(20,2)::text v FROM journal_entries WHERE stock_command_id=$1 AND account='inventory'", [freshUse.id])).rows[0].v;
+  const freshValue = async () =>
+    (await admin!.query('SELECT coalesce(sum(value),0)::numeric(20,2)::text v FROM stock_balances WHERE material_id=$1', [freshMaterial.id])).rows[0].v;
+  assert.deepEqual([await consumptionInventory(), await freshValue()], ['0.00', '0.00']);
+  const freshInvoice = await call(
+    'POST',
+    '/v1/finance/documents',
+    { project_id: project.id, kind: 'supplier_invoice', amount: '1000', counterparty_id: supplier.id, matched_receipt_id: freshReceipt.id, description: 'Narxsiz material invoysi', document_date: '2026-10-02' },
+    accP,
+  );
+  assert.deepEqual([await consumptionInventory(), await freshValue()], ['-400.00', '600.00']);
+  await call('POST', `/v1/finance/documents/${freshInvoice.id}/reverse`, { reason: 'Invoys qayta kiritiladi' }, adminAgain);
+  assert.deepEqual([await consumptionInventory(), await freshValue()], ['0.00', '0.00']);
+  // Boshlang'ich qoldiq va inventarizatsiya ortiqchasi ham narxsiz (2026-11-23)
+  const freshOpening = await call('POST', '/v1/stock/commands', { project_id: project.id, kind: 'opening', material_id: freshMaterial.id, to_account_id: warehouse.account.id, quantity: '1', reason: 'Narxsiz boshlang‘ich' }, whP);
+  assert.equal(freshOpening.cost_provisional, true);
+  const freshWh = (await admin!.query('SELECT quantity::text FROM stock_balances WHERE account_id=$1 AND material_id=$2', [warehouse.account.id, freshMaterial.id])).rows[0].quantity;
+  await call('POST', `/v1/stock/accounts/${warehouse.account.id}/reconcile`, { material_id: freshMaterial.id, counted_quantity: String(Number(freshWh) + 2), reason: 'Ortiqcha topildi' }, whP);
   passed.push(
-    'Unpriced receipt: the warehouse manager posts without a price (provisional cost, opening still needs one), the accountant prices it with the supplier invoice and the difference revalues stock on hand; reversing the invoice restores the stock value',
+    'Unpriced receipt: the warehouse manager posts without a price (provisional cost; opening balances and inventory surpluses too), the accountant prices it with the supplier invoice: the difference revalues stock on hand and the consumed share is booked on the consumptions (estimate fact); reversing the invoice restores both',
   );
   await call(
     'GET',
