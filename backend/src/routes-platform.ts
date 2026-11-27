@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type Endpoint } from './http.js';
+import { type Endpoint, publicOrigin } from './http.js';
 import { one, audit, type Row } from './db.js';
 import {
   uuid,
@@ -247,7 +247,7 @@ export function platformRoutes(add: (r: Endpoint) => void) {
       return {
         ...invite,
         token: raw,
-        registration_url: `${process.env.APP_ORIGIN ?? 'http://localhost:5173'}/register#token=${raw}`,
+        registration_url: `${publicOrigin()}/register#token=${raw}`,
       };
     },
   });

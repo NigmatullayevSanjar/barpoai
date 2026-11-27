@@ -67,6 +67,9 @@ export interface Endpoint {
   handler: (ctx: Context) => Promise<any>;
 }
 export const appOrigin = () => process.env.APP_ORIGIN ?? 'http://localhost:5173';
+/** Havolalar uchun bitta to'liq manzil: APP_ORIGIN ro'yxatidagi birinchi origin, oxiridagi "/" siz. */
+export const publicOrigin = () =>
+  (appOrigin().split(',').map((o) => o.trim()).find(Boolean) ?? 'http://localhost:5173').replace(/\/+$/, '');
 /**
  * Brauzer originiga ruxsat: APP_ORIGIN (vergul bilan bir nechta) yoki APP_ALLOW_LAN=1 bo'lsa lokal tarmoq
  * (192.168.x.x, 10.x.x.x, 172.16–31.x.x) manzilidagi frontend (wifi orqali telefondan sinash uchun).
