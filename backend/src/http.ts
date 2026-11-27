@@ -66,7 +66,15 @@ export interface Endpoint {
   session?: 'set' | 'clear';
   handler: (ctx: Context) => Promise<any>;
 }
-export const appOrigin = () => process.env.APP_ORIGIN ?? 'http://localhost:5173';
+/**
+ * APP_ORIGIN qiymati. Hosting panelida qiymatga nomi ham yozib qo'yilsa ("APP_ORIGIN=https://...")
+ * yoki qo'shtirnoqqa olinsa, ular olib tashlanadi: aks holda havola va origin tekshiruvi buziladi.
+ */
+export const appOrigin = () =>
+  (process.env.APP_ORIGIN ?? 'http://localhost:5173')
+    .trim()
+    .replace(/^APP_ORIGIN\s*=\s*/i, '')
+    .replace(/^["']|["']$/g, '');
 /** Havolalar uchun bitta to'liq manzil: APP_ORIGIN ro'yxatidagi birinchi origin, oxiridagi "/" siz. */
 export const publicOrigin = () =>
   (appOrigin().split(',').map((o) => o.trim()).find(Boolean) ?? 'http://localhost:5173').replace(/\/+$/, '');

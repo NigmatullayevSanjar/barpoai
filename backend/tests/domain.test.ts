@@ -529,6 +529,10 @@ test('invite links use the first APP_ORIGIN entry as a full URL', async () => {
     assert.equal(publicOrigin(), 'https://barpoai.uz');
     process.env.APP_ORIGIN = ' https://app.example.uz/ ';
     assert.equal(publicOrigin(), 'https://app.example.uz');
+    process.env.APP_ORIGIN = 'APP_ORIGIN=https://barpoai.uz,https://www.barpoai.uz';
+    assert.equal(publicOrigin(), 'https://barpoai.uz');
+    process.env.APP_ORIGIN = '"https://barpoai.uz"';
+    assert.equal(publicOrigin(), 'https://barpoai.uz');
   } finally {
     if (saved === undefined) delete process.env.APP_ORIGIN;
     else process.env.APP_ORIGIN = saved;
