@@ -162,7 +162,7 @@ try {
   await ownerPage.getByRole('heading', { name: /UI sinov qurilish/ }).waitFor();
   await ownerPage.getByRole('button', { name: 'Yangi havola yaratish' }).click();
   const inviteUrl = (await ownerPage.locator('code').first().textContent())!.trim();
-  assert.match(inviteUrl, /\/register#token=/);
+  assert.match(inviteUrl, /^https?:\/\/[^,/]+\/register#token=/);
   checks.push('Tenant created and one-time registration link issued');
 
   // 2. Mijoz admini: taklif orqali signup

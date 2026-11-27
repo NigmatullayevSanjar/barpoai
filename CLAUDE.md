@@ -110,7 +110,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 - `backend`: `npm run build`, `npm test`, `npm run test:integration`, `npm run test:roles`, `npm run test:ui` (the last three each start a disposable PostgreSQL 17 in Docker; run at most two at a time), `npm run docs` after route or schema changes.
 - `frontend`: `pnpm typecheck`, `pnpm build`.
 - On a running local stack: `npm run qa:smoke` then confirm no `QA-` company is left; post-pull procedure for Claude Code: `docs/tests/CLAUDE_CODE_PULL_TEKSHIRUVI.md`.
-- Last recorded counts (2026-11-23): unit 41, integration 112 checks, UI 69 checks, role matrix 9 roles with no findings (brigadier removed 2026-11-23). Counts only grow; a lower count means a removed check and needs an explanation.
+- Last recorded counts (2026-11-27): unit 42, integration 112 checks, UI 69 checks, role matrix 9 roles with no findings (brigadier removed 2026-11-23). Counts only grow; a lower count means a removed check and needs an explanation.
 
 ## Deployment
 
@@ -151,6 +151,7 @@ Everything below is merged into `main` (latest: PR #25, 2026-11-21).
 - PR #28 (merged, same branch): brigadier role removed (migrations 034–035): foremen accept warehouse issues into custody and consume without approval, the chief engineer or admin reviews reports, material requests and piece rates are gone; piece-rate leftovers removed too: migration 036 drops `estimate_lines.labor_rate` and `projects.brigade_percent`, the earnings routes and payroll piece fields are gone; `progress_entries.labor_rate`, `payroll_entries.piece_rate` and `progress_payroll` stay as history.
 - PR #29 (merged): the warehouse manager enters no price at receipt. An unpriced receipt posts at a provisional cost (`cost_provisional`, migration 037: average contractor estimate price of the material in the project, else the last priced receipt, else 0); the accountant's supplier invoice sets the real price: the difference revalues the project's stock on hand (pro rata by quantity, ledger key `price:<invoice>`) and the consumed share goes to expense; reversing the invoice reverses it (`STOCK_ALREADY_MOVED` if the value has left). `PRICE_ADJUSTMENT_REQUIRED` is gone.
 - Next PR (same branch): no price anywhere for the warehouse manager: opening balances post at the provisional cost (`cost_provisional`), inventory surpluses at the account's average cost (else provisional). The consumed share of an invoice price difference is booked on the consumptions of that material after the receipt (pro rata by quantity, journal pair inventory −/expense + tagged `price_document_id`, migration 038), so the estimate line «Fakt» includes it; an invoice reversal reverses those pairs, a consumption reversal leaves them.
+- Invite link fix (branch `claude/project-thread-hwpaxt`): `registration_url` is a full URL built from the first entry of the comma-separated `APP_ORIGIN` (`publicOrigin()` in `http.ts`), e.g. `https://barpoai.uz/register#token=…`; before, a list such as `https://barpoai.uz,https://www.barpoai.uz` was pasted whole into the link. `/register` reads the token from the hash (or `?token=`).
 
 **Open items** (fix only when the owner says):
 
