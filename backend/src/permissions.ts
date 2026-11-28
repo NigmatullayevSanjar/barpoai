@@ -10,6 +10,7 @@ export const roles = [
   'financier',
   'accountant',
   'manager',
+  'pto_engineer',
 ] as const;
 export const tenantRoles = [
   'tenant_admin',
@@ -18,6 +19,7 @@ export const tenantRoles = [
   'financier',
   'accountant',
   'manager',
+  'pto_engineer',
 ] as const;
 export const permissions = [
   'projects.read',
@@ -221,6 +223,19 @@ export const basePermissions: Record<string, readonly Permission[]> = {
     'prices.read',
     'stock.read',
     'tasks.manage',
+    'reports.submit',
+    'reports.review',
+  ],
+  // PTO injeneri (D44, egasi 2026-11-24): smetani import qiladi va tahrirlaydi, narxni va F-2/F-3 dalolatnomani
+  // ko'radi, ombor qoldig'ini ko'radi, hisobot yuboradi va tasdiqlaydi. Obyekt yaratmaydi, vazifalarni boshqarmaydi,
+  // moliya sahifalari va ombor amallari yo'q. Smeta arxivi mijoz adminida (D24).
+  pto_engineer: [
+    ...common,
+    'estimates.read',
+    'estimates.import',
+    'estimates.edit',
+    'prices.read',
+    'stock.read',
     'reports.submit',
     'reports.review',
   ],

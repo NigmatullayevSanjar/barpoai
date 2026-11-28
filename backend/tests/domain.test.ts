@@ -23,8 +23,8 @@ test('decimal DTOs reject JS numbers and exponents', () => {
   assert.equal(amount.safeParse('1e6').success, false);
   assert.equal(amount.safeParse('-1').success, false);
 });
-test('nine roles; passwords hashed with random salts', async () => {
-  assert.equal(new Set(roles).size, 9);
+test('ten roles (D44 pto_engineer); passwords hashed with random salts', async () => {
+  assert.equal(new Set(roles).size, 10);
   const a = await hashPassword('ExamplePass123!'),
     b = await hashPassword('ExamplePass123!');
   assert.notEqual(a, b);

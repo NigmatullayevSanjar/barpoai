@@ -37,6 +37,7 @@ const employees: { login: string; name: string; role: string }[] = [
   { login: 'financier', name: 'Moliyachi', role: 'financier' },
   { login: 'accountant', name: 'Buxgalter', role: 'accountant' },
   { login: 'manager', name: 'Menejer', role: 'manager' },
+  { login: 'pto', name: 'PTO injeneri', role: 'pto_engineer' },
 ];
 
 const pool = createPool(process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL);

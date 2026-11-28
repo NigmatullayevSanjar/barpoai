@@ -117,6 +117,7 @@ export const uz: Record<string, string> = {
   'role.financier': 'Finansist',
   'role.accountant': 'Buxgalter',
   'role.manager': 'Menejer',
+  'role.pto_engineer': 'PTO injeneri',
 
   // auth
   'auth.login_title': 'Hisobingizga kiring',

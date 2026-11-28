@@ -24,7 +24,7 @@ import {
   periodNote,
 } from './widgets';
 
-type DashRole = 'foreman' | 'manager' | 'warehouse_manager' | 'accountant' | 'financier';
+type DashRole = 'foreman' | 'manager' | 'warehouse_manager' | 'accountant' | 'financier' | 'pto_engineer';
 
 /**
  * Umumiy ramka: rolga xos sarlavha (Figma), obyekt/davr filtri, yuklanish va xato holati, pastda manba izohi.
@@ -300,6 +300,72 @@ export function ManagerDashboard() {
                 to="/app/projects"
               >
                 <ProjectsTable items={d.projects.items} empty={t('dash.no_projects_admin')} />
+              </Section>
+            )}
+          </>
+        );
+      }}
+    </Frame>
+  );
+}
+
+/** PTO injeneri paneli (D44): smeta summasi, tekshiruvdagi hisobotlar, bajarilish, budjetdan oshganlar. Hammasi serverdan. */
+export function PtoDashboard() {
+  const { t } = useT();
+  return (
+    <Frame role="pto_engineer" filters>
+      {(d) => {
+        const done = d.tasks ? pct(d.tasks.accepted, d.tasks.total) : null;
+        return (
+          <>
+            <div className="grid-4">
+              {d.projects && (
+                <Kpi
+                  label={t('dash.kpi.projects_active')}
+                  value={d.projects.active}
+                  sub={t('dash.kpi.projects_sub', {
+                    active: d.projects.total,
+                    behind: d.projects.behind_schedule,
+                  })}
+                  to="/app/projects"
+                />
+              )}
+              {d.costs && (
+                <Kpi
+                  label={t('dash.kpi.plan_total')}
+                  value={<Money value={d.costs.plan_total} />}
+                  sub={`${displayCurrency()} · ${t('dash.note_current')}`}
+                  to="/app/estimates"
+                />
+              )}
+              {d.reports && (
+                <Kpi
+                  label={t('dash.kpi.reports_pending')}
+                  value={d.reports.pending_review ?? d.reports.my_returned}
+                  sub={t('dash.kpi.reports_sub', { n: d.reports.in_period })}
+                  to="/app/reports"
+                />
+              )}
+              {d.tasks && (
+                <Kpi
+                  label={t('dash.kpi.tasks_done')}
+                  value={done === null ? '—' : `${done}%`}
+                  sub={t('dash.kpi.tasks_done_sub', { accepted: d.tasks.accepted, total: d.tasks.total })}
+                  to="/app/tasks"
+                />
+              )}
+            </div>
+            <div className="grid-main">
+              {d.costs && <OverBudgetCard costs={d.costs} />}
+              <AttentionCard d={d} />
+            </div>
+            {d.projects && (
+              <Section
+                title={t('dash.sec.projects_table')}
+                sub={t('dash.sec.projects_table_sub')}
+                to="/app/projects"
+              >
+                <ProjectsTable items={d.projects.items} empty={t('dash.no_projects')} />
               </Section>
             )}
           </>

@@ -1726,6 +1726,28 @@ try {
     payload: { domain: 'test-1', login: '90 111 22 33', password: pass },
   });
   assert.equal(cookieLogin.statusCode, 200, cookieLogin.body);
+  // Productionda cookie Secure; APP_ALLOW_LAN=1 bo'lsa LAN http frontendiga Secure'siz (aks holda brauzer saqlamaydi).
+  {
+    const env = { NODE_ENV: process.env.NODE_ENV, APP_ALLOW_LAN: process.env.APP_ALLOW_LAN };
+    process.env.NODE_ENV = 'production';
+    process.env.APP_ALLOW_LAN = '1';
+    try {
+      const secureFor = async (origin: string) => {
+        const res = await app!.inject({
+          method: 'POST',
+          url: '/v1/auth/login',
+          headers: { origin },
+          payload: { domain: 'test-1', login: '90 111 22 33', password: pass },
+        });
+        assert.equal(res.statusCode, 200, res.body);
+        return res.cookies.find((c) => c.name === 'barpo_session')!.secure === true;
+      };
+      assert.equal(await secureFor('http://192.168.1.100:5173'), false, 'LAN http origin: no Secure');
+      assert.equal(await secureFor('https://barpo.example'), true, 'other origin: Secure');
+    } finally {
+      for (const [k, v] of Object.entries(env)) v === undefined ? delete process.env[k] : (process.env[k] = v);
+    }
+  }
   // ---- D43: kompaniya domeni — yagona, kirishda majburiy, login kompaniya ichida yagona
   assert.equal(t.domain, 'test-1', 'domain derived from registration key when not given');
   for (const payload of [
@@ -5528,6 +5550,34 @@ try {
   assert.equal((await s4Act('?from=2025-12-01&to=2026-01-31', adminAgain, 400)).error.code, 'ACT_PERIOD_CROSSES_YEAR');
   await s4Act('?from=2026-10-01&to=2026-10-31', forePx, 403);
   await s4Act('?from=2026-10-01&to=2026-10-31', foreman2Again2, 403);
+  // D44: PTO injeneri; N-02: bosh muhandis va PTO dalolatnomani moliya sahifasisiz ochadi (narx bilan)
+  const ptoUser = await call('POST', '/v1/employees', { login: 'pto', display_name: 'PTO', password: pass, role: 'pto_engineer' }, adminAgain);
+  const ptoFirst = (await call('POST', '/v1/auth/login', { login: 'pto', password: pass })).access_token;
+  await call('POST', '/v1/auth/password', { current_password: pass, new_password: pass + '2' }, ptoFirst);
+  const ptoP = (await call('POST', '/v1/auth/login', { login: 'pto', password: pass + '2' })).access_token;
+  const managerQ = (await call('POST', '/v1/auth/login', { login: 'manager', password: pass + '2' })).access_token;
+  for (const id of [ptoUser.id, manager.id])
+    await call('POST', `/v1/employees/${id}/assignments`, { project_id: projectQ.id }, adminAgain);
+  const actAdminNow = actPick(await s4Act('?from=2026-10-01&to=2026-10-31'), 'period');
+  assert(actAdminNow.some((l: any[]) => l[3] !== '0.00'), 'act has priced lines');
+  assert.deepEqual(actPick(await s4Act('?from=2026-10-01&to=2026-10-31', ptoP), 'period'), actAdminNow);
+  assert.deepEqual(actPick(await s4Act('?from=2026-10-01&to=2026-10-31', managerQ), 'period'), actAdminNow);
+  await call('GET', `/v1/estimates/${s4.id}/acts/export?from=2026-10-01&to=2026-10-31`, undefined, ptoP);
+  const ptoPerms = await call('GET', '/v1/me/permissions', undefined, ptoP);
+  assert.deepEqual(
+    [...ptoPerms.permissions].sort(),
+    ['estimates.edit', 'estimates.import', 'estimates.read', 'files.read', 'files.write', 'prices.read', 'projects.read', 'reports.read', 'reports.review', 'reports.submit', 'stock.read', 'tasks.read'],
+  );
+  assert.deepEqual(
+    [ptoPerms.pages.estimates.update, ptoPerms.pages.finance.read, ptoPerms.pages.projects.create, ptoPerms.pages.stock.create, ptoPerms.pages.employees.read],
+    [true, false, false, false, false],
+  );
+  await call('GET', '/v1/finance/summary', undefined, ptoP, undefined, 403);
+  await call('POST', '/v1/projects', { name: 'PTO obyekti' }, ptoP, undefined, 403);
+  await call('POST', '/v1/stock/commands', { project_id: projectQ.id, kind: 'receipt', material_id: s4Block.id, to_account_id: qWarehouse.account.id, quantity: '1', unit_cost: '1', reason: 'PTO kirimi' }, ptoP, undefined, 403);
+  passed.push(
+    'D44: the PTO engineer reads, imports and edits estimates, sees prices and opens the F-2/F-3 act with its Excel file, reviews reports and reads stock; finance, project creation and stock operations are refused; the chief engineer opens the act without the finance page (N-02)',
+  );
   passed.push(
     'S4: the completion act for a period (accepted reports by report date, corrections by their own date, Form 5 resources as norm × work share, normless materials from linked stock consumption with reversals, facts across revisions by lineage at current prices) feeds the S3 chain for the period, the year and since the start, with the contract percent; removed lines and unlinked consumption are warnings; foreman and brigadier are refused; the Excel file has F-2 and F-3 sheets with values and is audited',
   );

@@ -2066,6 +2066,7 @@ paths:
               - financier
               - accountant
               - manager
+              - pto_engineer
         - name: action
           in: query
           required: false
@@ -2563,6 +2564,7 @@ paths:
                     - financier
                     - accountant
                     - manager
+                    - pto_engineer
                 reason:
                   type: string
                   minLength: 5
@@ -3633,6 +3635,7 @@ paths:
               - financier
               - accountant
               - manager
+              - pto_engineer
         - name: active
           in: query
           required: false
@@ -3727,6 +3730,7 @@ paths:
                     - financier
                     - accountant
                     - manager
+                    - pto_engineer
                 phone: {}
                 position:
                   anyOf:
@@ -3822,6 +3826,7 @@ paths:
                     - financier
                     - accountant
                     - manager
+                    - pto_engineer
                 active:
                   type: boolean
                 phone:
@@ -7451,6 +7456,7 @@ paths:
                     - financier
                     - accountant
                     - manager
+                    - pto_engineer
                 rules:
                   minItems: 1
                   maxItems: 29

@@ -20,7 +20,8 @@ export type Role =
   | 'warehouse_manager'
   | 'financier'
   | 'accountant'
-  | 'manager';
+  | 'manager'
+  | 'pto_engineer';
 
 export const platformRoles: Role[] = ['super_admin', 'platform_owner', 'support'];
 /**
@@ -48,8 +49,16 @@ export const tenantRoles: Role[] = [
   'financier',
   'accountant',
   'manager',
+  'pto_engineer',
 ];
-export const employeeRoles: Role[] = ['foreman', 'warehouse_manager', 'financier', 'accountant', 'manager'];
+export const employeeRoles: Role[] = [
+  'foreman',
+  'warehouse_manager',
+  'financier',
+  'accountant',
+  'manager',
+  'pto_engineer',
+];
 
 export const pages = [
   'dashboard',
@@ -186,6 +195,8 @@ export const roleNav: Partial<Record<Role, NavGroup[]>> = {
     nav.reports,
     nav.employees,
   ),
+  // PTO injeneri (D44): smeta va dalolatnoma (smeta kartasidan), ish hajmi hisobotlari, ombor qoldig'i; vazifalar faqat ko'rish.
+  pto_engineer: flat(nav.dashboard, nav.projects, nav.estimates, nav.tasks, nav.materials, nav.reports),
   // Figma ombor mudiri: kirim/chiqim, omborlar (qoldiqlar), transferlar, inventarizatsiya, materiallar (talabnomalar yo'q, 2026-11-23).
   // "Buyurtma" (yetkazuvchi buyurtmasi) va "Hisobdan chiqarish" ma'lumoti yo'q (D17).
   warehouse_manager: flat(

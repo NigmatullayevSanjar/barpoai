@@ -4,6 +4,7 @@ import {
   FinancierDashboard,
   ForemanDashboard,
   ManagerDashboard,
+  PtoDashboard,
   WarehouseDashboard,
 } from './RoleDashboards';
 
@@ -22,6 +23,8 @@ export function TenantDashboard() {
       return <AccountantDashboard />;
     case 'financier':
       return <FinancierDashboard />;
+    case 'pto_engineer':
+      return <PtoDashboard />;
     default:
       return <ManagerDashboard />;
   }

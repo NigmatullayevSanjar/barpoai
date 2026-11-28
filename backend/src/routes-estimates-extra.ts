@@ -471,6 +471,9 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     summary:
       'Dalolatnoma (S4, D40): davr (from…to, standart — joriy oy) bo‘yicha qabul qilingan ish hajmi va ombor sarfidan F-2 qatorlari, smeta narxi zanjiri uch jamg‘arma bilan (qurilish boshidan, yil boshidan, davr) va shartnomaga nisbatan foiz (F-3); holat saqlanmaydi',
     permission: 'prices.read',
+    // N-02: `prices.read` moliya sahifasiga bog'langan; dalolatnoma smeta sahifasida — bosh muhandis va PTO injeneri
+    // moliya sahifasisiz ham ochadi (narx huquqi baribir tekshiriladi).
+    page: 'estimates',
     params: idParams,
     query: actQuery,
     sensitive: true,
@@ -494,6 +497,7 @@ export function estimateExtraRoutes(add: (r: Endpoint) => void) {
     summary:
       'Dalolatnoma Excel’da: F-2 (АКТ ВЫПОЛНЕННЫХ РАБОТ, lokal resurs smeta) va F-3 (СПРАВКА-СЧЕТ-ФАКТУРА, 16 ustun) varaqlari; qiymatlar, formula emas; audit export.estimate_act',
     permission: 'prices.read',
+    page: 'estimates',
     params: idParams,
     query: actQuery,
     handler: async ({ db, actor, params, query }) => {

@@ -113,6 +113,7 @@ export const ru: Record<string, string> = {
   'role.financier': 'Финансист',
   'role.accountant': 'Бухгалтер',
   'role.manager': 'Менеджер',
+  'role.pto_engineer': 'Инженер ПТО',
 
   'auth.login_title': 'Войдите в аккаунт',
   'auth.login_sub': 'Введите домен компании, логин или номер телефона и пароль',

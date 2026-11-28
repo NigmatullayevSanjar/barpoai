@@ -425,6 +425,7 @@ export function companyRoutes(add: (r: Endpoint) => void) {
     'financier',
     'accountant',
     'manager',
+    'pto_engineer',
   ]);
   add({
     method: 'POST',
