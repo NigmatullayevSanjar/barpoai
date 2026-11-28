@@ -111,7 +111,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 - `backend`: `npm run build`, `npm test`, `npm run test:integration`, `npm run test:roles`, `npm run test:ui` (the last three each start a disposable PostgreSQL 17 in Docker; run at most two at a time), `npm run docs` after route or schema changes.
 - `frontend`: `pnpm typecheck`, `pnpm build`.
 - On a running local stack: `npm run qa:smoke` then confirm no `QA-` company is left; post-pull procedure for Claude Code: `docs/tests/CLAUDE_CODE_PULL_TEKSHIRUVI.md`.
-- Last recorded counts (2026-11-28): unit UNIT, integration INTEG checks, UI UIC checks, role matrix 10 roles with no findings (brigadier removed 2026-11-23, PTO engineer added 2026-11-24). Counts only grow; a lower count means a removed check and needs an explanation.
+- Last recorded counts (2026-11-28): unit 42, integration 113 checks, UI 69 checks, role matrix 10 roles with no findings (brigadier removed 2026-11-23, PTO engineer added 2026-11-24). Counts only grow; a lower count means a removed check and needs an explanation.
 
 ## Deployment
 
