@@ -41,6 +41,8 @@ export const dashboardRu: Record<string, string> = {
   'dash.sub.warehouse_manager': 'Операции, остатки и отправки склада',
   'dash.title.accountant': 'Панель бухгалтерии',
   'dash.sub.accountant': 'Общие показатели по финансовым операциям и счетам',
+  'dash.title.pto_engineer': 'Панель ПТО',
+  'dash.sub.pto_engineer': 'Сметы, выполненные объёмы, отчёты на проверке и объекты с превышением бюджета',
   'dash.title.financier': 'Финансовая главная',
   'dash.sub.financier': 'Финансовые показатели, план–факт и платежи',
 

@@ -30,6 +30,7 @@ const tenantRoleEnum = z.enum([
   'financier',
   'accountant',
   'manager',
+  'pto_engineer',
 ]);
 /**
  * Kompaniya kontekstida (RLS) ishlash; arxivlangan kompaniyada tuzatish yo'q. Kontekst so'rov tranzaksiyasi oxirigacha

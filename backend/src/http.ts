@@ -85,16 +85,21 @@ export const publicOrigin = () =>
 export function originAllowed(origin: string | undefined) {
   if (!origin) return false;
   if (appOrigin().split(',').map((o) => o.trim()).includes(origin)) return true;
+  return lanOrigin(origin);
+}
+function lanOrigin(origin: string | undefined) {
   return (
     process.env.APP_ALLOW_LAN === '1' &&
+    !!origin &&
     /^http:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):5173$/.test(origin)
   );
 }
-export function setSessionCookie(reply: FastifyReply, token: string) {
+// LAN frontend oddiy http'da ishlaydi: brauzer Secure cookie'ni u yerda saqlamaydi, shuning uchun Secure qo'yilmaydi.
+export function setSessionCookie(reply: FastifyReply, token: string, origin?: string) {
   reply.setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' && !lanOrigin(origin),
     path: '/',
     maxAge: SESSION_SECONDS,
   });
@@ -117,6 +122,8 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
           const query = route.query ? route.query.parse(request.query) : {};
           const cookieToken = request.cookies?.[SESSION_COOKIE];
           const bearer = request.headers.authorization;
+          const origin =
+            request.headers.origin ?? request.headers.referer?.replace(/(^https?:\/\/[^/]+).*/, '$1');
           const channel: 'bearer' | 'cookie' = bearer
             ? 'bearer'
             : cookieToken
@@ -125,9 +132,6 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
           // Cookie sessiya bilan kelgan o'zgartiruvchi so'rovlar faqat o'z frontend originidan qabul qilinadi (CSRF).
           // Logout bundan ozod: u faqat o'z sessiyasini yopadi; APP_ORIGIN noto'g'ri bo'lsa ham chiqish ishlashi kerak.
           if (!bearer && cookieToken && request.method !== 'GET' && route.path !== '/v1/auth/logout') {
-            const origin =
-              request.headers.origin ??
-              request.headers.referer?.replace(/(^https?:\/\/[^/]+).*/, '$1');
             invariant(originAllowed(origin), 'CSRF_ORIGIN_REJECTED', 403);
           }
           const actor = route.public ? {} : await authenticate(db, bearer, cookieToken);
@@ -191,7 +195,7 @@ export function router(app: FastifyInstance, pool: pg.Pool, definitions: Endpoin
           if (route.sensitive && !(await allowed(db, actor, 'prices.read')))
             result = redactPrices(result);
           if (route.session === 'set' && result?.access_token)
-            setSessionCookie(reply, result.access_token);
+            setSessionCookie(reply, result.access_token, origin);
           if (route.session === 'clear') clearSessionCookie(reply);
           return result;
         }),

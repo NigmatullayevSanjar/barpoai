@@ -1250,6 +1250,18 @@ ALTER TABLE journal_entries ADD CONSTRAINT journal_price_document_fk FOREIGN KEY
 
 ```
 
+## 039_pto_engineer_role.sql
+
+```sql
+-- D44 (2026-11-24): PTO injeneri roli (`pto_engineer`). Smetani import qiladi va tahrirlaydi, narxni va F-2/F-3
+-- dalolatnomani ko'radi, ombor qoldig'ini ko'radi, hisobot yuboradi va tasdiqlaydi. Huquqlar `permissions.ts` da.
+ALTER TABLE users DROP CONSTRAINT users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('super_admin','platform_owner','support','tenant_admin','foreman','warehouse_manager','financier','accountant','manager','pto_engineer'));
+ALTER TABLE role_page_permissions DROP CONSTRAINT role_page_permissions_role_check;
+ALTER TABLE role_page_permissions ADD CONSTRAINT role_page_permissions_role_check CHECK(role IN ('foreman','warehouse_manager','financier','accountant','manager','pto_engineer'));
+
+```
+
 ## Jadvallararo invariantlar
 
 Tenant + resurs composite FK boshqa kompaniya havolasini rad etadi. Ombor/project, zona/project, smeta/project, journal/source/project va file/report/project bog‘lanishlari composite FK bilan yopilgan. Source material ledgerga mosligi FK bilan tekshiriladi. Stock projection va immutable ledger summasi deferred constraint trigger bilan tenglashtiriladi. Oylik smeta miqdori deferred trigger bilan tekshiriladi. Journal har source uchun commit vaqtida nolga teng bo‘lishi shart.

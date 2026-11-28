@@ -67,7 +67,7 @@ export function permissionRoutes(add: (r: Endpoint) => void) {
     idempotent: true,
     body: z.strictObject({
       version,
-      role: z.enum(['foreman', 'warehouse_manager', 'financier', 'accountant', 'manager']),
+      role: z.enum(['foreman', 'warehouse_manager', 'financier', 'accountant', 'manager', 'pto_engineer']),
       rules: z
         .array(
           z.strictObject({

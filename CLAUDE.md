@@ -79,6 +79,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 | Support | `support` | Read, reply to support requests, diagnostics, password reset links | Create, block, bill, reverse |
 | Company admin | `tenant_admin` | Employees, role permissions, projects, estimates, tasks, report review, all finance, payroll, price sheet, audit, settings | Any stock operation or material creation (D18), even with a grant |
 | Chief engineer | `manager` | Projects and blocks, estimates (create, edit, import), prices, tasks, reports, read employees | Finance pages, stock operations |
+| PTO engineer | `pto_engineer` | Estimates (import, edit), prices, F-2/F-3 acts and their Excel, submit and review reports, read stock and tasks (D44) | Create projects, manage tasks, read employees, finance pages, stock operations, archive estimates |
 | Foreman | `foreman` | Tasks, daily reports with photos, accept warehouse issues into own custody, consume without approval (posts at once), returns, read stock and estimates by quantity | See any money (D20); review reports; other foremen's custody |
 | Warehouse manager | `warehouse_manager` | Materials, receipts, transfers, request fulfilment, reversals, inventory, minimum stock (assigned warehouses only) | Prices, consumption approval |
 | Financier | `financier` | Budgets, plan–actual, forecast, payment requests and calendar, price sheet, estimate import | Post documents or pay |
@@ -92,7 +93,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 
 - `backend/`: Node.js 22, TypeScript 5.9, Fastify 5, `pg` with raw SQL (no ORM), zod 4 schemas, `decimal.js` for all money, ExcelJS. Every route is declared with `add({ method, path, permission | page, action, body, query, params, sensitive, idempotent, handler })` (`http.ts`); mutations require an `Idempotency-Key` and optimistic `version`; `transaction()` sets `app.tenant_id` and rolls back on throw; `invariant(cond, CODE, status)` raises domain errors (`errors.ts`). Sessions are httpOnly cookies or Bearer tokens.
 - Main modules: `routes-*.ts` (HTTP), `finance.ts` (journal posting and rules), `inventory.ts` (stock ledger), `estimates.ts`, `estimate-price.ts`, `estimate-acts.ts`, `form5.ts`, `customer-materials.ts`, `billing.ts`, `pricing.ts`, `premises.ts`, `permissions.ts` and `platform-permissions.ts`, `notify.ts`, `telegram.ts` and `telegram-flows.ts`, `worker.ts` (outbox, invoices, auto-block, Telegram polling, CBU rate), `migrate.ts`.
-- Database: PostgreSQL 17, migrations in `backend/migrations/NNN_name.sql` (runner tracks file names; next free number is **039**). Two roles: `barpo_owner` (migrations, superuser) and `barpo_app` (runtime, `NOBYPASSRLS`).
+- Database: PostgreSQL 17, migrations in `backend/migrations/NNN_name.sql` (runner tracks file names; next free number is **040**). Two roles: `barpo_owner` (migrations, superuser) and `barpo_app` (runtime, `NOBYPASSRLS`).
 - `frontend/`: Vite 7, React 19, TypeScript, TanStack Query 5, react-router, react-hook-form + zod. Features in `frontend/src/features/*`, shared UI in `frontend/src/components/ui`, i18n strings in `frontend/src/locales/*.uz.ts` and `*.ru.ts`, number and money formatting in `frontend/src/lib/format.ts`, navigation per role in `frontend/src/lib/permissions.ts`.
 - `deploy/`: production Compose (`db`, `migrate`, `api`, `worker`, `web` = Caddy with HTTPS serving the frontend and proxying `/v1`), `web.Dockerfile`, `Caddyfile`, `Caddyfile.railway`, `backup.sh`.
 - `docs/`: all documentation (map below). Backend scripts write generated docs and test reports to `docs/backend/`.
@@ -110,7 +111,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 - `backend`: `npm run build`, `npm test`, `npm run test:integration`, `npm run test:roles`, `npm run test:ui` (the last three each start a disposable PostgreSQL 17 in Docker; run at most two at a time), `npm run docs` after route or schema changes.
 - `frontend`: `pnpm typecheck`, `pnpm build`.
 - On a running local stack: `npm run qa:smoke` then confirm no `QA-` company is left; post-pull procedure for Claude Code: `docs/tests/CLAUDE_CODE_PULL_TEKSHIRUVI.md`.
-- Last recorded counts (2026-11-27): unit 42, integration 112 checks, UI 69 checks, role matrix 9 roles with no findings (brigadier removed 2026-11-23). Counts only grow; a lower count means a removed check and needs an explanation.
+- Last recorded counts (2026-11-28): unit UNIT, integration INTEG checks, UI UIC checks, role matrix 10 roles with no findings (brigadier removed 2026-11-23, PTO engineer added 2026-11-24). Counts only grow; a lower count means a removed check and needs an explanation.
 
 ## Deployment
 
@@ -121,7 +122,7 @@ The admin can change every role's page CRUD matrix and give individual grants (`
 
 ## Documentation map
 
-- `docs/TZ_VA_NARX_REJASI.md` — work plan and **owner decisions D1–D43** (they override older docs), stage table (section 3), ready prompts (section 6), open items (section 9).
+- `docs/TZ_VA_NARX_REJASI.md` — work plan and **owner decisions D1–D44** (they override older docs), stage table (section 3), ready prompts (section 6), open items (section 9).
 - `docs/backend/BARPO_BUSINESS_RULES.md` — the binding rules per feature; wins over `docs/BARPO_AI_PROJECT_CONTEXT.md` (product spec, guides UI and scope) and `docs/BACKEND_TODO.md` (original 12-stage plan).
 - `docs/backend/BARPO_API_OPENAPI.yaml`, `BARPO_DATABASE_SPEC.md`, `BARPO_ROLE_TEST_REPORT.md` — generated; do not edit by hand.
 - `docs/BARPO_ROLLAR_VA_FUNKSIYALAR.md` (+ PDF) — roles and "what happens when" for the owner.
@@ -152,12 +153,12 @@ Everything below is merged into `main` (latest: PR #25, 2026-11-21).
 - PR #29 (merged): the warehouse manager enters no price at receipt. An unpriced receipt posts at a provisional cost (`cost_provisional`, migration 037: average contractor estimate price of the material in the project, else the last priced receipt, else 0); the accountant's supplier invoice sets the real price: the difference revalues the project's stock on hand (pro rata by quantity, ledger key `price:<invoice>`) and the consumed share goes to expense; reversing the invoice reverses it (`STOCK_ALREADY_MOVED` if the value has left). `PRICE_ADJUSTMENT_REQUIRED` is gone.
 - Next PR (same branch): no price anywhere for the warehouse manager: opening balances post at the provisional cost (`cost_provisional`), inventory surpluses at the account's average cost (else provisional). The consumed share of an invoice price difference is booked on the consumptions of that material after the receipt (pro rata by quantity, journal pair inventory −/expense + tagged `price_document_id`, migration 038), so the estimate line «Fakt» includes it; an invoice reversal reverses those pairs, a consumption reversal leaves them.
 - Invite link fix (branch `claude/project-thread-hwpaxt`): `registration_url` is a full URL built from the first entry of the comma-separated `APP_ORIGIN` (`publicOrigin()` in `http.ts`), e.g. `https://barpoai.uz/register#token=…`; before, a list such as `https://barpoai.uz,https://www.barpoai.uz` was pasted whole into the link. `/register` reads the token from the hash (or `?token=`). `appOrigin()` also strips a value pasted with its own name (`APP_ORIGIN=https://…`, as happened on production) and surrounding quotes, so links and the origin check stay correct.
+- PTO engineer role D44 (migration 039): `pto_engineer` with its own «PTO paneli» dashboard and Telegram menu; N-02 fixed: the act routes check the `estimates` page, so the chief engineer and the PTO engineer open acts without the finance page.
 
 **Open items** (fix only when the owner says):
 
 - Production readiness: choose the host (Hetzner vs Railway vs a server in Uzbekistan), verify backup and restore, monitoring and error alerts.
 - N-01: Form 5 imports the trailing «ИТОГО ПО ЛОКАЛЬНОЙ РЕСУРСНОЙ ВЕДОМОСТИ» block of the real «ОБЩЕЕ» sheet as works (`form5.ts` stops only at «ВСЕГО ЗАТРАТ»).
-- N-02: the chief engineer gets 403 on acts (`prices.read` maps to the finance page in `permissions.ts`).
 - K-1: estimate line «Fakt» and the «Umumiy» tab ignore stock reversals, unlike acts and S5 (owner to decide whether they should subtract them).
 - Login on the Docker stack over a LAN IP (`http://10.x.x.x:5173`): the API runs with `NODE_ENV=production`, so the `Secure` cookie is dropped over http. Proposed: `Secure` only for https requests.
 - Owner questions: the stock «Materiallar» tab as a company catalog vs following the estimate; freezing a signed act (acts are recomputed from the current revision); labor re-pricing at MHTEKM × 5 % for VMQ 583; N-03 unpriced general-contractor rows; archived companies in the debtors list; whether the first invoice should wait until the trial actually ends; the 1 500 000 invoices issued during trial on the local DB.

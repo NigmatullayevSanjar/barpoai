@@ -265,6 +265,7 @@ const roleLabel: Record<string, Record<Lang, string>> = {
   financier: { uz: 'Finansist', ru: 'Финансист' },
   accountant: { uz: 'Buxgalter', ru: 'Бухгалтер' },
   manager: { uz: 'Menejer', ru: 'Менеджер' },
+  pto_engineer: { uz: 'PTO injeneri', ru: 'Инженер ПТО' },
 };
 /** Menyu tugmalari: matn → ichki amal. Xavfsizlik menyuda emas, har amalda qayta tekshiriladi. */
 const MENU: Record<string, [Record<Lang, string>, string][]> = {
@@ -287,6 +288,12 @@ const MENU: Record<string, [Record<Lang, string>, string][]> = {
   manager: [
     [{ uz: '🏗 Obyektlar', ru: '🏗 Объекты' }, 'projects'],
     [{ uz: '📋 Vazifalar', ru: '📋 Задачи' }, 'tasks'],
+    [{ uz: '📈 Hisobotlar', ru: '📈 Отчёты' }, 'reports'],
+    [{ uz: '🔔 Bildirishnomalar', ru: '🔔 Уведомления' }, 'notifications'],
+    [{ uz: '👤 Profil', ru: '👤 Профиль' }, 'profile'],
+  ],
+  pto_engineer: [
+    [{ uz: '🏗 Obyektlar', ru: '🏗 Объекты' }, 'projects'],
     [{ uz: '📈 Hisobotlar', ru: '📈 Отчёты' }, 'reports'],
     [{ uz: '🔔 Bildirishnomalar', ru: '🔔 Уведомления' }, 'notifications'],
     [{ uz: '👤 Profil', ru: '👤 Профиль' }, 'profile'],

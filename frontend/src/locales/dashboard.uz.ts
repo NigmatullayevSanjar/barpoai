@@ -41,6 +41,9 @@ export const dashboardUz: Record<string, string> = {
   'dash.sub.warehouse_manager': 'Omborxona operatsiyalari, qoldiqlari va jo‘natmalarni kuzatish paneli',
   'dash.title.accountant': 'Buxgalteriya boshqaruv paneli',
   'dash.sub.accountant': 'Barcha moliyaviy amallar va hisoblar bo‘yicha umumiy ko‘rsatkichlar',
+  'dash.title.pto_engineer': 'PTO paneli',
+  'dash.sub.pto_engineer':
+    'Smetalar, bajarilgan ish hajmi, tekshiruvdagi hisobotlar va budjetdan oshgan obyektlar',
   'dash.title.financier': 'Moliyaviy bosh sahifa',
   'dash.sub.financier': 'Moliyaviy ko‘rsatkichlar, reja–fakt va to‘lovlar',
 
